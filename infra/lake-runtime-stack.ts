@@ -85,6 +85,9 @@ export class LakeRuntimeStack extends Stack {
         ORACLE_PARQUET_URL: process.env.ORACLE_PARQUET_URL ?? DEFAULT_PARQUET_URL,
         ORACLE_UI_DIST: "/var/task/public",
         ORACLE_LATEST_PATH: "/var/task/artifacts/latest.json",
+        // The coverage snapshot and published schema the evidence panels read.
+        // Without it `/api/meta/run` returns coverage and schema as null.
+        ORACLE_RUN_DIR: "/var/task/run",
         // Lambda sets no HOME, and DuckDB resolves extensions under
         // `$HOME/.duckdb/extensions/`. Without this the first request 502s at
         // `LOAD httpfs` with "Can't find the home directory at ''". The bundle

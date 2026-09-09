@@ -71,10 +71,48 @@ mkdirSync(path.join(BUNDLE, "artifacts"), { recursive: true });
 
 cpSync(serverDist, path.join(BUNDLE, "dist"), { recursive: true });
 cpSync(uiDist, path.join(BUNDLE, "public"), { recursive: true });
-cpSync(
-  path.join(REPO_ROOT, "artifacts", "latest.json"),
-  path.join(BUNDLE, "artifacts", "latest.json"),
+// Every evidence artifact the runtime reads, not just the run pointer. The
+// function shipped `latest.json` alone, so `/api/meta/run` answered with
+// coverage, verification and runHistory all null and three evidence panels on
+// the overview rendered empty — the run summary, the source limitations and the
+// run history, which are exactly the claims the app exists to back up. The files
+// were correct and already on IPFS; the Lambda simply could not see them.
+//
+// `row-hashes.json` is excluded: it is a 14 MB working file behind the delta
+// computation, and nothing at runtime reads it.
+const RUNTIME_ARTIFACT_EXCLUDES = new Set(["row-hashes.json"]);
+const artifactNames = readdirSync(path.join(REPO_ROOT, "artifacts"))
+  .filter((name) => name.endsWith(".json") && !RUNTIME_ARTIFACT_EXCLUDES.has(name))
+  .sort();
+for (const name of artifactNames) {
+  cpSync(path.join(REPO_ROOT, "artifacts", name), path.join(BUNDLE, "artifacts", name));
+}
+if (!artifactNames.includes("latest.json")) {
+  throw new Error("artifacts/latest.json is missing; the function cannot identify the served run");
+}
+log("bundled_runtime_artifacts", { files: artifactNames.length });
+
+// The coverage snapshot and the published schema live in the run directory, not
+// in artifacts/, and that directory is the 1.7 GB pipeline working tree. Only
+// the small JSON record travels, laid out where ORACLE_RUN_DIR points.
+const RUN_FILES = ["coverage.json", "schema.json", "index.json"];
+const latestPointer = JSON.parse(
+  readFileSync(path.join(REPO_ROOT, "artifacts", "latest.json"), "utf8"),
 );
+const runSource = path.join(
+  REPO_ROOT,
+  ".claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs",
+  String(latestPointer.runId),
+);
+mkdirSync(path.join(BUNDLE, "run"), { recursive: true });
+for (const name of RUN_FILES) {
+  const from = path.join(runSource, name);
+  if (!existsSync(from)) {
+    throw new Error(`${from} is missing; /api/meta/run would answer with nulls`);
+  }
+  cpSync(from, path.join(BUNDLE, "run", name));
+}
+log("bundled_run_record", { runId: latestPointer.runId, files: RUN_FILES.length });
 
 // The bundle declares only what the function actually loads at runtime, so the
 // zip stays small and the cold start stays short.
