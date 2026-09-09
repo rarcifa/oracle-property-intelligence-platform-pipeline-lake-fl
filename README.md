@@ -158,22 +158,31 @@ These are in `coverage.json` inside every published run, and in the source catal
 
 ## What is not proven yet
 
-Three things are implemented and typecheck but have not been exercised, and they are listed
-here rather than counted as working.
+One thing is implemented and typechecks but has not been exercised, and it is listed here
+rather than counted as working.
 
 - **The chat agent has never called a model.** No `ANTHROPIC_API_KEY` was available in this
   environment. The Vercel AI SDK path with its five Zod-schema tools and its citation
   collector is written, and only the "no key returns 503" branch is test-covered. Export a
   key and run it once before relying on it.
-- **DuckDB-WASM has never run in a real browser.** The mechanism is verified as far as it can
-  be without one: `ipfs.filebase.io` returns HTTP 206 with permissive CORS and an exposed
-  `Content-Range` for the 20 MB Parquet, and DuckDB over HTTPFS opened that exact gateway URL,
-  passed the 59-column schema gate and returned 215,806 rows. The in-browser bootstrap itself
-  is untested. It falls back to the server API and shows the reason, so a failure degrades
-  rather than breaks.
-- **Two groupings differ between the browser and server paths.** The out-of-state owner
-  ranking and the business totals are computed separately in each, which is the one place the
-  two could disagree.
+
+Two items that were listed here have since been exercised against the deployed runtime and
+are no longer open:
+
+- **DuckDB-WASM now runs in a real browser.** Chromium loads the deployed app, the mode pill
+  reads "Browser DuckDB-WASM · range-reading IPFS", every view renders from the Parquet
+  range-read straight off `ipfs.filebase.io`, and the console is clean. It still falls back to
+  the server API and shows the reason, so a failure degrades rather than breaks.
+- **The browser and server paths agree.** They were compared figure by figure on the deployed
+  runtime: business totals (2,726 properties with an account, 4,451 accounts) and the by-city
+  ranking, owner posture (50,010 out of county, 20,236 out of state, 184,829 with no sale on
+  the roll) and all seven roof-age bands are identical in both.
+
+Fixing the browser path is what surfaced a real bug, now fixed: DuckDB returns `sum()` over an
+integer column as HUGEINT, Arrow carries that as a Decimal128, and the UI decoded it with
+`Array.from`. "Permit records joined" and "Roofing permit records" rendered as an em-dash in
+the browser while the REST API answered 17,457 and 3,256 for the same SQL, and the SQL console
+printed `[17457, 0, 0, 0]`. Both now read correctly.
 
 The hosted runtime now exists and is exercised above. It did not on the first attempt: the
 deploy succeeded and every route answered 502, because DuckDB resolves extensions under
