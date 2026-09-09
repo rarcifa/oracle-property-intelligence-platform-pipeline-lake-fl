@@ -1,0 +1,149 @@
+{
+  "ownerPosture": {
+    "properties": 215806,
+    "distinct_owners": 168315,
+    "out_of_county": 50010,
+    "out_of_state": 20236,
+    "no_recorded_sale": 184829,
+    "sale_on_record": 30977,
+    "multi_owner": 0
+  },
+  "roofAgeBands": [
+    {
+      "band": "0-4",
+      "properties": 24999,
+      "from_completed_permit": 2646,
+      "from_issued_permit": 280,
+      "from_year_built": 22073
+    },
+    {
+      "band": "5-9",
+      "properties": 16351,
+      "from_completed_permit": 0,
+      "from_issued_permit": 11,
+      "from_year_built": 16340
+    },
+    {
+      "band": "10-14",
+      "properties": 10073,
+      "from_completed_permit": 0,
+      "from_issued_permit": 0,
+      "from_year_built": 10073
+    },
+    {
+      "band": "15-19",
+      "properties": 7310,
+      "from_completed_permit": 0,
+      "from_issued_permit": 0,
+      "from_year_built": 7310
+    },
+    {
+      "band": "20-29",
+      "properties": 43766,
+      "from_completed_permit": 0,
+      "from_issued_permit": 4,
+      "from_year_built": 43762
+    },
+    {
+      "band": "30-49",
+      "properties": 39319,
+      "from_completed_permit": 0,
+      "from_issued_permit": 0,
+      "from_year_built": 39319
+    },
+    {
+      "band": "50+",
+      "properties": 27210,
+      "from_completed_permit": 0,
+      "from_issued_permit": 0,
+      "from_year_built": 27210
+    },
+    {
+      "band": "unknown",
+      "properties": 46778,
+      "from_completed_permit": 0,
+      "from_issued_permit": 0,
+      "from_year_built": 0
+    }
+  ],
+  "topOutOfStateOwners": [
+    {
+      "owner_mailing_state": "NY",
+      "properties": 2578
+    },
+    {
+      "owner_mailing_state": "CA",
+      "properties": 2029
+    },
+    {
+      "owner_mailing_state": "TX",
+      "properties": 1952
+    },
+    {
+      "owner_mailing_state": "PA",
+      "properties": 1101
+    },
+    {
+      "owner_mailing_state": "MI",
+      "properties": 937
+    },
+    {
+      "owner_mailing_state": "IL",
+      "properties": 932
+    },
+    {
+      "owner_mailing_state": "GA",
+      "properties": 889
+    },
+    {
+      "owner_mailing_state": "OH",
+      "properties": 870
+    },
+    {
+      "owner_mailing_state": "AZ",
+      "properties": 866
+    },
+    {
+      "owner_mailing_state": "UT",
+      "properties": 712
+    },
+    {
+      "owner_mailing_state": "NJ",
+      "properties": 614
+    },
+    {
+      "owner_mailing_state": "NV",
+      "properties": 565
+    },
+    {
+      "owner_mailing_state": "VA",
+      "properties": 553
+    },
+    {
+      "owner_mailing_state": "MD",
+      "properties": 538
+    },
+    {
+      "owner_mailing_state": "NC",
+      "properties": 461
+    }
+  ],
+  "provenance": {
+    "sql": "SELECT\n  count(*) AS properties,\n  count(DISTINCT owner_name) AS distinct_owners,\n  count(*) FILTER (WHERE owner_out_of_county) AS out_of_county,\n  count(*) FILTER (WHERE owner_out_of_state) AS out_of_state,\n  count(*) FILTER (WHERE coalesce(no_recorded_sale_in_dor_window, FALSE)) AS no_recorded_sale,\n  count(*) FILTER (WHERE last_sale_date IS NOT NULL) AS sale_on_record,\n  count(*) FILTER (WHERE coalesce(owner_count, 0) > 1) AS multi_owner\nFROM properties;\n\nSELECT\n  CASE\n    WHEN roof_age_years IS NULL THEN 'unknown'\n    WHEN roof_age_years < 5 THEN '0-4'\n    WHEN roof_age_years < 10 THEN '5-9'\n    WHEN roof_age_years < 15 THEN '10-14'\n    WHEN roof_age_years < 20 THEN '15-19'\n    WHEN roof_age_years < 30 THEN '20-29'\n    WHEN roof_age_years < 50 THEN '30-49'\n    ELSE '50+'\n  END AS band,\n  count(*) AS properties,\n  count(*) FILTER (WHERE roof_age_basis = 'roofing_permit_completed') AS from_completed_permit,\n  count(*) FILTER (WHERE roof_age_basis = 'roofing_permit_issued') AS from_issued_permit,\n  count(*) FILTER (WHERE roof_age_basis = 'year_built') AS from_year_built\nFROM properties\nGROUP BY 1\nORDER BY min(coalesce(roof_age_years, 100000));\n\nSELECT owner_mailing_state, count(*) AS properties FROM properties\nWHERE owner_out_of_state AND owner_mailing_state IS NOT NULL\nGROUP BY 1 ORDER BY properties DESC LIMIT 15",
+    "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/.claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/20260909T185056Z/query-table.parquet",
+    "dataSourceKind": "local",
+    "sourceSystems": [
+      "FL DOR NAL 2026P",
+      "FL DOR SDF 2026P",
+      "FL DOR TPP 2026P",
+      "FL GIO parcel centroids 2025",
+      "Lake County CD Plus permit layer",
+      "derived by the pipeline",
+      "gated at source (HTTP 403)",
+      "not ingested for this run"
+    ],
+    "runId": "20260909T185056Z",
+    "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q"
+  },
+  "tenureCaveat": "The published DOR roll carries only 2025-2026 sales, and the historical DOR map-data files carry parcel geometry only. 'No recorded sale' is a lower bound on tenure, not a tenure claim."
+}

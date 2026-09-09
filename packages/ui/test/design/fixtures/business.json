@@ -1,0 +1,229 @@
+{
+  "totals": {
+    "properties_with_accounts": 2726,
+    "business_accounts": 4451,
+    "max_accounts_at_one_property": 33,
+    "sunbiz_tenants": 0,
+    "properties": 215806
+  },
+  "byCity": [
+    {
+      "city": "CLERMONT",
+      "properties_with_accounts": 655,
+      "business_accounts": 1240,
+      "properties": 50447
+    },
+    {
+      "city": "LEESBURG",
+      "properties_with_accounts": 537,
+      "business_accounts": 864,
+      "properties": 32833
+    },
+    {
+      "city": "TAVARES",
+      "properties_with_accounts": 165,
+      "business_accounts": 548,
+      "properties": 13965
+    },
+    {
+      "city": "MOUNT DORA",
+      "properties_with_accounts": 360,
+      "business_accounts": 480,
+      "properties": 12874
+    },
+    {
+      "city": "EUSTIS",
+      "properties_with_accounts": 337,
+      "business_accounts": 393,
+      "properties": 16942
+    },
+    {
+      "city": "GROVELAND",
+      "properties_with_accounts": 167,
+      "business_accounts": 180,
+      "properties": 15905
+    },
+    {
+      "city": "ASTOR",
+      "properties_with_accounts": 75,
+      "business_accounts": 153,
+      "properties": 2117
+    },
+    {
+      "city": "MINNEOLA",
+      "properties_with_accounts": 90,
+      "business_accounts": 148,
+      "properties": 8617
+    },
+    {
+      "city": "LADY LAKE",
+      "properties_with_accounts": 71,
+      "business_accounts": 143,
+      "properties": 12640
+    },
+    {
+      "city": "UMATILLA",
+      "properties_with_accounts": 92,
+      "business_accounts": 113,
+      "properties": 5082
+    },
+    {
+      "city": "FRUITLAND PARK",
+      "properties_with_accounts": 82,
+      "business_accounts": 88,
+      "properties": 5755
+    },
+    {
+      "city": "MASCOTTE",
+      "properties_with_accounts": 38,
+      "business_accounts": 39,
+      "properties": 3813
+    },
+    {
+      "city": "HOWEY IN THE HILLS",
+      "properties_with_accounts": 24,
+      "business_accounts": 24,
+      "properties": 3117
+    },
+    {
+      "city": "ALTOONA",
+      "properties_with_accounts": 6,
+      "business_accounts": 8,
+      "properties": 1957
+    },
+    {
+      "city": "ASTATULA",
+      "properties_with_accounts": 7,
+      "business_accounts": 7,
+      "properties": 1844
+    },
+    {
+      "city": "PAISLEY",
+      "properties_with_accounts": 7,
+      "business_accounts": 7,
+      "properties": 2677
+    },
+    {
+      "city": "OKAHUMPKA",
+      "properties_with_accounts": 2,
+      "business_accounts": 4,
+      "properties": 896
+    },
+    {
+      "city": "WINTER GARDEN",
+      "properties_with_accounts": 3,
+      "business_accounts": 4,
+      "properties": 1349
+    },
+    {
+      "city": "SORRENTO",
+      "properties_with_accounts": 3,
+      "business_accounts": 3,
+      "properties": 4168
+    },
+    {
+      "city": "GRAND ISLAND",
+      "properties_with_accounts": 2,
+      "business_accounts": 2,
+      "properties": 2190
+    },
+    {
+      "city": "DELAND",
+      "properties_with_accounts": 1,
+      "business_accounts": 1,
+      "properties": 1980
+    },
+    {
+      "city": "MOUNT PLYMOUTH",
+      "properties_with_accounts": 1,
+      "business_accounts": 1,
+      "properties": 1818
+    },
+    {
+      "city": "YALAHA",
+      "properties_with_accounts": 1,
+      "business_accounts": 1,
+      "properties": 1011
+    }
+  ],
+  "byType": [
+    {
+      "property_type": "commercial",
+      "properties_with_accounts": 1063,
+      "business_accounts": 1689
+    },
+    {
+      "property_type": "residential_other",
+      "properties_with_accounts": 263,
+      "business_accounts": 717
+    },
+    {
+      "property_type": "vacant_residential",
+      "properties_with_accounts": 219,
+      "business_accounts": 512
+    },
+    {
+      "property_type": "single_family",
+      "properties_with_accounts": 375,
+      "business_accounts": 393
+    },
+    {
+      "property_type": "condo",
+      "properties_with_accounts": 196,
+      "business_accounts": 314
+    },
+    {
+      "property_type": "government",
+      "properties_with_accounts": 133,
+      "business_accounts": 203
+    },
+    {
+      "property_type": "institutional",
+      "properties_with_accounts": 90,
+      "business_accounts": 170
+    },
+    {
+      "property_type": "agricultural",
+      "properties_with_accounts": 150,
+      "business_accounts": 163
+    },
+    {
+      "property_type": "industrial",
+      "properties_with_accounts": 89,
+      "business_accounts": 123
+    },
+    {
+      "property_type": "other",
+      "properties_with_accounts": 67,
+      "business_accounts": 83
+    },
+    {
+      "property_type": "multi_family",
+      "properties_with_accounts": 51,
+      "business_accounts": 54
+    },
+    {
+      "property_type": "mobile_home",
+      "properties_with_accounts": 30,
+      "business_accounts": 30
+    }
+  ],
+  "provenance": {
+    "sql": "SELECT\n  count(*) FILTER (WHERE coalesce(business_account_count, 0) > 0) AS properties_with_accounts,\n  sum(coalesce(business_account_count, 0)) AS business_accounts,\n  max(coalesce(business_account_count, 0)) AS max_accounts_at_one_property,\n  count(*) FILTER (WHERE coalesce(has_sunbiz_tenant, FALSE)) AS sunbiz_tenants,\n  count(*) AS properties\nFROM properties;\n\nSELECT\n  address_city AS city,\n  count(*) FILTER (WHERE coalesce(business_account_count, 0) > 0) AS properties_with_accounts,\n  sum(coalesce(business_account_count, 0)) AS business_accounts,\n  count(*) AS properties\nFROM properties\nWHERE address_city IS NOT NULL\nGROUP BY 1\nHAVING properties_with_accounts > 0\nORDER BY business_accounts DESC, city ASC\nLIMIT 40;\n\nSELECT\n  coalesce(property_type, 'unclassified') AS property_type,\n  count(*) FILTER (WHERE coalesce(business_account_count, 0) > 0) AS properties_with_accounts,\n  sum(coalesce(business_account_count, 0)) AS business_accounts\nFROM properties\nGROUP BY 1\nHAVING properties_with_accounts > 0\nORDER BY business_accounts DESC",
+    "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/.claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/20260909T185056Z/query-table.parquet",
+    "dataSourceKind": "local",
+    "sourceSystems": [
+      "FL DOR NAL 2026P",
+      "FL DOR SDF 2026P",
+      "FL DOR TPP 2026P",
+      "FL GIO parcel centroids 2025",
+      "Lake County CD Plus permit layer",
+      "derived by the pipeline",
+      "gated at source (HTTP 403)",
+      "not ingested for this run"
+    ],
+    "runId": "20260909T185056Z",
+    "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q"
+  },
+  "note": "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory and it carries no business name in the published file. has_sunbiz_tenant stays false for every row because Sunbiz search is gated at the source and was not ingested for this run."
+}

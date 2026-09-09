@@ -1,0 +1,422 @@
+{
+  "cities": [
+    {
+      "value": "CLERMONT",
+      "count": 50447
+    },
+    {
+      "value": "LEESBURG",
+      "count": 32833
+    },
+    {
+      "value": "EUSTIS",
+      "count": 16942
+    },
+    {
+      "value": "GROVELAND",
+      "count": 15905
+    },
+    {
+      "value": "TAVARES",
+      "count": 13965
+    },
+    {
+      "value": "MOUNT DORA",
+      "count": 12874
+    },
+    {
+      "value": "LADY LAKE",
+      "count": 12640
+    },
+    {
+      "value": "MINNEOLA",
+      "count": 8617
+    },
+    {
+      "value": "FRUITLAND PARK",
+      "count": 5755
+    },
+    {
+      "value": "THE VILLAGES",
+      "count": 5350
+    },
+    {
+      "value": "UMATILLA",
+      "count": 5082
+    },
+    {
+      "value": "SORRENTO",
+      "count": 4168
+    },
+    {
+      "value": "MASCOTTE",
+      "count": 3813
+    },
+    {
+      "value": "HOWEY IN THE HILLS",
+      "count": 3117
+    },
+    {
+      "value": "MONTVERDE",
+      "count": 3052
+    },
+    {
+      "value": "PAISLEY",
+      "count": 2677
+    },
+    {
+      "value": "GRAND ISLAND",
+      "count": 2190
+    },
+    {
+      "value": "ASTOR",
+      "count": 2117
+    },
+    {
+      "value": "DELAND",
+      "count": 1980
+    },
+    {
+      "value": "ALTOONA",
+      "count": 1957
+    },
+    {
+      "value": "ASTATULA",
+      "count": 1844
+    },
+    {
+      "value": "MOUNT PLYMOUTH",
+      "count": 1818
+    },
+    {
+      "value": "WINTER GARDEN",
+      "count": 1349
+    },
+    {
+      "value": "YALAHA",
+      "count": 1011
+    },
+    {
+      "value": "OKAHUMPKA",
+      "count": 896
+    },
+    {
+      "value": "WEIRSDALE",
+      "count": 282
+    },
+    {
+      "value": "FORT MC COY",
+      "count": 26
+    },
+    {
+      "value": "FERNDALE",
+      "count": 23
+    },
+    {
+      "value": "DONA VISTA",
+      "count": 10
+    },
+    {
+      "value": "LAKDY LAKE",
+      "count": 1
+    },
+    {
+      "value": "tavares",
+      "count": 1
+    }
+  ],
+  "propertyTypes": [
+    {
+      "value": "single_family",
+      "count": 136516
+    },
+    {
+      "value": "vacant_residential",
+      "count": 25667
+    },
+    {
+      "value": "mobile_home",
+      "count": 16402
+    },
+    {
+      "value": "residential_other",
+      "count": 10212
+    },
+    {
+      "value": "commercial",
+      "count": 6251
+    },
+    {
+      "value": "agricultural",
+      "count": 5461
+    },
+    {
+      "value": "government",
+      "count": 4581
+    },
+    {
+      "value": "condo",
+      "count": 3576
+    },
+    {
+      "value": "other",
+      "count": 2776
+    },
+    {
+      "value": "multi_family",
+      "count": 1560
+    },
+    {
+      "value": "industrial",
+      "count": 1556
+    },
+    {
+      "value": "institutional",
+      "count": 1248
+    }
+  ],
+  "roofAgeBasis": [
+    {
+      "value": "year_built",
+      "count": 166087
+    },
+    {
+      "value": "roofing_permit_completed",
+      "count": 2646
+    },
+    {
+      "value": "roofing_permit_issued",
+      "count": 295
+    }
+  ],
+  "zips": [
+    {
+      "value": "34711",
+      "count": 32111
+    },
+    {
+      "value": "34748",
+      "count": 24362
+    },
+    {
+      "value": "34736",
+      "count": 15928
+    },
+    {
+      "value": "34714",
+      "count": 14744
+    },
+    {
+      "value": "32778",
+      "count": 13961
+    },
+    {
+      "value": "32757",
+      "count": 12868
+    },
+    {
+      "value": "32159",
+      "count": 12638
+    },
+    {
+      "value": "34715",
+      "count": 12200
+    },
+    {
+      "value": "32726",
+      "count": 11213
+    },
+    {
+      "value": "34788",
+      "count": 8461
+    },
+    {
+      "value": "32776",
+      "count": 5983
+    },
+    {
+      "value": "34731",
+      "count": 5755
+    },
+    {
+      "value": "32736",
+      "count": 5728
+    },
+    {
+      "value": "32784",
+      "count": 5061
+    },
+    {
+      "value": "34762",
+      "count": 4124
+    },
+    {
+      "value": "34753",
+      "count": 3789
+    },
+    {
+      "value": "34737",
+      "count": 3117
+    },
+    {
+      "value": "34756",
+      "count": 3051
+    },
+    {
+      "value": "32767",
+      "count": 2677
+    },
+    {
+      "value": "32735",
+      "count": 2190
+    },
+    {
+      "value": "32163",
+      "count": 2119
+    },
+    {
+      "value": "32102",
+      "count": 2117
+    },
+    {
+      "value": "32702",
+      "count": 1958
+    },
+    {
+      "value": "32720",
+      "count": 1937
+    },
+    {
+      "value": "34705",
+      "count": 1841
+    },
+    {
+      "value": "34787",
+      "count": 1347
+    },
+    {
+      "value": "34797",
+      "count": 1011
+    },
+    {
+      "value": "32195",
+      "count": 281
+    },
+    {
+      "value": "32724",
+      "count": 54
+    },
+    {
+      "value": "32134",
+      "count": 26
+    },
+    {
+      "value": "32787",
+      "count": 25
+    },
+    {
+      "value": "34729",
+      "count": 23
+    },
+    {
+      "value": "32714",
+      "count": 4
+    },
+    {
+      "value": "32748",
+      "count": 4
+    },
+    {
+      "value": "32762",
+      "count": 3
+    },
+    {
+      "value": "34784",
+      "count": 3
+    },
+    {
+      "value": "32788",
+      "count": 2
+    },
+    {
+      "value": "35757",
+      "count": 2
+    },
+    {
+      "value": "32189",
+      "count": 1
+    },
+    {
+      "value": "32278",
+      "count": 1
+    },
+    {
+      "value": "32575",
+      "count": 1
+    },
+    {
+      "value": "32705",
+      "count": 1
+    },
+    {
+      "value": "32715",
+      "count": 1
+    },
+    {
+      "value": "32725",
+      "count": 1
+    },
+    {
+      "value": "32756",
+      "count": 1
+    },
+    {
+      "value": "32775",
+      "count": 1
+    },
+    {
+      "value": "32779",
+      "count": 1
+    },
+    {
+      "value": "32803",
+      "count": 1
+    },
+    {
+      "value": "32874",
+      "count": 1
+    },
+    {
+      "value": "34075",
+      "count": 1
+    },
+    {
+      "value": "34611",
+      "count": 1
+    },
+    {
+      "value": "34747",
+      "count": 1
+    },
+    {
+      "value": "34757",
+      "count": 1
+    },
+    {
+      "value": "34848",
+      "count": 1
+    },
+    {
+      "value": "35727",
+      "count": 1
+    },
+    {
+      "value": "35748",
+      "count": 1
+    },
+    {
+      "value": "37236",
+      "count": 1
+    }
+  ]
+}

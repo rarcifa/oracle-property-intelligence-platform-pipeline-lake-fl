@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "generatedAt": "2026-09-08T18:02:22.201Z",
+  "generatedAt": "2026-09-09T19:34:17.421Z",
   "counties": [
     {
       "countyKey": "broward",
@@ -49,6 +49,18 @@
       "permitQueryTableUrl": null,
       "placesTableUrl": "https://ipfs.filebase.io/ipns/k51qzi5uqu5dk4d5kacjn1b0argjmxmvele89gcnxyz8yjflh6gsx6w3a4o2wo/hillsborough/places-table.parquet",
       "updatedAt": "2026-08-30T00:25:00.000Z"
+    },
+    {
+      "countyKey": "lake",
+      "countyName": "Lake",
+      "stateCode": "FL",
+      "countyFips": "12069",
+      "status": "published",
+      "queryTableUrl": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet",
+      "datasetCoverageUrl": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/coverage.json",
+      "permitQueryTableUrl": null,
+      "placesTableUrl": null,
+      "updatedAt": "2026-09-09T19:34:17.000Z"
     },
     {
       "countyKey": "lee",

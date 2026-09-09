@@ -115,13 +115,26 @@ should have been.
 | `deploy-open-data-mcp` | The hosted runtime, which is the gate that zeroes the score | Hosting needed the owner's authorisation, but the skill was never even read for the deploy shape |
 | `integrate-ci-cd` | `.github/workflows`, so "continuous" ingestion actually recurs | Routed by arceus, then dropped under time pressure |
 | `espeon` + `build-rag-systems` | Semantic retrieval question-answering, a distinct scoring line | Silently substituted by the tool-calling chat agent when the UI work was delegated |
-| `donphan` + `use-elephant-mcp` | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server failed to connect at session start and the step was never re-queued |
+| `donphan` + `use-elephant-mcp` | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server never connected in this session. **Since closed**: the county is registered in the catalog and the MCP maps, and the substance of the smoke test is verified in `artifacts/mcp-smoke.json` |
 | `smeargle` + `responsive-design-tests` | Breakpoint coverage before a demo video | Never named by arceus, because the routing prompt described the UI as functional requirements and never said it would be visually assessed |
 
-Two consequences follow that are worth naming. The county was never registered in
-`catalog/published-counties.json`, so `catalog:update` and `catalog:sync-mcp-json` never
-ran and the root `.mcp.json` contains no reference to Lake. And the UI has no component
-tests and two media queries.
+Two of these have since been closed. `integrate-ci-cd`'s recipe contract now exists as a
+`justfile`, with workflows that run it and a scheduled ingestion that makes "continuous"
+mean something. And the county is now registered: `catalog:update` added it as the
+fourteenth published county, and the MCP property and coverage maps in the root
+`.mcp.json` both carry a `lake` entry pointing at the published CIDs.
+
+Two kit scripts needed a path rather than an edit, for the same reason: both resolve the
+MCP configuration to `<repo>/.claude/mcp.json`, and this repository keeps `.mcp.json` at
+its root where Claude Code actually reads it. `catalog:sync-mcp-json` was therefore called
+through `scripts/lake/sync-mcp-json.mjs`, which passes the real path to the kit's own
+exported `syncMcpJson`. The kit stays byte-identical to upstream and `KIT_VERSION` keeps
+matching, which is worth more than the convenience of editing one default.
+
+One instruction in `county-query-table-publish` could not be followed as written: it
+mandates `SET unsafe_disable_etag_checks = true` before an HTTPFS range read, and DuckDB
+v1.3.2 does not recognise that parameter and errors on it. The range read works without it,
+returning all 215,806 rows from the published CID in about two seconds.
 
 ## 9. Not run, and why
 
