@@ -84,6 +84,25 @@ curl -sL "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-
 duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
 ```
 
+## Two runs, two CIDs, prior data untouched
+
+| Run | Mode | Root CID | Property deltas | Gateways verified |
+|---|---|---|---|---|
+| `20260909T182356Z` | full | `bafybeigb3g…rltee` | 215,806 inserted | 5 |
+| `20260909T185056Z` | incremental | `bafybeiay65…z33q` | 215,806 unchanged | 2 |
+
+The IPNS name resolves to the newest run; every run's own root CID is permanent. Run one's
+root still resolves after run two republished, and the run before both of them, published
+earlier the same day, was independently re-checked from three gateways and returns a
+byte-identical manifest — that evidence is in `artifacts/prior-publication.json`.
+
+The incremental run's deltas are genuinely zero, and that is reported rather than dressed
+up. It re-fetched the 304 permits whose `Permit_LastModDate` had moved in the preceding four
+days and merged them by permit number, which collapsed 244 duplicate feature rows but
+changed no property-level value. A delta appears when a permit changes status, a roof gets a
+new completion date, or the DOR publishes a new roll. The mechanism is exercised and the
+result is honest: nothing that this pipeline measures had changed yet.
+
 ## Known limitations, stated rather than hidden
 
 These are in `coverage.json` inside every published run, and in the source catalog.

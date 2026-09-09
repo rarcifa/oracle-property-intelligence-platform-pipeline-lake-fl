@@ -1,0 +1,268 @@
+{
+  "schemaVersion": "elephant.artifact-manifest.v1",
+  "runId": "20260909T185056Z",
+  "county": "lake",
+  "generatedAt": "2026-09-09T18:50:56.000Z",
+  "root": {
+    "cid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+    "car": ".claude/skills/use-oracle/runtime/data/artifacts/publish/lake/cars/20260909T185056Z.car"
+  },
+  "artifacts": [
+    {
+      "cid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+      "name": "/",
+      "size": 326097709,
+      "codec": "directory",
+      "sha256": "sha256:6075578dd0edc37a1472504cc054d1da5aa2ff52fdc7f772762062472ed31d83",
+      "origins": []
+    },
+    {
+      "cid": "bafkreiheideoon45cloduxqb5c6w4apxg6by7gytl7ivob2ug3vhqscfxm",
+      "name": "coverage.json",
+      "size": 2502,
+      "codec": "file",
+      "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+      "origins": []
+    },
+    {
+      "cid": "bafkreigs3wehdzvscut3l4zgcvkihbu7x6b7xf7rkv5fy4hhaieeizsb3u",
+      "name": "index.json",
+      "size": 4565,
+      "codec": "file",
+      "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+      "origins": []
+    },
+    {
+      "cid": "bafybeihzvn35om3zs2fijssicpo6ius3z7aqzuv5u62c6r4bch23dzplkq",
+      "name": "query-table.parquet",
+      "size": 20039488,
+      "codec": "file",
+      "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiemkf7suezxexb5ankf7uqcywxvjjhhdx5r4on7oxqa36uk4nmkl4",
+      "name": "samples/",
+      "size": 132969,
+      "codec": "directory",
+      "sha256": "sha256:55c9a2f3048e2263d3fec4fe9619f1173fb1f429ba39127e6c75b460bd654156",
+      "origins": []
+    },
+    {
+      "cid": "bafkreielchnm6dwukdx5v3ekqf4ztsjpcelsppsegwdabtufpsh5o3v2hq",
+      "name": "samples/aged-roofs.json",
+      "size": 39517,
+      "codec": "file",
+      "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+      "origins": []
+    },
+    {
+      "cid": "bafkreibxnq2ykgfk7an2sllkmxkzikqalg4qaqjigdu3p4y7bsfqugxrsu",
+      "name": "samples/open-roofing-permits.json",
+      "size": 56013,
+      "codec": "file",
+      "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+      "origins": []
+    },
+    {
+      "cid": "bafkreiepbuwdm754uixttywqtbmweu2j3futv4uj6izycs3opzdgfrq3hi",
+      "name": "samples/out-of-area-owners.json",
+      "size": 37234,
+      "codec": "file",
+      "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+      "origins": []
+    },
+    {
+      "cid": "bafkreibrloxqjev5bx5iebtrv2zf5h3hsto5f25tvvzslmxu3omdfidlli",
+      "name": "schema.json",
+      "size": 5586,
+      "codec": "file",
+      "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiggdayb26s44zkmbgtrf4qjrbhavhtpxff7pgah7pgl6lktfcywfi",
+      "name": "shards/",
+      "size": 305908393,
+      "codec": "directory",
+      "sha256": "sha256:c94aaaae03c0413bcc52d998c141d9833237c3ac8ab9fc8ea81ca60f263d4bf1",
+      "origins": []
+    },
+    {
+      "cid": "bafybeihzjyiotkg5adohrd67znun7j463g5icw52nxosw2bsgml6jnbqp4",
+      "name": "shards/shard-0000.json",
+      "size": 14037180,
+      "codec": "file",
+      "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+      "origins": []
+    },
+    {
+      "cid": "bafybeibjjepizvyjbmz76wpkvc2qgulofbuilcyqk3srdy6j2swfow5vau",
+      "name": "shards/shard-0001.json",
+      "size": 14172409,
+      "codec": "file",
+      "sha256": "sha256:ba75ef07432bf8772325714eaa1335cb24145a263efd2e6a207fcd53449b113b",
+      "origins": []
+    },
+    {
+      "cid": "bafybeig4uvcggeehemihpzi5yf5sqcpy6lcqfdrkruppchecrex427u4pu",
+      "name": "shards/shard-0002.json",
+      "size": 14318941,
+      "codec": "file",
+      "sha256": "sha256:84061149b45358d8940afd105516a481fbcc9305da3e7d979a63d37c451d763f",
+      "origins": []
+    },
+    {
+      "cid": "bafybeieckyqg6f5pazmvms2gish4322xjbsulkvby6velcivz63xunou7e",
+      "name": "shards/shard-0003.json",
+      "size": 14254543,
+      "codec": "file",
+      "sha256": "sha256:78592bd0fb1c49942e20b33087e35eec873d7944507f0d6129f5e0dfb1b45314",
+      "origins": []
+    },
+    {
+      "cid": "bafybeibaegzdvprzfqnhdha2iu5vnly5gevauismijkdgpgcvvg4bgooym",
+      "name": "shards/shard-0004.json",
+      "size": 14193311,
+      "codec": "file",
+      "sha256": "sha256:0fbc404b423c849bd6a4ecc29be8c011c85f8a21a3c9f12d28af269fcffb6132",
+      "origins": []
+    },
+    {
+      "cid": "bafybeifdvrzjvw6w4hybhregwzhqxcsmmkc4falswoi5vrr7l5mafzqicq",
+      "name": "shards/shard-0005.json",
+      "size": 14185702,
+      "codec": "file",
+      "sha256": "sha256:931f243e62259797fe91dc0d8a4fe505367e57fb7fe9449f32ec5bef015fda3d",
+      "origins": []
+    },
+    {
+      "cid": "bafybeihmfskfiambtiivhtkumqt6wvkpbew57g4la7rmrepjzi7jmbblw4",
+      "name": "shards/shard-0006.json",
+      "size": 14218485,
+      "codec": "file",
+      "sha256": "sha256:9f04c665032c7c43112eb5158c73b535a7d87f82873ef2889ee66253cf94436f",
+      "origins": []
+    },
+    {
+      "cid": "bafybeih3znwzuvllw2uhb5fqsfcil5coyx4l4fmkr2543fp6jkx2nw7geu",
+      "name": "shards/shard-0007.json",
+      "size": 14334151,
+      "codec": "file",
+      "sha256": "sha256:1984c3fcf0ae735bd8f631285891e8e89b96ce5d5500ca6cdda72dad8bba1fa0",
+      "origins": []
+    },
+    {
+      "cid": "bafybeihet4mekfu6wnfnxuwk7ysbs4gcq5ceganusz4frrn3hpahaq5tdm",
+      "name": "shards/shard-0008.json",
+      "size": 14316859,
+      "codec": "file",
+      "sha256": "sha256:8f140169f298a01e74d6f27a005e3a7d8c8d8e4c37d9bac38c45be8d5a074eaf",
+      "origins": []
+    },
+    {
+      "cid": "bafybeihy5zecac6rwwtufnzys7ipxfinvxnw37zdxeptjmall3jxsb733i",
+      "name": "shards/shard-0009.json",
+      "size": 14145331,
+      "codec": "file",
+      "sha256": "sha256:84d6b8257f46bd3ae1f42e625a0acc704476ac3a6169b99f7bc61abf60147255",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiev7ls5tchayxhgszaiepvkfcukju2rbp7q5oiuj4znkjhl75hnee",
+      "name": "shards/shard-0010.json",
+      "size": 14104082,
+      "codec": "file",
+      "sha256": "sha256:afb4f7c2c05b80620fcbfe3f5880ebec7baadc35e3d9cc13f72d4b151df38d12",
+      "origins": []
+    },
+    {
+      "cid": "bafybeig3jonjd22ybvaeb6tqgsbphfzhqymrdr2ulybl7r2u4aidptklbi",
+      "name": "shards/shard-0011.json",
+      "size": 14093955,
+      "codec": "file",
+      "sha256": "sha256:68e21156b3d61638c8efb4303db46249baf6c0e78ad99580641cf1f747d1bcbb",
+      "origins": []
+    },
+    {
+      "cid": "bafybeibhxcybdgosu3p5ecb3eacvkjnob2g3fpsry3ig5ttf7milqvjk7q",
+      "name": "shards/shard-0012.json",
+      "size": 14124017,
+      "codec": "file",
+      "sha256": "sha256:250c514a2acc2ff61a75a6d12b574b03690fd86569443d98ff5526c756f9b78d",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiexrsehfm737ricvzzu64jteejzbuih7yoxbday46zc3q7d5txig4",
+      "name": "shards/shard-0013.json",
+      "size": 14112917,
+      "codec": "file",
+      "sha256": "sha256:a34f3f34d5ad493508a91e751c242a1f2c1fb114f3e40db29e2dbef6490c3971",
+      "origins": []
+    },
+    {
+      "cid": "bafybeibxtk43las7hyhebpzx4id6utz35iurd57fp67ecb52o7cmyslx7y",
+      "name": "shards/shard-0014.json",
+      "size": 14086227,
+      "codec": "file",
+      "sha256": "sha256:14280ec15cb1a84a85878d17f5dae0a2f0b4d8e42e624c9fb456383b2b68e6b2",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiayrtsuv366he7wgf5dzksp5mr5hdock3z4yaninu572y2knis7hy",
+      "name": "shards/shard-0015.json",
+      "size": 14306614,
+      "codec": "file",
+      "sha256": "sha256:c6c15ba66089f02cf9a7b074c8eed9a99c655f33e06fc5259079a0b347e41aad",
+      "origins": []
+    },
+    {
+      "cid": "bafybeidx3kqn6imzm5plix3ahfhoykvhcslgjqooaooyhv553rzho4kng4",
+      "name": "shards/shard-0016.json",
+      "size": 14238348,
+      "codec": "file",
+      "sha256": "sha256:7ce45c300ede41d2e79a15ea72a1af913c6cb761c65415a9cc0b41446732bf7d",
+      "origins": []
+    },
+    {
+      "cid": "bafybeibi4tnlvnfajabebajtjq6u2ndupdc3f5xlw5m4ybqnt3grxe4swe",
+      "name": "shards/shard-0017.json",
+      "size": 14054158,
+      "codec": "file",
+      "sha256": "sha256:e7ecc583ad1c8c99df77ba3eaf4da87aa19d9bc5b83cf49ee965005bde3f8853",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiegmpvq2nio7neqkgpi4kjcdwpwh3g2se4lsqsfxun5ihw6yf5t2m",
+      "name": "shards/shard-0018.json",
+      "size": 14037447,
+      "codec": "file",
+      "sha256": "sha256:ec995acc4cc4b7fc2e7e06564eb4539b851289cb8e3840cc0b15716e0730116a",
+      "origins": []
+    },
+    {
+      "cid": "bafybeigcvgby7ke7puv6v2v4ghea3x3nwnldhntgciujxpp6nl36j724xu",
+      "name": "shards/shard-0019.json",
+      "size": 14274628,
+      "codec": "file",
+      "sha256": "sha256:05cabb407262e5208adbaa1761d1e3e055188f41947b52df66cd085c1c2f00d9",
+      "origins": []
+    },
+    {
+      "cid": "bafybeiechaftczacckijgdr76njgwdgvkr75xvfz4iig6qefulf76ps7we",
+      "name": "shards/shard-0020.json",
+      "size": 14150845,
+      "codec": "file",
+      "sha256": "sha256:eafb82e5e4f6153fb1af187c2c70a3dd33e034c0d23d6bc397af419c5f5af09d",
+      "origins": []
+    },
+    {
+      "cid": "bafybeifw7lp5smo3csnv7xglnrd5q2qneglyoypnd3dijhjnaokv5g2p24",
+      "name": "shards/shard-0021.json",
+      "size": 8087855,
+      "codec": "file",
+      "sha256": "sha256:73b75f2bf852e4c805332090c735623c8c5875a4c3751834fe874db71f4f875f",
+      "origins": []
+    }
+  ]
+}
