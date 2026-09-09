@@ -11,7 +11,10 @@
  * and an explanation, not a 404 and not the nearest irrelevant chunk.
  */
 
+import { interpretParcelQuery, type ParcelVocabulary } from "@oracle-lake/rag";
+import { searchOptionsSchema } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
+import { getFacets, searchProperties } from "../data/queries.js";
 import {
   RetrievalUnavailableError,
   getRetrievalIndex,
@@ -20,8 +23,71 @@ import {
 } from "../chat/retrieval.js";
 import { fail, json, type Router } from "../http/router.js";
 
+/**
+ * The roll's own city and property-type vocabulary, read once.
+ *
+ * A city is only matched if the published table actually contains it, so a
+ * question about Orlando cannot silently become a filter that matches nothing.
+ */
+let vocabularyPromise: Promise<ParcelVocabulary> | null = null;
+
+async function parcelVocabulary(context: AppContext): Promise<ParcelVocabulary> {
+  vocabularyPromise ??= (async () => {
+    const facets = await getFacets(context.store);
+    return {
+      cities: facets.cities.map((row) => String(row.value)).filter((value) => value.length > 0),
+      propertyTypes: facets.propertyTypes
+        .map((row) => String(row.value))
+        .filter((value) => value.length > 0),
+    };
+  })().catch((error: unknown) => {
+    // Never cache a rejection: a transient gateway failure must not disable
+    // parcel retrieval for the life of the process.
+    vocabularyPromise = null;
+    throw error;
+  });
+  return vocabularyPromise;
+}
+
+/**
+ * The parcel half of the answer, or `null`.
+ *
+ * Deliberately best-effort. Corpus retrieval needs no data table at all, and it
+ * must keep working when the published Parquet is unreachable — a reviewer with
+ * no network to the gateway should still see that retrieval works, which is the
+ * whole reason this route does not require a model key either.
+ */
+async function parcelHalf(
+  context: AppContext,
+  query: string,
+  topK: number,
+): Promise<unknown | null> {
+  try {
+    const vocabulary = await parcelVocabulary(context);
+    const interpreted = interpretParcelQuery(query, vocabulary);
+    if (!interpreted.answersAboutParcels) return null;
+
+    const options = searchOptionsSchema.parse({
+      ...interpreted.filters,
+      limit: Math.min(topK, 25),
+    });
+    const provenance = await context.provenance();
+    const result = await searchProperties(context.store, provenance, options);
+    return {
+      interpretation: interpreted.interpretation,
+      filters: interpreted.filters,
+      matched: result.matched,
+      returned: result.rows.length,
+      rows: result.rows,
+      provenance: result.provenance,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Register the retrieval routes. */
-export function registerSearchRoutes(router: Router, _context: AppContext): void {
+export function registerSearchRoutes(router: Router, context: AppContext): void {
   router.get("/api/search", () => {
     try {
       const index = getRetrievalIndex();
@@ -50,7 +116,7 @@ export function registerSearchRoutes(router: Router, _context: AppContext): void
     }
   });
 
-  router.post("/api/search", (request) => {
+  router.post("/api/search", async (request) => {
     const parsed = searchRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return fail(
@@ -60,7 +126,16 @@ export function registerSearchRoutes(router: Router, _context: AppContext): void
       );
     }
     try {
-      return json(200, searchCorpus(parsed.data));
+      const corpus = searchCorpus(parsed.data);
+
+      // Hybrid, and the second half is the point: retrieval used to cover the
+      // dataset's metadata only, so a question about the 215,806 parcels
+      // themselves had nothing to retrieve from. Constraints in the question are
+      // resolved against the published table's own filter contract and run as
+      // SQL, so the rows returned actually satisfy them — which a bag-of-words
+      // score over a per-parcel text profile demonstrably did not.
+      const parcels = await parcelHalf(context, parsed.data.query, parsed.data.topK ?? 5);
+      return json(200, { ...corpus, parcels });
     } catch (error) {
       if (error instanceof RetrievalUnavailableError) {
         return fail(503, "retrieval_unavailable", error.detail);

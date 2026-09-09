@@ -16,6 +16,13 @@ export { EVAL_CASES, POSITIVE_CASES, NEGATIVE_CASES, type EvalCase } from "./eva
 export { expandQuery, aliasScore, QUERY_EXPANSIONS } from "./aliases.js";
 export { tokenize, normalize, stem, shortHash } from "./text.js";
 export {
+  interpretParcelQuery,
+  DEFAULT_AGED_ROOF_YEARS,
+  type InterpretedParcelQuery,
+  type InterpretedFilter,
+  type ParcelVocabulary,
+} from "./parcels/interpret.js";
+export {
   DOC_TYPES,
   CONFIDENCE_BANDS,
   corpusChunkSchema,
