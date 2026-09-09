@@ -1,6 +1,10 @@
 .env
 node_modules/
-data/
+# Anchored, NOT a bare `data/`. A bare pattern matches every directory named
+# `data` at any depth, which silently swallowed packages/server/src/data and
+# packages/ui/src/data — the DuckDB data layer and the UI's data sources were
+# never committed, so a clean clone of this repo did not build.
+/.claude/skills/use-oracle/runtime/data/
 dist/
 .DS_Store
 
