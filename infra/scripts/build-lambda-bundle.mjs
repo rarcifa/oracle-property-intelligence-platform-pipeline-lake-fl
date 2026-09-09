@@ -17,6 +17,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { gunzipSync } from "node:zlib";
 import { createRequire } from "node:module";
 import {
   cpSync,
@@ -161,6 +162,52 @@ for (const entry of readdirSync(duckdbDir, { withFileTypes: true })) {
     rmSync(path.join(duckdbDir, entry.name), { recursive: true, force: true });
     log("pruned_foreign_binding", { package: `@duckdb/${entry.name}` });
   }
+}
+
+// DuckDB's `httpfs` extension is a per-platform artefact exactly like the native
+// binding above, and it is NOT statically linked. Nothing shipped it, so the
+// function resolved it under `$HOME/.duckdb/extensions/` — and Lambda sets no
+// HOME, so every request 502'd at cold start with "Can't find the home directory
+// at ''". It passed on a developer machine only because one was already cached
+// there. It is downloaded here for the target platform at the exact DuckDB
+// version, so a deployed cold start needs no network access to duckdb.org and no
+// writable extension directory.
+const EXTENSION_PLATFORM = "linux_arm64";
+const EXTENSIONS = ["httpfs"];
+
+// The version must be DuckDB's own `version()`, not the npm package version:
+// the extension path is keyed on it and a mismatch fails at cold start.
+const duckdbVersion = execFileSync(
+  "node",
+  [
+    "-e",
+    "import('@duckdb/node-api').then(async (m) => {" +
+      "const c = await (await m.DuckDBInstance.create(':memory:')).connect();" +
+      "const r = await c.run('SELECT version() AS v');" +
+      "process.stdout.write(String((await r.getRowObjects())[0].v)); });",
+  ],
+  { cwd: path.join(REPO_ROOT, "packages", "server"), encoding: "utf8" },
+).trim();
+if (!/^v\d+\.\d+\.\d+$/.test(duckdbVersion)) {
+  throw new Error(`Unexpected DuckDB version ${JSON.stringify(duckdbVersion)}`);
+}
+
+const extensionLeaf = path.join(BUNDLE, "duckdb-extensions", duckdbVersion, EXTENSION_PLATFORM);
+mkdirSync(extensionLeaf, { recursive: true });
+for (const extension of EXTENSIONS) {
+  const url = `https://extensions.duckdb.org/${duckdbVersion}/${EXTENSION_PLATFORM}/${extension}.duckdb_extension.gz`;
+  log("downloading_duckdb_extension", { extension, version: duckdbVersion, url });
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${url} returned ${response.status}; the function would fail at cold start`);
+  }
+  const binary = gunzipSync(Buffer.from(await response.arrayBuffer()));
+  const target = path.join(extensionLeaf, `${extension}.duckdb_extension`);
+  writeFileSync(target, binary);
+  if (statSync(target).size === 0) {
+    throw new Error(`${target} is empty; the function would fail at cold start`);
+  }
+  log("bundled_duckdb_extension", { extension, bytes: binary.byteLength });
 }
 
 // Workspace-internal packages are not on any registry, so their compiled output

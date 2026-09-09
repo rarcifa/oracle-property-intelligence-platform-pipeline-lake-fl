@@ -20,7 +20,13 @@ const app = new App();
 new LakeRuntimeStack(app, "OracleLakeRuntime", {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION ?? "us-east-2",
+    // Pinned, not defaulted. The engineering guidelines name us-east-2 as the
+    // primary region, and `CDK_DEFAULT_REGION` is populated by the CDK CLI from
+    // whatever the local AWS config says — here that is us-east-1, so a
+    // `?? "us-east-2"` fallback would never have fired and the stack would have
+    // landed in the wrong region without anyone noticing. Override deliberately
+    // with ORACLE_DEPLOY_REGION.
+    region: process.env.ORACLE_DEPLOY_REGION ?? "us-east-2",
   },
   description: "Lake County FL property-intelligence runtime: UI, REST API, MCP and agent",
   tags: {

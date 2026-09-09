@@ -387,6 +387,24 @@ export async function harvestPermits({ jobId, concurrency = 2, limit = Infinity,
     }
   });
 
+  // Status is rebuilt from every extracted record on disk, not from this
+  // pass's counters: a resumed run only fetches what is missing, so counting
+  // in-memory would rewrite a complete parcel's status with a partial count.
+  for (const file of (await readdir(path.join(root, "extracted")).catch(() => [])).filter((name) =>
+    name.endsWith(".json"),
+  )) {
+    const record = JSON.parse(await readFile(path.join(root, "extracted", file), "utf8"));
+    const bucket = perParcel.get(record.parcel_identifier) ?? { permits: 0, failures: 0, contractors: 0 };
+    if (!bucket.fromDisk) {
+      bucket.permits = 0;
+      bucket.contractors = 0;
+      bucket.fromDisk = true;
+    }
+    bucket.permits += 1;
+    if (record.sourcePayload.contractorOfRecord !== null) bucket.contractors += 1;
+    perParcel.set(record.parcel_identifier, bucket);
+  }
+
   for (const [alternateKey, bucket] of perParcel) {
     const seedRow = seed.get(alternateKey) ?? null;
     await writeFile(

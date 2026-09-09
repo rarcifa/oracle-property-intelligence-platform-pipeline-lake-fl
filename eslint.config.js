@@ -25,7 +25,12 @@ export default tseslint.config(
     // node globals that the TypeScript packages get from their own tsconfig.
     files: ["infra/**/*.mjs", "infra/**/*.ts"],
     languageOptions: {
-      globals: { process: "readonly", console: "readonly", Buffer: "readonly" },
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        fetch: "readonly",
+      },
     },
   },
   js.configs.recommended,
