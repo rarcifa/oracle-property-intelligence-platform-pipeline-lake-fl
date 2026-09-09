@@ -6,10 +6,7 @@
     "carCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
     "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
     "resolvedCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
-    "verifiedGateways": [
-      "https://ipfs.filebase.io",
-      "https://gw.ipfs-lens.dev"
-    ],
+    "verifiedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
     "propertyCount": 215806,
     "publishedAt": "2026-09-09T19:06:09.736Z"
   },
@@ -70,10 +67,7 @@
         "name": "manifest.json",
         "cid": "bafkreidgtpx6dbrbmlilwpyb5zj3vdowipsxquhzy4tr2pdzlr6l5xslaq",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -98,10 +92,7 @@
         "name": "coverage.json",
         "cid": "bafkreiheideoon45cloduxqb5c6w4apxg6by7gytl7ivob2ug3vhqscfxm",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -126,10 +117,7 @@
         "name": "index.json",
         "cid": "bafkreigs3wehdzvscut3l4zgcvkihbu7x6b7xf7rkv5fy4hhaieeizsb3u",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -154,10 +142,7 @@
         "name": "query-table.parquet",
         "cid": "bafybeihzvn35om3zs2fijssicpo6ius3z7aqzuv5u62c6r4bch23dzplkq",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -182,10 +167,7 @@
         "name": "samples/aged-roofs.json",
         "cid": "bafkreielchnm6dwukdx5v3ekqf4ztsjpcelsppsegwdabtufpsh5o3v2hq",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -210,10 +192,7 @@
         "name": "samples/open-roofing-permits.json",
         "cid": "bafkreibxnq2ykgfk7an2sllkmxkzikqalg4qaqjigdu3p4y7bsfqugxrsu",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -238,10 +217,7 @@
         "name": "samples/out-of-area-owners.json",
         "cid": "bafkreiepbuwdm754uixttywqtbmweu2j3futv4uj6izycs3opzdgfrq3hi",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -266,10 +242,7 @@
         "name": "schema.json",
         "cid": "bafkreibrloxqjev5bx5iebtrv2zf5h3hsto5f25tvvzslmxu3omdfidlli",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -294,10 +267,7 @@
         "name": "shards/shard-0000.json",
         "cid": "bafybeihzjyiotkg5adohrd67znun7j463g5icw52nxosw2bsgml6jnbqp4",
         "verified": true,
-        "matchedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "matchedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "minimumIndependentGateways": 2,
         "results": [
           {
@@ -371,10 +341,7 @@
         "carCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
         "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
         "resolvedCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
-        "verifiedGateways": [
-          "https://ipfs.filebase.io",
-          "https://gw.ipfs-lens.dev"
-        ],
+        "verifiedGateways": ["https://ipfs.filebase.io", "https://gw.ipfs-lens.dev"],
         "status": "succeeded"
       },
       {

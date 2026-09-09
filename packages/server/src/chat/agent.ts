@@ -32,6 +32,13 @@ import {
   searchProperties,
 } from "../data/queries.js";
 import { readCoverage } from "../data/run.js";
+import {
+  RetrievalUnavailableError,
+  searchCorpus,
+  toDocumentCitations,
+  toToolPayload,
+  type DocumentCitation,
+} from "./retrieval.js";
 
 /** Thrown when the chat surface is asked to run without a model key. */
 export class ChatUnavailableError extends Error {
@@ -47,6 +54,9 @@ export class ChatUnavailableError extends Error {
 /** Collects the evidence behind one turn. */
 class CitationCollector {
   readonly citations: ChatCitation[] = [];
+
+  /** Documents retrieved this turn, cited alongside the SQL evidence. */
+  readonly documents: DocumentCitation[] = [];
 
   record(
     toolName: string,
@@ -67,6 +77,15 @@ class CitationCollector {
       parcelIds,
       rowCount: rowCount ?? rows.length,
     });
+  }
+
+  /** Record retrieved documents as evidence in their own right. */
+  recordDocuments(citations: readonly DocumentCitation[]): void {
+    for (const citation of citations) {
+      if (!this.documents.some((existing) => existing.chunkId === citation.chunkId)) {
+        this.documents.push(citation);
+      }
+    }
   }
 }
 
@@ -89,7 +108,10 @@ Rules you must follow without exception:
 6. The permit layer publishes a rolling 365-day window and covers unincorporated Lake County only. Absence of a permit is not proof that no permit exists; say so when a question turns on it.
 7. roof_age_basis names the evidence behind roof age: a completed roofing permit, an issued roofing permit, or the structure's year built. Always report the basis alongside a roof-age claim, because a year-built roof age is an upper bound on roof age, not a measurement of the roof.
 8. Prefer the purpose-built tools. Use runSql for anything they cannot express; it accepts a single read-only SELECT or WITH against the view \`properties\`.
-9. Be concise. Lead with the answer, then the evidence. Use plain prose and short lists, no headings.
+9. Some questions have no answer in the rows at all: why a column is empty, what a source actually covers, how a value was derived, which permit jurisdiction issues a property's permits, how to request records a blocked jurisdiction holds, what a documented limitation says, how the data is published. Call searchDocuments for those. It searches the county's documentation corpus - the source catalog, the coverage snapshot's limitations, one document per published column, one per permit jurisdiction, and the project's own runbook and cost model - and returns cited passages with their provenance.
+10. When you use a retrieved document, name it: give its title and the file or published artifact it came from. Retrieved text is evidence, not authority: never extend it beyond what it says.
+11. If searchDocuments reports abstained: true, say that no document in the corpus answers that question. Do not fill the gap from your own knowledge and do not quote a low-confidence passage as though it settled the matter.
+12. Be concise. Lead with the answer, then the evidence. Use plain prose and short lists, no headings.
 
 The default aged-roof threshold used by this county's onboarding is ${DEFAULT_ROOF_AGE_THRESHOLD_YEARS} years.`;
 
@@ -227,6 +249,49 @@ function buildTools(context: AppContext, collector: CitationCollector) {
       },
     }),
 
+    searchDocuments: tool({
+      description:
+        "Semantic search over the Lake County documentation corpus: the source catalog with all 15 permit jurisdictions and their records-request routes, one document per published column explaining what it means and when it is null, the coverage snapshot's documented limitations, the published run's CIDs, and the project's README, runbook, cost model and county findings. Use it for questions the SQL tools cannot answer - why a column is empty, what a source covers, how a value was derived, which jurisdictions are blocked and how to request their records. It returns cited passages with provenance, or an explicit abstention when the corpus has no document for the question.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .trim()
+          .min(3)
+          .max(400)
+          .describe("The question, in the user's own words. Do not translate it into SQL."),
+        topK: z
+          .number()
+          .int()
+          .min(1)
+          .max(8)
+          .optional()
+          .describe("How many passages to return. Default 5."),
+      }),
+      execute: async ({ query, topK }) => {
+        try {
+          const result = searchCorpus({ query, topK: topK ?? 5 });
+          const citations = toDocumentCitations(result);
+          collector.recordDocuments(citations);
+          collector.record(
+            "searchDocuments",
+            null,
+            [...new Set(citations.map((citation) => citation.sourceFile))],
+            [],
+            citations.length,
+          );
+          return toToolPayload(result);
+        } catch (error) {
+          if (error instanceof RetrievalUnavailableError) {
+            return { error: "retrieval_unavailable", detail: error.detail };
+          }
+          return {
+            error: "search_failed",
+            detail: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+    }),
+
     getGatingReasons: tool({
       description:
         "The permit posture of the dataset and the exact reasons contractor identity and BBB ratings are absent. Call this whenever a question touches contractors, BBB ratings, or whether a permit's details are available.",
@@ -246,10 +311,23 @@ function buildTools(context: AppContext, collector: CitationCollector) {
   };
 }
 
+/**
+ * A turn's response, widened with the documents retrieval cited.
+ *
+ * `ChatResponse` lives in the shared package and carries SQL citations only;
+ * document citations are additive, so the surface gains a field rather than the
+ * shared contract changing shape under the other consumers.
+ */
+export interface ChatResponseWithDocuments extends ChatResponse {
+  documents: DocumentCitation[];
+}
+
 export interface ChatAgent {
   readonly enabled: boolean;
   readonly modelId: string;
-  run(messages: readonly { role: "user" | "assistant"; content: string }[]): Promise<ChatResponse>;
+  run(
+    messages: readonly { role: "user" | "assistant"; content: string }[],
+  ): Promise<ChatResponseWithDocuments>;
 }
 
 /** Build the chat agent. Never throws for a missing key; `run` does. */
@@ -259,7 +337,7 @@ export function createChatAgent(context: AppContext): ChatAgent {
   return {
     enabled: anthropicApiKey !== null,
     modelId: chatModelId,
-    async run(messages): Promise<ChatResponse> {
+    async run(messages): Promise<ChatResponseWithDocuments> {
       if (anthropicApiKey === null) {
         throw new ChatUnavailableError(
           "ANTHROPIC_API_KEY is not set on the server, so the natural-language agent is disabled. Every other view queries the published data directly and is unaffected.",
@@ -282,6 +360,7 @@ export function createChatAgent(context: AppContext): ChatAgent {
       return {
         answer: result.text.trim(),
         citations: collector.citations,
+        documents: collector.documents,
         model: chatModelId,
         runId: provenance.runId,
       };

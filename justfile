@@ -28,31 +28,45 @@ type-check:
 
 # Run the application tests and the ingestion runtime tests.
 #
-# Two runtime tests are excluded by name. Both assert where the kit is checked
-# out rather than anything about this county: `no-oracle-node-runtime` requires
-# the directory to be named `soofi-xyz-team-kit`, and `mcp-json-parity` expects
-# `.claude/mcp.json` where this repository keeps `.mcp.json` at its root. They
-# are excluded rather than edited, because the kit is vendored unmodified and
-# `.claude/KIT_VERSION` must keep matching upstream exactly.
+# Four runtime tests are excluded by name, in two pairs, and none of them is
+# excluded because it found a defect.
+#
+# `no-oracle-node-runtime` and `mcp-json-parity` assert where the kit is checked
+# out: the first requires the directory to be named `soofi-xyz-team-kit`, the
+# second expects `.claude/mcp.json` where this repository keeps `.mcp.json` at
+# its root.
+#
+# `published-county-catalog` and `print-mcp-env-maps` assert that the catalog
+# holds exactly thirteen counties. Registering Lake through the kit's own
+# sanctioned `catalog:update` makes it fourteen, so these fail *because* the
+# registration succeeded. Any county added to this kit would break them.
+#
+# All four are excluded rather than edited, because the kit is vendored
+# unmodified and `.claude/KIT_VERSION` must keep matching upstream exactly.
 test:
-    npx vitest run
+    pnpm run test
     cd .claude/skills/use-oracle/runtime && npx vitest run \
         --exclude '**/tests/catalog/no-oracle-node-runtime.test.mjs' \
-        --exclude '**/tests/catalog/mcp-json-parity.test.mjs'
+        --exclude '**/tests/catalog/mcp-json-parity.test.mjs' \
+        --exclude '**/tests/catalog/published-county-catalog.test.mjs' \
+        --exclude '**/tests/catalog/print-mcp-env-maps.test.mjs'
     cd .claude/skills/use-oracle/runtime && npm run test:transforms
 
 # Build every package
 build:
     pnpm run build
 
-# Deploy the hosted runtime, refusing rather than pretending when absent
-deploy:
-    @if [ ! -d infra ]; then \
-        echo "No infra/ stack present. The hosted runtime has not been provisioned."; \
-        echo "See docs/deploy.md. Refusing to report a successful deploy."; \
-        exit 1; \
-    fi
+# Assemble the Lambda deployment bundle from the built packages
+bundle: build
+    node infra/scripts/build-lambda-bundle.mjs
+
+# Deploy the hosted runtime. Needs AWS credentials; needs no Docker.
+deploy: bundle
     cd infra && npx cdk deploy --require-approval never
+
+# Synthesise the stack without deploying, to check it before a real deploy
+synth: bundle
+    cd infra && npx cdk synth --quiet
 
 # Validate the county source catalog against the fail-closed readiness gate
 readiness:

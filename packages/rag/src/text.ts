@@ -16,12 +16,83 @@ import { createHash } from "node:crypto";
  * exists to answer.
  */
 const STOPWORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by", "for", "from", "had",
-  "has", "have", "if", "in", "into", "is", "it", "its", "of", "on", "or", "over", "that", "the",
-  "their", "them", "then", "there", "these", "they", "this", "those", "to", "was", "were", "with",
-  "i", "we", "you", "me", "my", "our", "your", "do", "does", "did", "can", "could", "would",
-  "should", "will", "shall", "may", "might", "must", "am", "so", "than", "too", "very", "just",
-  "about", "any", "all", "each", "more", "most", "other", "some", "such", "only", "own", "same",
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "been",
+  "being",
+  "but",
+  "by",
+  "for",
+  "from",
+  "had",
+  "has",
+  "have",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "or",
+  "over",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "those",
+  "to",
+  "was",
+  "were",
+  "with",
+  "i",
+  "we",
+  "you",
+  "me",
+  "my",
+  "our",
+  "your",
+  "do",
+  "does",
+  "did",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "shall",
+  "may",
+  "might",
+  "must",
+  "am",
+  "so",
+  "than",
+  "too",
+  "very",
+  "just",
+  "about",
+  "any",
+  "all",
+  "each",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "only",
+  "own",
+  "same",
 ]);
 
 /** True when a token is a stopword. Exported so tests can pin the list. */
@@ -43,7 +114,8 @@ export function stem(token: string): string {
   if (token.endsWith("ies") && token.length > 4) return `${token.slice(0, -3)}y`;
   if (token.endsWith("sses")) return token.slice(0, -2);
   if (token.endsWith("ss")) return token;
-  if (token.endsWith("s") && !token.endsWith("us") && !token.endsWith("is")) return token.slice(0, -1);
+  if (token.endsWith("s") && !token.endsWith("us") && !token.endsWith("is"))
+    return token.slice(0, -1);
   if (token.endsWith("ing") && token.length > 5) return token.slice(0, -3);
   if (token.endsWith("ed") && token.length > 4) return token.slice(0, -2);
   return token;
@@ -104,5 +176,8 @@ export function shortHash(input: string): string {
 
 /** Collapse whitespace for display without destroying paragraph breaks. */
 export function tidy(text: string): string {
-  return text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return text
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

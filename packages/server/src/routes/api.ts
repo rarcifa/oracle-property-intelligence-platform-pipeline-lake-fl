@@ -32,6 +32,7 @@ import {
 } from "../data/queries.js";
 import { readCoverage, readLatest, readRunHistory, readVerification } from "../data/run.js";
 import { fail, json, type Router } from "../http/router.js";
+import { registerSearchRoutes } from "./search.js";
 
 /** Turn a query string into the plain object the Zod schemas expect. */
 function queryObject(query: URLSearchParams): Record<string, string> {
@@ -44,6 +45,10 @@ function queryObject(query: URLSearchParams): Record<string, string> {
 
 /** Register every `/api/*` route on the router. */
 export function registerApiRoutes(router: Router, context: AppContext): void {
+  // Semantic retrieval lives in its own module but is part of the `/api/*`
+  // surface, and is registered here so the composition root stays untouched.
+  registerSearchRoutes(router, context);
+
   router.get("/api/health", async () => {
     const provenance = await context.provenance();
     const propertyCount = Number(

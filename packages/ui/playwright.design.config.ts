@@ -7,7 +7,11 @@
  * layout failure and nothing else.
  *
  * The web server builds the SPA before serving it, so the specs always run
- * against the bundle that would ship rather than a stale `dist/`.
+ * against the bundle that would ship rather than a stale `dist/`; the server is
+ * never reused for the same reason.
+ *
+ * Requires the Playwright browser once per machine: `pnpm exec playwright
+ * install chromium`.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -38,7 +42,9 @@ export default defineConfig({
     command: `pnpm run build && pnpm exec vite preview --host ${HOST} --port ${PORT} --strictPort`,
     url: baseURL,
     cwd: import.meta.dirname,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: a preview server someone left running would serve a stale
+    // bundle and quietly pass these specs against last week's CSS.
+    reuseExistingServer: false,
     timeout: 240_000,
     stdout: "ignore",
     stderr: "pipe",

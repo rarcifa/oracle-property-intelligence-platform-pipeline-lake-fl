@@ -74,7 +74,13 @@ export type CorpusChunk = z.infer<typeof corpusChunkSchema>;
 export const corpusLinkSchema = z.object({
   sourceDocId: z.string(),
   targetDocId: z.string(),
-  relation: z.enum(["documents", "limits", "derived_from", "requests_records_from", "published_in"]),
+  relation: z.enum([
+    "documents",
+    "limits",
+    "derived_from",
+    "requests_records_from",
+    "published_in",
+  ]),
 });
 
 export type CorpusLink = z.infer<typeof corpusLinkSchema>;
@@ -133,6 +139,7 @@ export interface RetrievedChunk {
     lexical: number;
     semantic: number;
     alias: number;
+    title: number;
     phrase: number;
     overlap: number;
   };
@@ -145,6 +152,10 @@ export interface RetrievalResult {
   query: string;
   /** Tokens actually scored, after normalisation and alias expansion. */
   expandedTerms: string[];
+  /** Fraction of the terms the user typed that exist anywhere in the corpus. */
+  queryGrounding: number;
+  /** Typed terms the corpus has never seen. A long list means out of domain. */
+  unknownTerms: string[];
   confidence: Confidence;
   /** True when nothing cleared the floor and the caller must say so. */
   abstained: boolean;

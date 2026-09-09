@@ -39,6 +39,14 @@
 
   --radius: 10px;
   --radius-sm: 6px;
+
+  /*
+   * Height of the sticky app header above the search breakpoint, and the gap
+   * anything sticky keeps below it. The filter rail pins itself with these
+   * rather than a bare number, so it can never slide under the header.
+   */
+  --header-h: 108px;
+  --sticky-gap: 12px;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 28px rgba(0, 0, 0, 0.35);
 
   color-scheme: dark;
@@ -413,7 +421,7 @@ pre,
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -421,7 +429,7 @@ pre,
 
 .tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr));
   gap: 10px;
 }
 
@@ -589,7 +597,11 @@ textarea::placeholder {
 
 input[type="range"] {
   width: 100%;
+  /* The native track is 16px tall, which is not a target a cursor or a thumb
+     can reliably hit; the extra height is padding around the same track. */
+  min-height: 26px;
   accent-color: var(--accent);
+  cursor: pointer;
 }
 
 textarea {
@@ -821,7 +833,7 @@ table.data th.num {
 
 .limitation-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 10px;
 }
 
@@ -922,8 +934,8 @@ table.data th.num {
 
 .filter-rail {
   position: sticky;
-  top: 96px;
-  max-height: calc(100vh - 120px);
+  top: calc(var(--header-h) + var(--sticky-gap));
+  max-height: calc(100vh - var(--header-h) - var(--sticky-gap) - 24px);
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -935,6 +947,15 @@ table.data th.num {
 .filter-rail .field + .toggle-group,
 .filter-rail .toggle-group + .field {
   margin-top: 12px;
+}
+
+/*
+ * Fields sitting side by side in a `.pair` are one row, not a stack: without
+ * this the rule above pushes every right-hand column (Exact, Maximum, To,
+ * Longitude) 12px below its partner.
+ */
+.filter-rail .pair > .field + .field {
+  margin-top: 0;
 }
 
 .filter-section {
@@ -1005,7 +1026,7 @@ table.data th.num {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 10px 22px;
 }
 
@@ -1100,6 +1121,10 @@ table.data th.num {
   border-radius: 4px;
   padding: 2px 7px;
   cursor: pointer;
+  /* A parcel id is one token. Left to wrap, the table's auto layout squeezes
+     the column to its hyphens and stacks the id four lines deep; the table
+     scrolls in its own box instead. */
+  white-space: nowrap;
 }
 
 .parcel-chip:hover {
@@ -1151,7 +1176,7 @@ table.data th.num {
 
 .kv-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 2px 20px;
 }
 

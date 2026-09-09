@@ -44,6 +44,17 @@ export interface Breakpoint {
 
 export const BREAKPOINTS: readonly Breakpoint[] = [
   {
+    // The narrowest viewport still in use, and what a 1280px laptop looks like
+    // at 400% browser zoom.
+    name: "Small mobile",
+    viewport: { width: 320, height: 700 },
+    shell: { mainPadding: "14px", headerPadding: "14px", tabsScroll: true },
+    search: { layout: "single", railToggleVisible: true, pairColumns: 1, mapHeight: 280 },
+    tiles: { columns: { min: 1, max: 1 }, valueSize: "19px" },
+    gridTwoColumns: { min: 1, max: 1 },
+    minControlSize: 24,
+  },
+  {
     name: "Mobile",
     viewport: { width: 390, height: 844 },
     shell: { mainPadding: "14px", headerPadding: "14px", tabsScroll: true },

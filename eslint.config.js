@@ -9,9 +9,24 @@ export default tseslint.config(
       "**/node_modules/**",
       ".claude/**",
       "artifacts/**",
+      // Generated deployment output, not source: the Lambda bundle is
+      // assembled from built packages and vendored dependencies by
+      // `just bundle`, and cdk.out is CloudFormation the CLI writes.
+      "infra/bundle/**",
+      "infra/cdk.out/**",
+      "**/test-results/**",
+      "**/playwright-report/**",
       "**/*.config.js",
       "**/*.config.ts",
     ],
+  },
+  {
+    // Node scripts under infra/ are ESM run directly by node, so they need the
+    // node globals that the TypeScript packages get from their own tsconfig.
+    files: ["infra/**/*.mjs", "infra/**/*.ts"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", Buffer: "readonly" },
+    },
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

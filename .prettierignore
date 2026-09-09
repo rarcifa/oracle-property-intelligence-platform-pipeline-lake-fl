@@ -3,3 +3,5 @@ dist
 .claude
 artifacts
 pnpm-lock.yaml
+infra/bundle/
+infra/cdk.out/

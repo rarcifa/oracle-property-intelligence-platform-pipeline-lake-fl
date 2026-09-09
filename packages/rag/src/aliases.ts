@@ -26,59 +26,203 @@ export interface Expansion {
 
 export const QUERY_EXPANSIONS: readonly Expansion[] = Object.freeze([
   {
-    triggers: ["empty", "blank", "missing", "null", "nothing", "unpopulated", "no value", "no data", "not populated", "always false"],
+    triggers: [
+      "empty",
+      "blank",
+      "missing",
+      "null",
+      "nothing",
+      "unpopulated",
+      "no value",
+      "no data",
+      "not populated",
+      "always false",
+    ],
     add: ["null", "empty", "missing", "unpopulated", "absent", "stays null", "reason"],
   },
   {
-    triggers: ["blocked", "block", "gated", "denied", "forbidden", "403", "captcha", "recaptcha", "cloudflare", "login", "bot challenge", "unreachable", "tls", "unavailable", "scrape", "scraping"],
-    add: ["blocked", "gated", "403", "challenge", "captcha", "login", "unreachable", "fail-closed", "anonymous access", "enumeration status"],
+    triggers: [
+      "blocked",
+      "block",
+      "gated",
+      "denied",
+      "forbidden",
+      "403",
+      "captcha",
+      "recaptcha",
+      "cloudflare",
+      "login",
+      "bot challenge",
+      "unreachable",
+      "tls",
+      "unavailable",
+      "scrape",
+      "scraping",
+    ],
+    add: [
+      "blocked",
+      "gated",
+      "403",
+      "challenge",
+      "captcha",
+      "login",
+      "unreachable",
+      "fail-closed",
+      "anonymous access",
+      "enumeration status",
+    ],
   },
   {
-    triggers: ["records request", "public records", "foia", "chapter 119", "request the records", "how do i request", "who do i ask", "custodian", "clerk", "obtain"],
-    add: ["records request", "recipient office", "custodian", "clerk", "request email", "request portal", "system scope", "records-first", "chapter 119"],
+    triggers: [
+      "records request",
+      "public records",
+      "foia",
+      "chapter 119",
+      "request the records",
+      "how do i request",
+      "who do i ask",
+      "custodian",
+      "clerk",
+      "obtain",
+    ],
+    add: [
+      "records request",
+      "recipient office",
+      "custodian",
+      "clerk",
+      "request email",
+      "request portal",
+      "system scope",
+      "records-first",
+      "chapter 119",
+    ],
   },
   {
     triggers: ["roof", "roofing", "reroof", "re-roof", "shingle"],
     add: ["roof_age_years", "roof_age_basis", "roofing_permit_count", "roofing", "reroof"],
   },
   {
-    triggers: ["derive", "derived", "computed", "calculated", "how was", "how is", "basis", "methodology", "formula", "where does", "come from"],
+    triggers: [
+      "derive",
+      "derived",
+      "computed",
+      "calculated",
+      "how was",
+      "how is",
+      "basis",
+      "methodology",
+      "formula",
+      "where does",
+      "come from",
+    ],
     add: ["derived", "basis", "computed", "pipeline", "source system"],
   },
   {
     triggers: ["contractor", "who did the work", "builder", "installer", "tradesman"],
-    add: ["contractor_name", "contractor of record", "gated", "403", "cloudflare", "clermont", "etrakit"],
+    add: [
+      "contractor_name",
+      "contractor of record",
+      "gated",
+      "403",
+      "cloudflare",
+      "clermont",
+      "etrakit",
+    ],
   },
   {
     triggers: ["bbb", "better business bureau", "rating", "reputation", "review"],
     add: ["bbb_rating", "bbb", "gated", "403", "enrichment"],
   },
   {
-    triggers: ["tenure", "how long", "owned", "ownership", "absentee", "holding period", "same owner"],
+    triggers: [
+      "tenure",
+      "how long",
+      "owned",
+      "ownership",
+      "absentee",
+      "holding period",
+      "same owner",
+    ],
     add: ["no_recorded_sale_in_dor_window", "tenure", "lower bound", "sale window", "dor roll"],
   },
   {
-    triggers: ["jurisdiction", "municipality", "municipal", "city", "town", "incorporated", "unincorporated", "who issues"],
-    add: ["jurisdiction", "municipality", "permit authority", "unincorporated", "building department"],
+    triggers: [
+      "jurisdiction",
+      "municipality",
+      "municipal",
+      "city",
+      "town",
+      "incorporated",
+      "unincorporated",
+      "who issues",
+    ],
+    add: [
+      "jurisdiction",
+      "municipality",
+      "permit authority",
+      "unincorporated",
+      "building department",
+    ],
   },
   {
     triggers: ["coverage", "how many", "count", "total", "rows", "denominator", "scale"],
     add: ["coverage", "denominator", "rows", "count", "assessed parcel count"],
   },
   {
-    triggers: ["cost", "price to run", "expensive", "cheap", "free", "spend", "bill", "infrastructure cost", "ongoing"],
+    triggers: [
+      "cost",
+      "price to run",
+      "expensive",
+      "cheap",
+      "free",
+      "spend",
+      "bill",
+      "infrastructure cost",
+      "ongoing",
+    ],
     add: ["cost", "ongoing", "infrastructure", "free", "read path", "no server"],
   },
   {
-    triggers: ["ipfs", "cid", "gateway", "pin", "pinning", "immutable", "publish", "published", "ipns", "filebase", "car file"],
+    triggers: [
+      "ipfs",
+      "cid",
+      "gateway",
+      "pin",
+      "pinning",
+      "immutable",
+      "publish",
+      "published",
+      "ipns",
+      "filebase",
+      "car file",
+    ],
     add: ["cid", "ipfs", "ipns", "gateway", "published", "immutable", "filebase", "manifest"],
   },
   {
-    triggers: ["history", "historical", "archive", "how far back", "past permits", "older permits", "rolling"],
+    triggers: [
+      "history",
+      "historical",
+      "archive",
+      "how far back",
+      "past permits",
+      "older permits",
+      "rolling",
+    ],
     add: ["rolling window", "365", "archive", "history", "permit_lastmoddate", "current permit"],
   },
   {
-    triggers: ["coordinate", "coordinates", "latitude", "longitude", "geocode", "map", "radius", "location", "lat lon", "centroid"],
+    triggers: [
+      "coordinate",
+      "coordinates",
+      "latitude",
+      "longitude",
+      "geocode",
+      "map",
+      "radius",
+      "location",
+      "lat lon",
+      "centroid",
+    ],
     add: ["latitude", "longitude", "centroid", "gio", "coordinates", "geometry"],
   },
   {
@@ -157,10 +301,15 @@ export function expandQuery(query: string): WeightedTerm[] {
  */
 export function aliasScore(query: string, aliases: readonly string[]): number {
   if (aliases.length === 0) return 0;
-  const lowered = ` ${normalize(query).replace(/[^a-z0-9_ ]+/g, " ").replace(/\s+/g, " ")} `;
+  const lowered = ` ${normalize(query)
+    .replace(/[^a-z0-9_ ]+/g, " ")
+    .replace(/\s+/g, " ")} `;
   let best = 0;
   for (const alias of aliases) {
-    const target = normalize(alias).replace(/[^a-z0-9_ ]+/g, " ").replace(/\s+/g, " ").trim();
+    const target = normalize(alias)
+      .replace(/[^a-z0-9_ ]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     if (target.length < 3) continue;
     if (lowered.includes(` ${target} `)) {
       // Longer aliases are more specific, so they earn more of the boost.

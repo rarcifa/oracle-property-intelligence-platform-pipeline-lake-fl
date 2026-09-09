@@ -7,6 +7,7 @@
  * independently of this app.
  */
 
+import { useEffect, useRef } from "react";
 import { COUNTY } from "@oracle-lake/shared";
 import { useDataSource } from "../data/DataSourceProvider.js";
 import { useCopy } from "../hooks/useCopy.js";
@@ -34,6 +35,14 @@ export function Header({ activePath }: { activePath: string }): JSX.Element {
   const { meta } = useDataSource();
   const { copied, copy } = useCopy();
   const run = meta?.run ?? null;
+  const activeTab = useRef<HTMLButtonElement | null>(null);
+
+  // The tab strip scrolls horizontally when the seven views do not fit, which
+  // on a phone means a deep link can land with its own tab parked off the end
+  // of the strip. Bring it into the strip, without moving the page itself.
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [activePath]);
 
   return (
     <header className="app-header">
@@ -88,6 +97,7 @@ export function Header({ activePath }: { activePath: string }): JSX.Element {
           return (
             <button
               key={tab.path}
+              ref={active ? activeTab : undefined}
               type="button"
               className="tab"
               aria-current={active ? "page" : undefined}

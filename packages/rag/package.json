@@ -25,6 +25,7 @@
     "eval": "tsx src/cli.ts eval"
   },
   "dependencies": {
+    "@oracle-lake/shared": "workspace:*",
     "js-yaml": "^4.1.0",
     "zod": "^3.25.76"
   },

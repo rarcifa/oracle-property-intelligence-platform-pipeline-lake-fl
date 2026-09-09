@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.51",
     "@duckdb/node-api": "^1.5.5-r.4",
+    "@oracle-lake/rag": "workspace:*",
     "@oracle-lake/shared": "workspace:*",
     "ai": "^7.0.96",
     "zod": "^3.25.76"
