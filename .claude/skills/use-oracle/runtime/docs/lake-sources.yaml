@@ -113,9 +113,18 @@ permits:
       implementation_status: discovered
       parcel_search: SITE_APN search labelled "AK NUMBER", which is the NAL ALT_KEY
       enumeration_status: discovered-open-portal
+      probe: >-
+        Re-probed 2026-09-09: the permit search page returns HTTP 200, 785,477 bytes in 1.9 s
+        with no session, no challenge and no login. The parcel field is labelled "AK NUMBER"
+        and posts as SITE_APN, which is the NAL ALT_KEY, so the join needs no translation.
+        Search is an ASP.NET postback carrying __VIEWSTATE, so an adapter must round-trip the
+        form; permit detail is reachable by a plain GET once a permit number is known.
       known_exclusions: >-
-        Detail pages expose contractor names and inspection history, which the county
-        layer does not. Not yet harvested at scale; throughput unmeasured.
+        Detail pages expose contractor names and inspection history, which the county layer
+        does not. Not harvested: an eTRAKiT adapter and a throughput measurement are needed
+        first, and neither was in scope for this run. This is the single most valuable
+        remaining source, because it is the only open route to contractor of record anywhere
+        in the county.
     - jurisdiction: Groveland
       key: groveland
       status: blocked
