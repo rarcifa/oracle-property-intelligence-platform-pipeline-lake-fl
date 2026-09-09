@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { resolveExtensionDirectory, resolveMemoryLimit } from "../src/data/duckdb.js";
+import { resolveExtensionDirectory, resolveMemoryLimit, rootCidOf } from "../src/data/duckdb.js";
 
 /** Directory laid out the way DuckDB expects, holding this platform's httpfs. */
 let fixtureDir: string;
@@ -96,5 +96,26 @@ describe("resolveMemoryLimit", () => {
       resolveMemoryLimit({ ORACLE_DUCKDB_MEMORY_LIMIT: "1GB'; DROP TABLE x; --" }),
     ).toThrow(/ORACLE_DUCKDB_MEMORY_LIMIT/);
     expect(() => resolveMemoryLimit({ ORACLE_DUCKDB_MEMORY_LIMIT: "lots" })).toThrow();
+  });
+});
+
+describe("rootCidOf", () => {
+  it("extracts a CIDv1 from a gateway URL, so the CID can be re-hosted", () => {
+    expect(
+      rootCidOf(
+        "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet",
+      ),
+    ).toBe("bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q");
+  });
+
+  it("extracts a CIDv0", () => {
+    expect(
+      rootCidOf("https://gateway.pinata.cloud/ipfs/QmdC9ncphrh3KM6ZZFuHobaeSukQqyJfUpGVzvixkrce3W"),
+    ).toBe("QmdC9ncphrh3KM6ZZFuHobaeSukQqyJfUpGVzvixkrce3W");
+  });
+
+  it("returns null for a local path, so a local run keeps its single source", () => {
+    expect(rootCidOf("/tmp/query-table.parquet")).toBeNull();
+    expect(rootCidOf("https://example.com/data/query-table.parquet")).toBeNull();
   });
 });

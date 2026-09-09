@@ -13,6 +13,8 @@ import {
   assertSchemaMatches,
   buildCreateViewSql,
   buildDescribeSql,
+  gatewayOf,
+  parquetCandidates,
   PROPERTIES_VIEW,
 } from "@oracle-lake/shared";
 
@@ -62,6 +64,16 @@ export function resolveMemoryLimit(env: Record<string, string | undefined> = pro
     );
   }
   return configured;
+}
+
+/**
+ * The run root CID inside a gateway URL, or null.
+ *
+ * Used to rebuild the same artifact's URL on a different gateway: the CID is the
+ * source of truth, the host in front of it is only transport.
+ */
+export function rootCidOf(url: string): string | null {
+  return /\/ipfs\/(ba[a-z2-7]{20,}|Qm[1-9A-HJ-NP-Za-km-z]{44})(?:\/|$)/.exec(url)?.[1] ?? null;
 }
 
 /** A row with DuckDB scalars normalised to JSON-safe JavaScript values. */
@@ -127,6 +139,8 @@ export class OracleDataStore {
   readonly sourceKind: "ipfs" | "local";
 
   #instance: DuckDBInstance | null = null;
+  /** The URL that actually served the table, which may not be `source`. */
+  activeSource: string | null = null;
 
   #connection: DuckDBConnection | null = null;
 
@@ -186,12 +200,38 @@ export class OracleDataStore {
     // source file, so that external access can be switched off immediately
     // afterwards. A lazy view would need filesystem access on every query and
     // would force the lockdown below to stay open.
-    await connection.run(
-      buildCreateViewSql(this.source, PROPERTIES_VIEW).replace(
-        `CREATE OR REPLACE VIEW ${PROPERTIES_VIEW} AS`,
-        `CREATE OR REPLACE TABLE ${PROPERTIES_VIEW} AS`,
-      ),
-    );
+    //
+    // Read over several gateways rather than one. Pinning `ipfs.filebase.io` —
+    // the vendor that also pins the data — made the runtime depend on a single
+    // account, against this project's own rule that a vendor URL is not the
+    // source of truth. The CID is; every candidate below asks for the same CID.
+    const rootCid = this.sourceKind === "ipfs" ? rootCidOf(this.source) : null;
+    const candidates = rootCid === null ? [this.source] : parquetCandidates(rootCid, this.source);
+
+    const failures: string[] = [];
+    let opened: string | null = null;
+    for (const candidate of candidates) {
+      try {
+        await connection.run(
+          buildCreateViewSql(candidate, PROPERTIES_VIEW).replace(
+            `CREATE OR REPLACE VIEW ${PROPERTIES_VIEW} AS`,
+            `CREATE OR REPLACE TABLE ${PROPERTIES_VIEW} AS`,
+          ),
+        );
+        opened = candidate;
+        break;
+      } catch (error) {
+        failures.push(
+          `${gatewayOf(candidate)?.id ?? candidate}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
+        );
+      }
+    }
+    if (opened === null) {
+      throw new Error(
+        `No IPFS gateway served the published table. Tried ${candidates.length}: ${failures.join("; ")}`,
+      );
+    }
+    this.activeSource = opened;
 
     // Bound the work any one statement may do. This sits before the lockdown
     // because `lock_configuration` freezes the configuration immediately after.

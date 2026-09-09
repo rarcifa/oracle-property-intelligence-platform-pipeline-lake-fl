@@ -6,8 +6,9 @@
  * bundle for this browser, start the worker from a blob URL, instantiate, then
  * `registerFileURL(..., DuckDBDataProtocol.HTTP, false)` so DuckDB issues HTTP
  * Range requests for the Parquet footer and only the row groups a query needs.
- * `ipfs.filebase.io` is the one gateway measured to support both CORS and
- * Range, which is why `parquetUrl()` points there.
+ * Several gateways are measured to support both CORS and Range, and the boot
+ * below tries them in order, so one vendor going away degrades speed rather than
+ * taking the browser path down.
  *
  * Every query is built with the same `build*Sql` helpers the server uses, so a
  * browser answer and a server answer are the same SQL over the same bytes and
@@ -35,7 +36,8 @@ import {
   clampLimit,
   COUNTY,
   parseEnrichmentStatus,
-  parquetUrl,
+  parquetCandidates,
+  gatewayOf,
   parseSourceSystems,
   PROPERTIES_VIEW,
   SOURCE_SYSTEM_LABELS,
@@ -129,17 +131,29 @@ function toFacetValues(rows: readonly Record<string, unknown>[]): FacetValue[] {
  * Boot DuckDB-WASM, attach the published Parquet over HTTP, and verify that the
  * table really carries the published schema before returning a usable source.
  */
+/** Budget for pointing the booted runtime at one gateway and reading its footer. */
+const ATTACH_TIMEOUT_MS = 15_000;
+
 export async function createDuckDbSource(options: {
   rootCid: string;
   runId: string | null;
   timeoutMs?: number;
 }): Promise<BrowserDataSource> {
-  const url = parquetUrl(options.rootCid);
+  // Several gateways, not one. Pinning `ipfs.filebase.io` — the vendor that
+  // also pins the data — made the browser depend on a single account staying
+  // live, against this project's own rule that a vendor URL is not the source of
+  // truth. Each candidate asks for the same CID; the first that opens wins.
+  const candidates = parquetCandidates(options.rootCid);
   const timeoutMs = options.timeoutMs ?? DUCKDB_INIT_TIMEOUT_MS;
+  let url = candidates[0]!;
 
-  const boot = async (): Promise<{
+  // The WASM runtime is instantiated ONCE and the gateway is retried around it.
+  // Booting per candidate was tried and was a regression: instantiate alone
+  // costs about 16 s, so splitting the budget across four gateways timed every
+  // one of them out and the page silently fell back to the server path. Only
+  // attaching the file and reading its footer is per-gateway, and that is cheap.
+  const bootRuntime = async (): Promise<{
     db: duckdb.AsyncDuckDB;
-    connection: duckdb.AsyncDuckDBConnection;
     worker: Worker;
     workerUrl: string;
   }> => {
@@ -157,14 +171,46 @@ export async function createDuckDbSource(options: {
     const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
     const db = new duckdb.AsyncDuckDB(logger, worker);
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    await db.registerFileURL(REGISTERED_FILE, url, duckdb.DuckDBDataProtocol.HTTP, false);
-    const connection = await db.connect();
-    await connection.query(buildCreateViewSql(REGISTERED_FILE));
-    return { db, connection, worker, workerUrl };
+    return { db, worker, workerUrl };
   };
 
-  const started = await withTimeout(boot(), timeoutMs, "DuckDB-WASM initialisation");
-  const { db, connection, worker, workerUrl } = started;
+  const runtime = await withTimeout(bootRuntime(), timeoutMs, "DuckDB-WASM initialisation");
+  const { db, worker, workerUrl } = runtime;
+
+  /** Point the instantiated runtime at one gateway and prove it reads. */
+  const attach = async (candidate: string): Promise<duckdb.AsyncDuckDBConnection> => {
+    await db.registerFileURL(REGISTERED_FILE, candidate, duckdb.DuckDBDataProtocol.HTTP, false);
+    const connection = await db.connect();
+    try {
+      await connection.query(buildCreateViewSql(REGISTERED_FILE));
+      return connection;
+    } catch (error) {
+      await connection.close().catch(() => undefined);
+      throw error;
+    }
+  };
+
+  let connection: duckdb.AsyncDuckDBConnection | null = null;
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      connection = await withTimeout(attach(candidate), ATTACH_TIMEOUT_MS, `gateway ${candidate}`);
+      url = candidate;
+      break;
+    } catch (error) {
+      failures.push(
+        `${gatewayOf(candidate)?.id ?? candidate}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (connection === null) {
+    await db.terminate().catch(() => undefined);
+    worker.terminate();
+    URL.revokeObjectURL(workerUrl);
+    throw new Error(
+      `No IPFS gateway served the published table in this browser. Tried ${candidates.length}: ${failures.join("; ")}`,
+    );
+  }
 
   const teardown = async (): Promise<void> => {
     try {

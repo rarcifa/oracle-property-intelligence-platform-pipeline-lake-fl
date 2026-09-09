@@ -97,6 +97,28 @@ curl -sL "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-
 duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
 ```
 
+## No single gateway can take this down
+
+Both read paths — the Lambda and the browser — try several gateways for the same
+CID and use the first that answers. Pinning one vendor's gateway put the runtime
+in tension with this project's own rule that a vendor-specific HTTP URL is never
+the source of truth, and made the no-ongoing-cost claim depend on one account
+staying live. The CID is the source of truth; a gateway is transport.
+
+Measured against the published Parquet on 2026-09-10 with a 1 KB range request
+and an `Origin` header, rather than assumed:
+
+| Gateway                                   | Range | CORS | Used                                    |
+| ----------------------------------------- | ----- | ---- | --------------------------------------- |
+| `ipfs.filebase.io`                        | 206   | `*`  | first choice                            |
+| `gateway.pinata.cloud`                    | 206   | `*`  | fallback                                |
+| `gw.ipfs-lens.dev`                        | 206   | `*`  | fallback                                |
+| `ipfs.io`                                 | 206   | `*`  | last — rate-limits datacenter egress    |
+| `dweb.link` · `w3s.link` · `4everland.io` | 301   | —    | recorded unusable, not silently omitted |
+
+An earlier note in this repo claimed Filebase was the only gateway serving both.
+That was out of date; three others do.
+
 ## Import the whole DAG as a CAR, from anyone's gateway
 
 The published `.car` files are reproducible build output and are not committed, but they do

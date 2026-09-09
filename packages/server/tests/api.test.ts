@@ -48,8 +48,14 @@ describe.skipIf(!hasParquet)("REST API", () => {
     }>(response);
     expect(response.status).toBe(200);
     expect(body.coverage?.limitations.length ?? 0).toBeGreaterThan(0);
-    expect(body.gateways.some((gateway) => gateway.range)).toBe(true);
-    expect(body.unusableGateways.map((entry) => entry.host)).toContain("ipfs.io");
+    // More than one gateway must be able to serve a range read, or the runtime
+    // is back to depending on a single vendor.
+    expect(body.gateways.filter((gateway) => gateway.range).length).toBeGreaterThan(1);
+    // Re-measured 2026-09-10 against the published Parquet: dweb.link answers
+    // 301 on this path. ipfs.io, which used to be listed here, answers 206 with
+    // CORS and is now a usable range gateway.
+    expect(body.unusableGateways.map((entry) => entry.host)).toContain("dweb.link");
+    expect(body.unusableGateways.map((entry) => entry.host)).not.toContain("ipfs.io");
     expect(body.chatEnabled).toBe(false);
   });
 
