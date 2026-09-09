@@ -41,11 +41,25 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Job level, deliberately. The publish guard below tests
+    # `env.S3_ACCESS_KEY_ID`, and a step's own `env:` block is not in scope when
+    # that step's `if:` is evaluated — so with these declared on the step, the
+    # guard read an empty string every time: publishing could never run and the
+    # "skipped" notice always did. Declared here, the guard sees them.
+    env:
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
     defaults:
       run:
         working-directory: .claude/skills/use-oracle/runtime
     steps:
       - uses: actions/checkout@v4
+
+      # Needed by the retrieval-index rebuild after a publish; the ingestion
+      # runtime itself is npm.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -112,13 +126,23 @@ jobs:
 
       - name: Publish to IPFS
         if: ${{ env.S3_ACCESS_KEY_ID != '' }}
-        env:
-          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
         run: |
           node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
             --run-id "${{ steps.build.outputs.run_id }}" \
             --mode "${{ steps.mode.outputs.mode }}"
+
+      # The retrieval corpus is built from the run's own coverage, schema, index
+      # and sample extracts, so a new run leaves the committed index describing
+      # the previous one. Rebuilding here keeps the uploaded artifacts internally
+      # consistent; the deployed function picks the new index up on its next
+      # `cdk deploy`, which a republish needs anyway to move to the new CID.
+      - name: Rebuild the retrieval index for the new run
+        if: ${{ env.S3_ACCESS_KEY_ID != '' }}
+        working-directory: .
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @oracle-lake/rag run build:index
+          git --no-pager diff --stat -- packages/rag/index-data || true
 
       - name: Report that publishing was skipped
         if: ${{ env.S3_ACCESS_KEY_ID == '' }}

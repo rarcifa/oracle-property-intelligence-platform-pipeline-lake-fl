@@ -4,6 +4,7 @@
  * @module infra/lake-runtime-stack
  */
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CfnOutput, Duration, SecretValue, Stack, type StackProps } from "aws-cdk-lib";
@@ -60,9 +61,32 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  */
 const BUNDLE_DIR = path.join(REPO_ROOT, "infra", "bundle");
 
-/** Published run root CID. The runtime reads the dataset from IPFS by CID. */
-const DEFAULT_PARQUET_URL =
-  "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet";
+/**
+ * Published run the function reads, resolved from `artifacts/latest.json`.
+ *
+ * It was a hardcoded CID, beside a comment claiming a republish needed no
+ * redeploy. Both halves were wrong: a pinned CID is exactly what a republish
+ * does not reach, and the constant would silently keep serving an older run
+ * every time the pointer moved without someone remembering to edit this line.
+ *
+ * Reading the pointer means a deploy always serves the newest published run and
+ * cannot drift from it. It stays a CID rather than the IPNS path on purpose: a
+ * CID is immutable and independently verifiable against the manifest, which is
+ * the property the whole publication story rests on. A republish therefore still
+ * needs a `cdk deploy` — set ORACLE_PARQUET_URL to the IPNS path to trade that
+ * verifiability for following the pointer automatically.
+ */
+function publishedParquetUrl(): string {
+  const override = process.env.ORACLE_PARQUET_URL;
+  if (override) return override;
+  const pointerPath = path.join(REPO_ROOT, "artifacts", "latest.json");
+  const pointer: unknown = JSON.parse(readFileSync(pointerPath, "utf8"));
+  const rootCid = (pointer as { rootCid?: unknown }).rootCid;
+  if (typeof rootCid !== "string" || rootCid.length === 0) {
+    throw new Error(`${pointerPath} has no rootCid; the function has no dataset to read`);
+  }
+  return `https://ipfs.filebase.io/ipfs/${rootCid}/query-table.parquet`;
+}
 
 export class LakeRuntimeStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -80,9 +104,10 @@ export class LakeRuntimeStack extends Stack {
       timeout: Duration.seconds(60),
       environment: {
         NODE_OPTIONS: "--enable-source-maps",
-        // Read the published dataset from IPFS rather than baking it into the
-        // image, so republishing a run does not require a redeploy.
-        ORACLE_PARQUET_URL: process.env.ORACLE_PARQUET_URL ?? DEFAULT_PARQUET_URL,
+        // Read the published dataset from IPFS by CID rather than baking it into
+        // the bundle, so the 20 MB table is never shipped and is verifiable
+        // against the manifest.
+        ORACLE_PARQUET_URL: publishedParquetUrl(),
         ORACLE_UI_DIST: "/var/task/public",
         ORACLE_LATEST_PATH: "/var/task/artifacts/latest.json",
         // The coverage snapshot and published schema the evidence panels read.
