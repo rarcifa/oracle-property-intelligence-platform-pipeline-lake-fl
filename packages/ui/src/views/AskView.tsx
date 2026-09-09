@@ -12,7 +12,12 @@
  */
 
 import { useRef, useState } from "react";
-import { SOURCE_SYSTEM_LABELS, type ChatCitation, type ChatResponse } from "@oracle-lake/shared";
+import {
+  SOURCE_SYSTEM_LABELS,
+  type ChatCitation,
+  type ChatDocument,
+  type ChatResponse,
+} from "@oracle-lake/shared";
 import { Badge, ErrorPanel, Panel } from "../components/Primitives.js";
 import { useDataSource } from "../data/DataSourceProvider.js";
 import { errorText, postJson } from "../data/http.js";
@@ -23,6 +28,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   citations?: ChatCitation[];
+  documents?: ChatDocument[];
   model?: string;
 }
 
@@ -59,6 +65,7 @@ export function AskView(): JSX.Element {
           role: "assistant",
           content: response.answer,
           citations: response.citations,
+          documents: response.documents,
           model: response.model,
         },
       ]);
@@ -140,6 +147,14 @@ export function AskView(): JSX.Element {
                   ))}
                 </div>
               ) : null}
+              {message.documents && message.documents.length > 0 ? (
+                <div style={{ marginTop: 10 }}>
+                  <span className="micro">sources read ({message.documents.length})</span>
+                  {message.documents.map((document, documentIndex) => (
+                    <RetrievedDocument key={documentIndex} document={document} />
+                  ))}
+                </div>
+              ) : null}
             </article>
           ))}
 
@@ -208,6 +223,47 @@ export function AskView(): JSX.Element {
 }
 
 /** One piece of evidence behind an answer. */
+/**
+ * One document retrieval surfaced for the answer.
+ *
+ * The agent returned these from the first turn and nothing rendered them, so an
+ * answer grounded in the documentation showed no sign of what it had read. A
+ * chunk drawn from a published artifact carries a CID, and that is shown as a
+ * resolvable gateway link: the reader can fetch the exact bytes the claim rests
+ * on without trusting this app.
+ */
+function RetrievedDocument({ document }: { document: ChatDocument }): JSX.Element {
+  return (
+    <div className="citation">
+      <div className="citation-head">
+        <Badge tone="accent" mono title={`Retrieval score ${document.score}`}>
+          {document.score.toFixed(3)}
+        </Badge>
+        <Badge>{document.docType}</Badge>
+        <span className="dim" style={{ fontSize: 11.5 }}>
+          {document.title}
+        </span>
+      </div>
+      <div className="chip-row">
+        <Badge mono title={document.sourceFile}>
+          {document.sourceFile}
+        </Badge>
+        {document.cid ? (
+          <a
+            className="parcel-chip"
+            href={`https://ipfs.filebase.io/ipfs/${document.cid}`}
+            target="_blank"
+            rel="noreferrer"
+            title={document.ipfsPath ?? document.cid}
+          >
+            {`${document.artifact ?? "artifact"} · ${document.cid.slice(0, 12)}…`}
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function Citation({ citation }: { citation: ChatCitation }): JSX.Element {
   return (
     <div className="citation">

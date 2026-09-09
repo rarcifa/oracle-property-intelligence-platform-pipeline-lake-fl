@@ -125,9 +125,41 @@ export interface ChatCitation {
   rowCount: number;
 }
 
+/**
+ * One retrieved corpus chunk the answer was grounded in.
+ *
+ * Distinct from `ChatCitation`, which is evidence the agent computed by running
+ * SQL. This is evidence it *read*: the documentation, source catalog and
+ * published run record behind a claim, with the relevance score that surfaced
+ * it and — when the chunk came from a published artifact rather than a
+ * repository file — the CID and an `ipfs://` path a reader can resolve.
+ */
+export interface ChatDocument {
+  /** Stable id of the chunk. */
+  chunkId: string;
+  /** Stable id of the document the chunk belongs to. */
+  docId: string;
+  /** Corpus family: doc, column, coverage, source, limitation, publication… */
+  docType: string;
+  /** Document title, including its heading path. */
+  title: string;
+  /** Retrieval score, higher is closer. */
+  score: number;
+  /** Repository-relative path the text came from. */
+  sourceFile: string;
+  /** Published artifact name, when the text is also published to IPFS. */
+  artifact: string | null;
+  /** CID of that artifact. */
+  cid: string | null;
+  /** Resolvable `ipfs://` path, when published. */
+  ipfsPath: string | null;
+}
+
 export interface ChatResponse {
   answer: string;
   citations: ChatCitation[];
+  /** Corpus chunks retrieval surfaced for this turn. */
+  documents: ChatDocument[];
   model: string;
   runId: string | null;
 }
