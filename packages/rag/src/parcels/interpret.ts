@@ -114,6 +114,80 @@ const STOP_PHRASES = [
   "absentee",
 ];
 
+/**
+ * Words that are grammar, never an address.
+ *
+ * Separate from STOP_PHRASES, which lists domain vocabulary the filters already
+ * captured. These are auxiliaries, pronouns and question words that no parcel
+ * address contains, and letting one through means `q` matches nothing.
+ */
+const FUNCTION_WORDS = new Set([
+  "been",
+  "being",
+  "was",
+  "were",
+  "had",
+  "having",
+  "does",
+  "did",
+  "doing",
+  "done",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "shall",
+  "may",
+  "might",
+  "must",
+  "any",
+  "some",
+  "many",
+  "much",
+  "every",
+  "each",
+  "both",
+  "who",
+  "whom",
+  "whose",
+  "what",
+  "when",
+  "where",
+  "why",
+  "how",
+  "there",
+  "their",
+  "them",
+  "they",
+  "this",
+  "these",
+  "those",
+  "from",
+  "into",
+  "onto",
+  "for",
+  "but",
+  "not",
+  "only",
+  "just",
+  "also",
+  "than",
+  "then",
+  "get",
+  "got",
+  "give",
+  "tell",
+  "want",
+  "need",
+  "please",
+  "about",
+  "across",
+  "still",
+  "yet",
+  "very",
+]);
+
 const NUMBER_WORDS: Record<string, number> = {
   one: 1,
   two: 2,
@@ -162,7 +236,8 @@ export function interpretParcelQuery(
   question: string,
   vocabulary: ParcelVocabulary,
 ): InterpretedParcelQuery {
-  let text = normalizeQuestion(question);
+  const original = normalizeQuestion(question);
+  let text = original;
   const filters: Record<string, string | number | boolean> = {};
   const interpretation: InterpretedFilter[] = [];
 
@@ -227,14 +302,25 @@ export function interpretParcelQuery(
     if (agedPhrase) apply("minRoofAge", DEFAULT_AGED_ROOF_YEARS, agedPhrase[0]);
   }
 
-  // Permit posture. Roofing-specific first.
-  const openRoofing =
-    /open\s+roofing\s+permits?/.exec(text) ??
-    /roofing\s+permits?\s+(?:that are\s+)?(?:still\s+)?open/.exec(text);
-  if (openRoofing) apply("hasOpenRoofingPermit", true, openRoofing[0]);
-  else {
-    const anyPermit = /\b(?:with|has|having)\s+(?:a\s+|any\s+)?permits?\b/.exec(text);
-    if (anyPermit) apply("hasPermits", true, anyPermit[0]);
+  // Permit posture, matched against the ORIGINAL question rather than what is
+  // left of it. The stalled-permit rule above consumes "open more than five
+  // years", which used to take the word "open" with it, so "roofing permits
+  // still open more than five years" lost its roofing filter and quietly
+  // widened from 2 parcels to 20. A filter must not depend on the order the
+  // rules happen to run in.
+  const roofingMentioned = /\broofing\s+permits?\b/.test(original);
+  const openMentioned = /\b(open|outstanding|still\s+open|unclosed)\b/.test(original);
+  if (roofingMentioned && (openMentioned || "minOpenPermitDays" in filters)) {
+    const phrase =
+      /open\s+roofing\s+permits?/.exec(original)?.[0] ??
+      /roofing\s+permits?/.exec(original)?.[0] ??
+      "roofing permit";
+    apply("hasOpenRoofingPermit", true, phrase, false);
+  } else if (roofingMentioned) {
+    apply("hasPermits", true, /roofing\s+permits?/.exec(original)?.[0] ?? "roofing permit", false);
+  } else {
+    const anyPermit = /\b(?:with|has|having)\s+(?:a\s+|any\s+)?permits?\b/.exec(original);
+    if (anyPermit) apply("hasPermits", true, anyPermit[0], false);
   }
 
   // Owner locality.
@@ -274,9 +360,19 @@ export function interpretParcelQuery(
   if (builtAfter) apply("minBuiltYear", Number(builtAfter[1]) + 1, builtAfter[0]);
 
   // Whatever is left, minus words that never carried a constraint, is free text.
+  //
+  // This has to be conservative: `q` becomes a LIKE against the address, so one
+  // leaked function word turns a correct question into zero rows. "been"
+  // survived here and did exactly that.
   const residual = text
     .split(/\s+/)
-    .filter((word) => word.length > 2 && !STOP_PHRASES.includes(word) && !/^\d+$/.test(word))
+    .filter(
+      (word) =>
+        word.length > 2 &&
+        !STOP_PHRASES.includes(word) &&
+        !FUNCTION_WORDS.has(word) &&
+        !/^\d+$/.test(word),
+    )
     .join(" ")
     .trim();
   if (residual.length > 0) filters.q = residual;

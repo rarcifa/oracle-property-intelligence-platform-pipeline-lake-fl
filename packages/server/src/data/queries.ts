@@ -8,6 +8,7 @@
  */
 
 import {
+  BUSINESS_VIEW_NOTE,
   buildBusinessByCitySql,
   buildBusinessByTypeSql,
   buildCountSql,
@@ -240,7 +241,7 @@ FROM ${PROPERTIES_VIEW}`;
     byCity,
     byType,
     provenance: provenance(context, `${totalsSql};\n\n${byCitySql};\n\n${byTypeSql}`, []),
-    note: "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory and it carries no business name in the published file. has_sunbiz_tenant stays false for every row because Sunbiz search is gated at the source and was not ingested for this run. Two limits on the totals below. The TPP roll carries no parcel key, so the join is a normalized street+zip match: 2,060 of the roll's 33,346 accounts (6.2%) match a parcel this way, and the rest are not published. And a matched address group is attributed to every parcel sharing that address, so summing business_account_count across parcels gives 4,451 rather than 2,060 - 90 address groups covering 180 accounts span 1,214 parcels. Read the sum as account-to-parcel matches, not as a count of businesses. NAICS is not carried into the published table, so the roll's 44 roofing contractors are not queryable here.",
+    note: BUSINESS_VIEW_NOTE,
   };
 }
 

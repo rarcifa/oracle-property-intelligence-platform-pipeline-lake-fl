@@ -100,6 +100,34 @@ describe("interpretParcelQuery", () => {
     );
   });
 
+  it("keeps the roofing filter when the stalled-permit phrase is also present", () => {
+    // The named acceptance query. Matching the stalled phrase used to consume
+    // the word "open", so the roofing check never fired and the answer widened
+    // from 2 parcels to 20 — silently, which is worse than failing.
+    expect(filtersOf("roofing permits still open more than five years")).toMatchObject({
+      minOpenPermitDays: 1825,
+      hasOpenRoofingPermit: true,
+    });
+    expect(filtersOf("parcels with roofing permits open more than 5 years")).toMatchObject({
+      minOpenPermitDays: 1825,
+      hasOpenRoofingPermit: true,
+    });
+  });
+
+  it("does not leak auxiliary verbs into the free-text term", () => {
+    // "been" survived as q:"been" and matched no address, so a correct question
+    // returned zero rows.
+    const result = interpretParcelQuery(
+      "which parcels have roofing permits that have been open more than five years",
+      VOCAB,
+    );
+    expect(result.filters.q).toBeUndefined();
+    expect(result.filters).toMatchObject({
+      minOpenPermitDays: 1825,
+      hasOpenRoofingPermit: true,
+    });
+  });
+
   it("keeps unmatched words as free text rather than silently dropping them", () => {
     const result = interpretParcelQuery("aged roofs on Nicolette Court", VOCAB);
     expect(result.filters.q).toMatch(/nicolette/i);
