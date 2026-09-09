@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "elephant.prior-publication-check.v1",
+  "checkedAt": "2026-09-09T18:57:41.757537Z",
+  "purpose": "Prior CIDs must stay immutable and retrievable after a later run republishes. This records an independent check of the publication made earlier on 2026-09-09, before the runs in run-history.json.",
+  "priorRunId": "20260909T154553Z",
+  "rootCid": "bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau",
+  "manifestCid": "bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy",
+  "results": [
+    {
+      "gateway": "https://ipfs.filebase.io",
+      "artifact": "root-directory",
+      "cid": "bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau",
+      "status": 200,
+      "bytes": 259809,
+      "sha256": "sha256:4d6622ecf7a6b61e58e1ff188e2da4f01c3a64f37a92b6fd4c9d74b4fa38aabd"
+    },
+    {
+      "gateway": "https://ipfs.filebase.io",
+      "artifact": "artifact-manifest",
+      "cid": "bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy",
+      "status": 200,
+      "bytes": 5532,
+      "sha256": "sha256:25b40a2ab9b895b13bd089d45b92a5c28ef0fee694a777f6ebe958398592367e"
+    },
+    {
+      "gateway": "https://gw.ipfs-lens.dev",
+      "artifact": "root-directory",
+      "cid": "bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau",
+      "status": 200,
+      "bytes": 255087,
+      "sha256": "sha256:eef689a8a0f0e03c1a6e9991719236682bb3b9ee0a503819148dcae48700a54a"
+    },
+    {
+      "gateway": "https://gw.ipfs-lens.dev",
+      "artifact": "artifact-manifest",
+      "cid": "bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy",
+      "status": 200,
+      "bytes": 5532,
+      "sha256": "sha256:25b40a2ab9b895b13bd089d45b92a5c28ef0fee694a777f6ebe958398592367e"
+    },
+    {
+      "gateway": "https://gateway.pinata.cloud",
+      "artifact": "root-directory",
+      "cid": "bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau",
+      "status": 200,
+      "bytes": 259809,
+      "sha256": "sha256:4d6622ecf7a6b61e58e1ff188e2da4f01c3a64f37a92b6fd4c9d74b4fa38aabd"
+    },
+    {
+      "gateway": "https://gateway.pinata.cloud",
+      "artifact": "artifact-manifest",
+      "cid": "bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy",
+      "status": 200,
+      "bytes": 5532,
+      "sha256": "sha256:25b40a2ab9b895b13bd089d45b92a5c28ef0fee694a777f6ebe958398592367e"
+    }
+  ],
+  "note": "The artifact-manifest bytes are identical across all three gateways (5,532 bytes, same sha256), which is the actual immutability evidence. The root-directory rows differ in byte count because each gateway renders its own HTML index page for a directory CID; that is presentation, not content, and is why file CIDs rather than directory listings are used for digest comparison."
+}
