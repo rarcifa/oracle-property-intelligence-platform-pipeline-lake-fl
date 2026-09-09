@@ -40,11 +40,7 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
 }
 
 /** POST a JSON body and read a JSON document, or throw a `DataSourceError`. */
-export async function postJson<T>(
-  path: string,
-  body: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
+export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },

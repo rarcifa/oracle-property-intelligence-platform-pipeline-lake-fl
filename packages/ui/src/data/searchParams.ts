@@ -23,7 +23,15 @@ const NUMBER_KEYS = [
   "offset",
 ] as const;
 
-const STRING_KEYS = ["q", "city", "zip", "propertyType", "roofAgeBasis", "sortBy", "sortDir"] as const;
+const STRING_KEYS = [
+  "q",
+  "city",
+  "zip",
+  "propertyType",
+  "roofAgeBasis",
+  "sortBy",
+  "sortDir",
+] as const;
 
 const BOOLEAN_KEYS = [
   "hasPermits",

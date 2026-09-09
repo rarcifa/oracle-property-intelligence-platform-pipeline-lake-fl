@@ -12,7 +12,15 @@
  * windows and blocked site data make every access throwable.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { createApiSource } from "./apiSource.js";
 import type { BrowserDataSource } from "./duckdbSource.js";

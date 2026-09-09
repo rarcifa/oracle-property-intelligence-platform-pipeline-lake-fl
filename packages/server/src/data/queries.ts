@@ -129,9 +129,7 @@ export async function getProperty(
   const status = typeof row.enrichment_status === "string" ? row.enrichment_status : null;
   return {
     property: row,
-    sources: parseSourceSystems(
-      typeof row.source_systems === "string" ? row.source_systems : null,
-    ),
+    sources: parseSourceSystems(typeof row.source_systems === "string" ? row.source_systems : null),
     gating: gatedFieldNotices(status),
     provenance: provenance(context, sql, [row]),
   };
@@ -160,10 +158,7 @@ export async function getDatasetStats(
 ): Promise<DatasetStats> {
   const statsSql = buildDatasetStatsSql(PROPERTIES_VIEW);
   const bandsSql = buildRoofAgeBandsSql(PROPERTIES_VIEW);
-  const [statsRow, bands] = await Promise.all([
-    store.queryOne(statsSql),
-    store.query(bandsSql),
-  ]);
+  const [statsRow, bands] = await Promise.all([store.queryOne(statsSql), store.query(bandsSql)]);
   return {
     stats: toNumberRecord(statsRow),
     roofAgeBands: bands,
@@ -245,8 +240,7 @@ FROM ${PROPERTIES_VIEW}`;
     byCity,
     byType,
     provenance: provenance(context, `${totalsSql};\n\n${byCitySql};\n\n${byTypeSql}`, []),
-    note:
-      "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory and it carries no business name in the published file. has_sunbiz_tenant stays false for every row because Sunbiz search is gated at the source and was not ingested for this run.",
+    note: "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory and it carries no business name in the published file. has_sunbiz_tenant stays false for every row because Sunbiz search is gated at the source and was not ingested for this run.",
   };
 }
 
@@ -268,8 +262,7 @@ export async function getContractorView(
     // enrichment_status variant are the same; this asks for them explicitly.
     gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
     provenance: provenance(context, sql, []),
-    note:
-      "Permit signals come from the Lake County CD Plus permit layer, joined to the DOR roll on Alternate_Key. That layer publishes a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so it is a current-permit source, not a permit archive.",
+    note: "Permit signals come from the Lake County CD Plus permit layer, joined to the DOR roll on Alternate_Key. That layer publishes a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so it is a current-permit source, not a permit archive.",
   };
 }
 

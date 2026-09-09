@@ -304,10 +304,9 @@ export async function createDuckDbSource(options: {
           .filter((entry) => entry.value.trim().toUpperCase() !== COUNTY.stateCode)
           .slice(0, 20)
           .map((entry) => ({ owner_mailing_state: entry.value, properties: entry.count })),
-        provenance: provenance(
-          `${postureSql};\n\n${bandsSql};\n\n${stateSql}`,
-          [...ALL_SOURCE_SYSTEMS],
-        ),
+        provenance: provenance(`${postureSql};\n\n${bandsSql};\n\n${stateSql}`, [
+          ...ALL_SOURCE_SYSTEMS,
+        ]),
       };
     },
 
