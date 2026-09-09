@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+
+# Native/postinstall builds this workspace trusts. esbuild backs the Vite build;
+# the DuckDB bindings are prebuilt per platform.
+onlyBuiltDependencies:
+  - esbuild
+  - "@duckdb/node-bindings-darwin-arm64"
+  - "@duckdb/node-bindings-darwin-x64"
+  - "@duckdb/node-bindings-linux-arm64"
+  - "@duckdb/node-bindings-linux-x64"

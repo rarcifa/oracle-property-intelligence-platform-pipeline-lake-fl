@@ -11,38 +11,38 @@ artifact manifests, multi-gateway verification, run history with deltas — the 
 neighbour was extended in its own conventions. Every such decision is listed in
 [`.claude/skills/use-oracle/runtime/docs/lake-kit-deviations.md`](.claude/skills/use-oracle/runtime/docs/lake-kit-deviations.md).
 
-| | |
-|---|---|
-| **Newest verified run** | [`artifacts/latest.json`](artifacts/latest.json) — root CID, manifest CID, IPNS name, verified gateways |
-| **Run history** | [`artifacts/run-history.json`](artifacts/run-history.json) — every run with sources, counts, deltas, limitations, CIDs |
-| **Artifact manifest** | `artifacts/manifest-<run>.json` — cid, name, size, codec, sha256 per object |
-| **Gateway evidence** | `artifacts/verification-<run>.json` — which gateways returned matching bytes |
-| **Source catalog** | [`docs/lake-sources.yaml`](.claude/skills/use-oracle/runtime/docs/lake-sources.yaml) · [findings](.claude/skills/use-oracle/runtime/docs/lake-county-findings.md) |
-| **Runbook · cost · demo** | [runbook](docs/runbook.md) · [cost](docs/cost.md) · [demo script](docs/demo-script.md) |
+|                           |                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Newest verified run**   | [`artifacts/latest.json`](artifacts/latest.json) — root CID, manifest CID, IPNS name, verified gateways                                                           |
+| **Run history**           | [`artifacts/run-history.json`](artifacts/run-history.json) — every run with sources, counts, deltas, limitations, CIDs                                            |
+| **Artifact manifest**     | `artifacts/manifest-<run>.json` — cid, name, size, codec, sha256 per object                                                                                       |
+| **Gateway evidence**      | `artifacts/verification-<run>.json` — which gateways returned matching bytes                                                                                      |
+| **Source catalog**        | [`docs/lake-sources.yaml`](.claude/skills/use-oracle/runtime/docs/lake-sources.yaml) · [findings](.claude/skills/use-oracle/runtime/docs/lake-county-findings.md) |
+| **Runbook · cost · demo** | [runbook](docs/runbook.md) · [cost](docs/cost.md) · [demo script](docs/demo-script.md)                                                                            |
 
 ## What is loaded
 
-| Table | Rows | Source |
-|---|---|---|
-| properties (one row per assessed parcel, 59 columns) | **215,806** | FL DOR NAL 2026P |
-| permits (3,312 roofing · 3,753 open · 247 open roofing) | **17,671** | Lake County CD Plus, windowed on `Permit_LastModDate` |
-| permits linked to an assessed parcel · valid unlinked | 17,457 · **214** | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
-| coordinates | **209,503** (97.1%) | FL GIO parcel centroids 2025 |
-| business accounts with NAICS (1,883 construction, 44 roofing) | **33,346** | FL DOR TPP 2026P |
-| sale records | **37,020** over 30,977 parcels | FL DOR SDF 2026P |
-| distinct owner names | **168,315** | FL DOR NAL |
+| Table                                                         | Rows                           | Source                                                                                |
+| ------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| properties (one row per assessed parcel, 59 columns)          | **215,806**                    | FL DOR NAL 2026P                                                                      |
+| permits (3,312 roofing · 3,753 open · 247 open roofing)       | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
+| permits linked to an assessed parcel · valid unlinked         | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
+| coordinates                                                   | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
+| business accounts with NAICS (1,883 construction, 44 roofing) | **33,346**                     | FL DOR TPP 2026P                                                                      |
+| sale records                                                  | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
+| distinct owner names                                          | **168,315**                    | FL DOR NAL                                                                            |
 
 Derived lead signals, all queryable:
 
-| Signal | Count |
-|---|---|
-| Roof age known | 169,028 |
-| Roofs 15 years or older | 117,605 |
-| Roof age dated from a completed roofing permit | 2,646 |
-| Properties with an open roofing permit | 226 |
-| Properties with a permit open more than five years | 20 |
-| Out-of-state owners | 20,285 |
-| No recorded sale in the DOR window | 185,711 |
+| Signal                                             | Count   |
+| -------------------------------------------------- | ------- |
+| Roof age known                                     | 169,028 |
+| Roofs 15 years or older                            | 117,605 |
+| Roof age dated from a completed roofing permit     | 2,646   |
+| Properties with an open roofing permit             | 226     |
+| Properties with a permit open more than five years | 20      |
+| Out-of-state owners                                | 20,285  |
+| No recorded sale in the DOR window                 | 185,711 |
 
 ## Architecture
 
@@ -86,10 +86,10 @@ duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15
 
 ## Two runs, two CIDs, prior data untouched
 
-| Run | Mode | Root CID | Property deltas | Gateways verified |
-|---|---|---|---|---|
-| `20260909T182356Z` | full | `bafybeigb3g…rltee` | 215,806 inserted | 5 |
-| `20260909T185056Z` | incremental | `bafybeiay65…z33q` | 215,806 unchanged | 2 |
+| Run                | Mode        | Root CID            | Property deltas   | Gateways verified |
+| ------------------ | ----------- | ------------------- | ----------------- | ----------------- |
+| `20260909T182356Z` | full        | `bafybeigb3g…rltee` | 215,806 inserted  | 5                 |
+| `20260909T185056Z` | incremental | `bafybeiay65…z33q`  | 215,806 unchanged | 2                 |
 
 The IPNS name resolves to the newest run; every run's own root CID is permanent. Run one's
 root still resolves after run two republished, and the run before both of them, published

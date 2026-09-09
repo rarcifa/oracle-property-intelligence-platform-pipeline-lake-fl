@@ -1,0 +1,4 @@
+
+> @oracle-lake/shared@0.1.0 build /Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/packages/shared
+> tsc -p tsconfig.json
+

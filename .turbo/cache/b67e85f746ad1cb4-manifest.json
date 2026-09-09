@@ -1,0 +1,45 @@
+{
+  "files": {
+    "packages/ui/dist/assets": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/ui/dist/assets/index-CsWuiOk6.css": {
+      "size": 81558,
+      "mtime_nanos": 1788980302288244078,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/index-10vcfmW2.js": {
+      "size": 1290140,
+      "mtime_nanos": 1788980302288242328,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/index.html": {
+      "size": 602,
+      "mtime_nanos": 1788980302287960788,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/index-10vcfmW2.js.map": {
+      "size": 3471318,
+      "mtime_nanos": 1788980302289828447,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/ui/.turbo/turbo-build.log": {
+      "size": 799,
+      "mtime_nanos": 1788980302374745599,
+      "mode": 420,
+      "is_dir": false
+    }
+  },
+  "order": [
+    "packages/ui/.turbo/turbo-build.log",
+    "packages/ui/dist",
+    "packages/ui/dist/assets",
+    "packages/ui/dist/assets/index-10vcfmW2.js",
+    "packages/ui/dist/assets/index-10vcfmW2.js.map",
+    "packages/ui/dist/assets/index-CsWuiOk6.css",
+    "packages/ui/dist/index.html"
+  ]
+}

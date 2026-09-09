@@ -1,0 +1,80 @@
+{
+  "files": {
+    "packages/ui/dist/assets/MapPanel-CuCRB34y.css": {
+      "size": 65483,
+      "mtime_nanos": 1788980836928446314,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/index-DwjJLePw.css": {
+      "size": 16076,
+      "mtime_nanos": 1788980836929129894,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/ui/dist/assets/duckdbSource-D9JWrxGj.js": {
+      "size": 199041,
+      "mtime_nanos": 1788980836928548939,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/index-DB-lC8XN.js": {
+      "size": 279694,
+      "mtime_nanos": 1788980836928405856,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/MapPanel-BQE8tva9.js.map": {
+      "size": 1733922,
+      "mtime_nanos": 1788980836929351519,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/duckdbSource-D9JWrxGj.js.map": {
+      "size": 858995,
+      "mtime_nanos": 1788980836928647313,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/index.html": {
+      "size": 602,
+      "mtime_nanos": 1788980836923716958,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/ui/.turbo/turbo-build.log": {
+      "size": 725,
+      "mtime_nanos": 1788980836993186341,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/MapPanel-BQE8tva9.js": {
+      "size": 806991,
+      "mtime_nanos": 1788980836928676188,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/ui/dist/assets/index-DB-lC8XN.js.map": {
+      "size": 827542,
+      "mtime_nanos": 1788980836928704146,
+      "mode": 420,
+      "is_dir": false
+    }
+  },
+  "order": [
+    "packages/ui/.turbo/turbo-build.log",
+    "packages/ui/dist",
+    "packages/ui/dist/assets",
+    "packages/ui/dist/assets/MapPanel-BQE8tva9.js",
+    "packages/ui/dist/assets/MapPanel-BQE8tva9.js.map",
+    "packages/ui/dist/assets/MapPanel-CuCRB34y.css",
+    "packages/ui/dist/assets/duckdbSource-D9JWrxGj.js",
+    "packages/ui/dist/assets/duckdbSource-D9JWrxGj.js.map",
+    "packages/ui/dist/assets/index-DB-lC8XN.js",
+    "packages/ui/dist/assets/index-DB-lC8XN.js.map",
+    "packages/ui/dist/assets/index-DwjJLePw.css",
+    "packages/ui/dist/index.html"
+  ]
+}

@@ -1,0 +1,417 @@
+{
+  "files": {
+    "packages/server/dist/data/duckdb.js.map": {
+      "size": 4345,
+      "mtime_nanos": 1788980835685852856,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/run.js": {
+      "size": 2349,
+      "mtime_nanos": 1788980835688236346,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/api.js": {
+      "size": 5835,
+      "mtime_nanos": 1788980835706607354,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/config.js.map": {
+      "size": 2466,
+      "mtime_nanos": 1788980835677634806,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/static.d.ts.map": {
+      "size": 247,
+      "mtime_nanos": 1788980835696842852,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/app.d.ts.map": {
+      "size": 331,
+      "mtime_nanos": 1788980835711993582,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/router.js": {
+      "size": 2968,
+      "mtime_nanos": 1788980835695042527,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/chat/agent.d.ts": {
+      "size": 1209,
+      "mtime_nanos": 1788980835709903924,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/routes/api.js.map": {
+      "size": 5649,
+      "mtime_nanos": 1788980835706404147,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/config.js": {
+      "size": 2937,
+      "mtime_nanos": 1788980835678006221,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/index.d.ts": {
+      "size": 752,
+      "mtime_nanos": 1788980835714880195,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/context.js": {
+      "size": 935,
+      "mtime_nanos": 1788980835693416116,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/tools.js": {
+      "size": 18003,
+      "mtime_nanos": 1788980835700262880,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/router.d.ts.map": {
+      "size": 1249,
+      "mtime_nanos": 1788980835695588233,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/api.d.ts": {
+      "size": 622,
+      "mtime_nanos": 1788980835706969978,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/run.d.ts.map": {
+      "size": 2225,
+      "mtime_nanos": 1788980835689159509,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/app.js": {
+      "size": 1891,
+      "mtime_nanos": 1788980835711779791,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/api.d.ts.map": {
+      "size": 308,
+      "mtime_nanos": 1788980835706891270,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/routes/chat.d.ts": {
+      "size": 454,
+      "mtime_nanos": 1788980835710985378,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/config.d.ts": {
+      "size": 1640,
+      "mtime_nanos": 1788980835681313083,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/chat": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/data/duckdb.d.ts.map": {
+      "size": 899,
+      "mtime_nanos": 1788980835687262600,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/tools.d.ts.map": {
+      "size": 723,
+      "mtime_nanos": 1788980835700713670,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/queries.js.map": {
+      "size": 6322,
+      "mtime_nanos": 1788980835691158834,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/duckdb.js": {
+      "size": 5161,
+      "mtime_nanos": 1788980835686158355,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/run.d.ts": {
+      "size": 3186,
+      "mtime_nanos": 1788980835689248217,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/index.js.map": {
+      "size": 4496,
+      "mtime_nanos": 1788980835713101078,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/chat.js": {
+      "size": 1473,
+      "mtime_nanos": 1788980835710568213,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/data/run.js.map": {
+      "size": 1709,
+      "mtime_nanos": 1788980835688152388,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/data/queries.d.ts": {
+      "size": 3806,
+      "mtime_nanos": 1788980835692763453,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/config.d.ts.map": {
+      "size": 756,
+      "mtime_nanos": 1788980835681149458,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/server.js.map": {
+      "size": 4513,
+      "mtime_nanos": 1788980835702044290,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/router.js.map": {
+      "size": 2677,
+      "mtime_nanos": 1788980835694949319,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/chat.d.ts.map": {
+      "size": 309,
+      "mtime_nanos": 1788980835710895795,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/context.js.map": {
+      "size": 743,
+      "mtime_nanos": 1788980835693316284,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/chat/agent.js.map": {
+      "size": 7030,
+      "mtime_nanos": 1788980835709005219,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/routes/chat.js.map": {
+      "size": 1298,
+      "mtime_nanos": 1788980835710362547,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/chat/agent.js": {
+      "size": 11863,
+      "mtime_nanos": 1788980835709233843,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/router.d.ts": {
+      "size": 1677,
+      "mtime_nanos": 1788980835695658774,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/duckdb.d.ts": {
+      "size": 1965,
+      "mtime_nanos": 1788980835687348641,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/tools.d.ts": {
+      "size": 1397,
+      "mtime_nanos": 1788980835700777587,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/tools.js.map": {
+      "size": 12630,
+      "mtime_nanos": 1788980835699914840,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/app.d.ts": {
+      "size": 569,
+      "mtime_nanos": 1788980835712070624,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/server.d.ts.map": {
+      "size": 1053,
+      "mtime_nanos": 1788980835704590071,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/server.js": {
+      "size": 5603,
+      "mtime_nanos": 1788980835702207206,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/data/queries.js": {
+      "size": 8358,
+      "mtime_nanos": 1788980835691404500,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/static.js": {
+      "size": 3357,
+      "mtime_nanos": 1788980835696585770,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/server/dist/data/queries.d.ts.map": {
+      "size": 2628,
+      "mtime_nanos": 1788980835692669828,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/chat/agent.d.ts.map": {
+      "size": 625,
+      "mtime_nanos": 1788980835709818883,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/static.d.ts": {
+      "size": 674,
+      "mtime_nanos": 1788980835696911644,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/index.d.ts.map": {
+      "size": 406,
+      "mtime_nanos": 1788980835714811987,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/http/static.js.map": {
+      "size": 2582,
+      "mtime_nanos": 1788980835696484812,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/context.d.ts.map": {
+      "size": 484,
+      "mtime_nanos": 1788980835693829573,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/app.js.map": {
+      "size": 1462,
+      "mtime_nanos": 1788980835711690458,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/mcp/server.d.ts": {
+      "size": 2077,
+      "mtime_nanos": 1788980835704683612,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/index.js": {
+      "size": 4591,
+      "mtime_nanos": 1788980835713198494,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/.turbo/turbo-build.log": {
+      "size": 125,
+      "mtime_nanos": 1788980835738137392,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/server/dist/context.d.ts": {
+      "size": 727,
+      "mtime_nanos": 1788980835693919948,
+      "mode": 420,
+      "is_dir": false
+    }
+  },
+  "order": [
+    "packages/server/.turbo/turbo-build.log",
+    "packages/server/dist",
+    "packages/server/dist/app.d.ts",
+    "packages/server/dist/app.d.ts.map",
+    "packages/server/dist/app.js",
+    "packages/server/dist/app.js.map",
+    "packages/server/dist/chat",
+    "packages/server/dist/chat/agent.d.ts",
+    "packages/server/dist/chat/agent.d.ts.map",
+    "packages/server/dist/chat/agent.js",
+    "packages/server/dist/chat/agent.js.map",
+    "packages/server/dist/config.d.ts",
+    "packages/server/dist/config.d.ts.map",
+    "packages/server/dist/config.js",
+    "packages/server/dist/config.js.map",
+    "packages/server/dist/context.d.ts",
+    "packages/server/dist/context.d.ts.map",
+    "packages/server/dist/context.js",
+    "packages/server/dist/context.js.map",
+    "packages/server/dist/data",
+    "packages/server/dist/data/duckdb.d.ts",
+    "packages/server/dist/data/duckdb.d.ts.map",
+    "packages/server/dist/data/duckdb.js",
+    "packages/server/dist/data/duckdb.js.map",
+    "packages/server/dist/data/queries.d.ts",
+    "packages/server/dist/data/queries.d.ts.map",
+    "packages/server/dist/data/queries.js",
+    "packages/server/dist/data/queries.js.map",
+    "packages/server/dist/data/run.d.ts",
+    "packages/server/dist/data/run.d.ts.map",
+    "packages/server/dist/data/run.js",
+    "packages/server/dist/data/run.js.map",
+    "packages/server/dist/http",
+    "packages/server/dist/http/router.d.ts",
+    "packages/server/dist/http/router.d.ts.map",
+    "packages/server/dist/http/router.js",
+    "packages/server/dist/http/router.js.map",
+    "packages/server/dist/http/static.d.ts",
+    "packages/server/dist/http/static.d.ts.map",
+    "packages/server/dist/http/static.js",
+    "packages/server/dist/http/static.js.map",
+    "packages/server/dist/index.d.ts",
+    "packages/server/dist/index.d.ts.map",
+    "packages/server/dist/index.js",
+    "packages/server/dist/index.js.map",
+    "packages/server/dist/mcp",
+    "packages/server/dist/mcp/server.d.ts",
+    "packages/server/dist/mcp/server.d.ts.map",
+    "packages/server/dist/mcp/server.js",
+    "packages/server/dist/mcp/server.js.map",
+    "packages/server/dist/mcp/tools.d.ts",
+    "packages/server/dist/mcp/tools.d.ts.map",
+    "packages/server/dist/mcp/tools.js",
+    "packages/server/dist/mcp/tools.js.map",
+    "packages/server/dist/routes",
+    "packages/server/dist/routes/api.d.ts",
+    "packages/server/dist/routes/api.d.ts.map",
+    "packages/server/dist/routes/api.js",
+    "packages/server/dist/routes/api.js.map",
+    "packages/server/dist/routes/chat.d.ts",
+    "packages/server/dist/routes/chat.d.ts.map",
+    "packages/server/dist/routes/chat.js",
+    "packages/server/dist/routes/chat.js.map"
+  ]
+}

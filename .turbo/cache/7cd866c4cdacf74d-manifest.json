@@ -1,0 +1,183 @@
+{
+  "files": {
+    "packages/shared/dist/honesty.js.map": {
+      "size": 1590,
+      "mtime_nanos": 1788980834844055800,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/api.js": {
+      "size": 3509,
+      "mtime_nanos": 1788980834834938046,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/schema.js.map": {
+      "size": 6616,
+      "mtime_nanos": 1788980834821490309,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/index.js.map": {
+      "size": 205,
+      "mtime_nanos": 1788980834845251087,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/schema.d.ts": {
+      "size": 4760,
+      "mtime_nanos": 1788980834827049578,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/gateways.js.map": {
+      "size": 1755,
+      "mtime_nanos": 1788980834842169641,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/sql.d.ts": {
+      "size": 5635,
+      "mtime_nanos": 1788980834833187178,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/honesty.js": {
+      "size": 3697,
+      "mtime_nanos": 1788980834844162967,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/sql.js.map": {
+      "size": 10505,
+      "mtime_nanos": 1788980834831310519,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/api.d.ts.map": {
+      "size": 2017,
+      "mtime_nanos": 1788980834841324687,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/index.d.ts": {
+      "size": 177,
+      "mtime_nanos": 1788980834845528253,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/gateways.d.ts.map": {
+      "size": 1129,
+      "mtime_nanos": 1788980834842994721,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/index.js": {
+      "size": 175,
+      "mtime_nanos": 1788980834845343254,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/honesty.d.ts.map": {
+      "size": 683,
+      "mtime_nanos": 1788980834844728923,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/sql.d.ts.map": {
+      "size": 2768,
+      "mtime_nanos": 1788980834833092804,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/api.d.ts": {
+      "size": 12033,
+      "mtime_nanos": 1788980834841469311,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/sql.js": {
+      "size": 17534,
+      "mtime_nanos": 1788980834831496352,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/gateways.d.ts": {
+      "size": 2014,
+      "mtime_nanos": 1788980834843176762,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist": { "size": 0, "mtime_nanos": 0, "mode": 0, "is_dir": true },
+    "packages/shared/dist/api.js.map": {
+      "size": 4208,
+      "mtime_nanos": 1788980834834730505,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/honesty.d.ts": {
+      "size": 1490,
+      "mtime_nanos": 1788980834844907839,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/index.d.ts.map": {
+      "size": 207,
+      "mtime_nanos": 1788980834845474336,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/.turbo/turbo-build.log": {
+      "size": 125,
+      "mtime_nanos": 1788980834861243147,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/schema.js": {
+      "size": 7579,
+      "mtime_nanos": 1788980834821673059,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/schema.d.ts.map": {
+      "size": 3457,
+      "mtime_nanos": 1788980834826838079,
+      "mode": 420,
+      "is_dir": false
+    },
+    "packages/shared/dist/gateways.js": {
+      "size": 2609,
+      "mtime_nanos": 1788980834842352807,
+      "mode": 420,
+      "is_dir": false
+    }
+  },
+  "order": [
+    "packages/shared/.turbo/turbo-build.log",
+    "packages/shared/dist",
+    "packages/shared/dist/api.d.ts",
+    "packages/shared/dist/api.d.ts.map",
+    "packages/shared/dist/api.js",
+    "packages/shared/dist/api.js.map",
+    "packages/shared/dist/gateways.d.ts",
+    "packages/shared/dist/gateways.d.ts.map",
+    "packages/shared/dist/gateways.js",
+    "packages/shared/dist/gateways.js.map",
+    "packages/shared/dist/honesty.d.ts",
+    "packages/shared/dist/honesty.d.ts.map",
+    "packages/shared/dist/honesty.js",
+    "packages/shared/dist/honesty.js.map",
+    "packages/shared/dist/index.d.ts",
+    "packages/shared/dist/index.d.ts.map",
+    "packages/shared/dist/index.js",
+    "packages/shared/dist/index.js.map",
+    "packages/shared/dist/schema.d.ts",
+    "packages/shared/dist/schema.d.ts.map",
+    "packages/shared/dist/schema.js",
+    "packages/shared/dist/schema.js.map",
+    "packages/shared/dist/sql.d.ts",
+    "packages/shared/dist/sql.d.ts.map",
+    "packages/shared/dist/sql.js",
+    "packages/shared/dist/sql.js.map"
+  ]
+}

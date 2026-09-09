@@ -51,6 +51,7 @@ consulting `arceus`. The point of this exercise is to demonstrate how well we us
 ## Facts already established (verified 2026-09-08/09; reuse, do not rediscover)
 
 Credentials and identities
+
 - Filebase: `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` in
   ~/Downloads/oracle-property-intelligence-platform-pipeline-lake-fl-main/.env (copy to the new repo's .env,
   git-ignored). Bucket `elephant-oracle-open-data-lake` exists (Filebase free plan, private bucket).
@@ -67,6 +68,7 @@ Credentials and identities
 - No Anthropic key is in the shell yet; I will export `ANTHROPIC_API_KEY` when the agent needs it.
 
 Sources (Lake County, FL = DOR county code 45)
+
 - FL DOR tax roll via the Data Portal SharePoint REST:
   `https://floridarevenue.com/property/dataportal/_api/web/GetFolderByServerRelativeUrl('<encoded path>')/Files`
   under `/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/{NAL,SDF,NAP}/2026P/` →
@@ -97,6 +99,7 @@ Sources (Lake County, FL = DOR county code 45)
   `bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy` (2026-09-09).
 
 Rubric facts (from the kit's evaluate-candidate-* skills)
+
 - Gates before any score: PR to the designated repo, hosted runtime (localhost/tunnels = 0/100), credentials,
   demo video. Functional outcome (40) decomposes for this assignment into: Tenant view, Business view,
   Contractor view, semantic RAG Q&A, source-backed natural-language answers, data scale/coverage (toy data
@@ -107,8 +110,8 @@ Rubric facts (from the kit's evaluate-candidate-* skills)
 
 ~/Downloads/oracle-property-intelligence-platform-pipeline-lake-fl-main — previous non-kit attempt. Useful
 files: docs/superpowers/specs/2026-09-08-oracle-lake-fl-pipeline-design.md (verified source analysis),
-docs/sources.md (measured constraints), packages/pipeline/src/sources/*.ts (working source adapters with
-tests), packages/pipeline/src/ipfs/*.ts (CAR/manifest/verification code), packages/server/test/fixtures.
+docs/sources.md (measured constraints), packages/pipeline/src/sources/_.ts (working source adapters with
+tests), packages/pipeline/src/ipfs/_.ts (CAR/manifest/verification code), packages/server/test/fixtures.
 The kit itself is installed at ~/.claude/team-kit/soofi-xyz-team-kit (agents in ~/.claude/agents, skills in
 ~/.claude/skills; refresh with the old repo's scripts/install-team-kit.sh).
 
