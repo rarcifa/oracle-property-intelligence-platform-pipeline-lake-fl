@@ -23,15 +23,16 @@ neighbour was extended in its own conventions. Every such decision is listed in
 
 ## What is loaded
 
-| Table                                                         | Rows                           | Source                                                                                |
-| ------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| properties (one row per assessed parcel, 59 columns)          | **215,806**                    | FL DOR NAL 2026P                                                                      |
-| permits (3,312 roofing · 3,753 open · 247 open roofing)       | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
-| permits linked to an assessed parcel · valid unlinked         | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
-| coordinates                                                   | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
-| business accounts with NAICS (1,883 construction, 44 roofing) | **33,346**                     | FL DOR TPP 2026P                                                                      |
-| sale records                                                  | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
-| distinct owner names                                          | **168,315**                    | FL DOR NAL                                                                            |
+| Table                                                                 | Rows                           | Source                                                                                |
+| --------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| properties (one row per assessed parcel, 59 columns)                  | **215,806**                    | FL DOR NAL 2026P                                                                      |
+| permits (3,312 roofing · 3,753 open · 247 open roofing)               | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
+| permits linked to an assessed parcel · valid unlinked                 | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
+| coordinates                                                           | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
+| business accounts in the source roll (1,883 construction, 44 roofing) | **33,346**                     | FL DOR TPP 2026P                                                                      |
+| business accounts matched to a parcel and published                   | **2,060** (6.2%)               | street+zip match; the TPP roll carries no parcel key                                  |
+| sale records                                                          | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
+| distinct owner names                                                  | **168,315**                    | FL DOR NAL                                                                            |
 
 Derived lead signals, all queryable. Every figure below is the value in `coverage.json`
 inside the published run, not a number typed by hand:
@@ -155,6 +156,28 @@ These are in `coverage.json` inside every published run, and in the source catal
   figure, the 2.26% in the readiness exception, measures something else: the gap between
   the 210,935-row GIS release and the 215,806-row assessed roll. The two are easy to
   conflate and an earlier draft of this file did exactly that.
+
+### Found after this run was published
+
+Unlike the limitations above, this one is **not** in the published `coverage.json`. It was
+found while auditing the runtime, after the run's CID was fixed, and recording it here was
+preferred to quietly leaving it out.
+
+**Business coverage is 6.2% of the source roll, and the published total double counts.**
+The TPP roll carries no parcel key, so accounts are located by a normalized street+zip
+match against the roll's situs addresses. 32,738 of the 33,346 accounts carry a situs
+address and 2,060 of them match a parcel, so the other 94% are not published. Separately,
+a matched address group is attributed to _every_ parcel sharing that address, so summing
+`business_account_count` across parcels yields 4,451 rather than 2,060 — 90 address groups
+covering 180 accounts span 1,214 parcels. The UI labels that figure "TPP account–parcel
+matches" rather than a count of businesses, and the Business view says so in full.
+
+`NAICS_CD` is present on every one of the 33,346 source rows but is not carried into the
+published table, so the roll's 44 roofing contractors (10 of which match a parcel) cannot
+be queried here. Carrying it, and de-duplicating the shared-address attribution, both
+require rebuilding and republishing the query table under a new root CID; neither was done
+in this run, and neither is recorded in the published `coverage.json`, whose six
+limitations predate this finding.
 
 ## What is not proven yet
 

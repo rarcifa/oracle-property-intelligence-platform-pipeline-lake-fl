@@ -38,6 +38,32 @@ export function resolveExtensionDirectory(
   return configured ? configured : undefined;
 }
 
+/** Accepted `memory_limit` values: a plain number with a unit, nothing else. */
+const MEMORY_LIMIT_PATTERN = /^\d+(?:\.\d+)?\s*(?:KB|MB|GB|TB)$/i;
+
+/**
+ * Ceiling for DuckDB's memory use, as a `memory_limit` value.
+ *
+ * `/api/sql` and `/mcp` are public and unauthenticated by design — they serve
+ * published open data — and the row count is already clamped, but the *work* a
+ * statement does was not bounded at all: `SELECT count(*) FROM range(20000000)`
+ * ran on the deployed function in 0.8 s, and a larger one would have spent the
+ * whole invocation's memory before returning a single row.
+ *
+ * The value is interpolated into a `SET` statement, so a malformed override is
+ * refused here rather than passed through to DuckDB.
+ */
+export function resolveMemoryLimit(env: Record<string, string | undefined> = process.env): string {
+  const configured = env.ORACLE_DUCKDB_MEMORY_LIMIT?.trim();
+  if (configured === undefined || configured.length === 0) return "2GB";
+  if (!MEMORY_LIMIT_PATTERN.test(configured)) {
+    throw new Error(
+      `ORACLE_DUCKDB_MEMORY_LIMIT must be a size such as "2GB", got ${JSON.stringify(configured)}`,
+    );
+  }
+  return configured;
+}
+
 /** A row with DuckDB scalars normalised to JSON-safe JavaScript values. */
 export type QueryRow = Record<string, unknown>;
 
@@ -166,6 +192,15 @@ export class OracleDataStore {
         `CREATE OR REPLACE TABLE ${PROPERTIES_VIEW} AS`,
       ),
     );
+
+    // Bound the work any one statement may do. This sits before the lockdown
+    // because `lock_configuration` freezes the configuration immediately after.
+    await connection.run(`SET memory_limit='${resolveMemoryLimit()}'`);
+    // No spilling. /var/task is read-only, so a statement that exceeds the
+    // ceiling otherwise fails with "Failed to create directory .tmp: Read-only
+    // file system", which reads like a deployment fault rather than the query
+    // being too big. Disabling the temp directory makes it fail as what it is.
+    await connection.run("SET temp_directory=''");
 
     // Second layer of the SQL lockdown; the first is the filesystem-function
     // denylist in `assertReadOnlySql`. Without this, `/api/sql` and `/mcp` are

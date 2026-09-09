@@ -95,6 +95,12 @@ export class LakeRuntimeStack extends Stack {
         ORACLE_DUCKDB_EXTENSION_DIR: "/var/task/duckdb-extensions",
         ...anthropicKeyEnvironment(),
       },
+      // The Function URL is public and unauthenticated on purpose, so an
+      // unbounded number of concurrent invocations is the one thing standing
+      // between a scraper and the account's whole concurrency pool. This caps
+      // the blast radius and the bill; the surface is a read-only open-data API,
+      // not something that needs to scale to the account limit.
+      reservedConcurrentExecutions: 25,
       loggingFormat: LoggingFormat.JSON,
       logRetention: RetentionDays.ONE_MONTH,
     });

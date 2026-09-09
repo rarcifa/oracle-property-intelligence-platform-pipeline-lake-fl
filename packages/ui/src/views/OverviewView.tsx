@@ -43,7 +43,11 @@ const TILES: readonly {
   { key: "no_recorded_sale", label: "No sale in DOR window" },
   { key: "distinct_owners", label: "Distinct owner names" },
   { key: "with_business_account", label: "Parcels with TPP accounts" },
-  { key: "business_accounts", label: "TPP business accounts" },
+  {
+    key: "business_accounts",
+    label: "TPP account–parcel matches",
+    note: "shared addresses counted per parcel",
+  },
   { key: "contractor_names_present", label: "Contractor names present", note: "gated at source" },
   { key: "bbb_ratings_present", label: "BBB ratings present", note: "gated at source" },
 ];

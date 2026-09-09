@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { resolveExtensionDirectory } from "../src/data/duckdb.js";
+import { resolveExtensionDirectory, resolveMemoryLimit } from "../src/data/duckdb.js";
 
 /** Directory laid out the way DuckDB expects, holding this platform's httpfs. */
 let fixtureDir: string;
@@ -78,4 +78,23 @@ describe("LOAD httpfs without HOME (the Lambda environment)", () => {
     );
     expect(Number((await reader.getRowObjects())[0].n)).toBe(1);
   }, 60_000);
+});
+
+describe("resolveMemoryLimit", () => {
+  it("defaults to a ceiling well inside the function's 3008 MB", () => {
+    expect(resolveMemoryLimit({})).toBe("2GB");
+  });
+
+  it("accepts an operator override", () => {
+    expect(resolveMemoryLimit({ ORACLE_DUCKDB_MEMORY_LIMIT: "512MB" })).toBe("512MB");
+  });
+
+  it("rejects a malformed value rather than interpolating it into SQL", () => {
+    // The value is interpolated into `SET memory_limit=...`, so anything that is
+    // not a plain size is refused instead of reaching DuckDB.
+    expect(() =>
+      resolveMemoryLimit({ ORACLE_DUCKDB_MEMORY_LIMIT: "1GB'; DROP TABLE x; --" }),
+    ).toThrow(/ORACLE_DUCKDB_MEMORY_LIMIT/);
+    expect(() => resolveMemoryLimit({ ORACLE_DUCKDB_MEMORY_LIMIT: "lots" })).toThrow();
+  });
 });

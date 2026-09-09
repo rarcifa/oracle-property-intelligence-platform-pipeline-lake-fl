@@ -3,9 +3,10 @@
 The hosted runtime is the single largest scoring gate in this assignment: the evaluator
 treats a localhost-only runtime as zero. This is what it takes to close it.
 
-**Nothing here has been run.** No deploy has happened, no AWS resource exists, and no
-credentials were used. The stack synthesises and the bundle builds, both verified, so this
-is one command away rather than a plan.
+**This is deployed and live** at
+<https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/>, in `us-east-2`,
+account `122610508924`. Everything below is what it took, kept because the first deploy
+succeeded and served HTTP 502 on every route.
 
 ## What gets deployed
 
@@ -57,16 +58,45 @@ module rather than at deploy time. The script now installs the Linux binding by 
 version, prunes every other platform's, and fails the build if the binding is absent or the
 bundle exceeds Lambda's 250 MB unzipped limit. It currently comes to 89 MB.
 
-## Set the chat key
+## The chat key
 
-The agent returns a clear 503 without a key rather than failing at boot. To enable it,
-add `ANTHROPIC_API_KEY` to the function's environment after the first deploy.
+The agent returns a clear 503 without a key rather than failing at boot.
+
+Do **not** set `ANTHROPIC_API_KEY` on the function directly. That was tried, worked, and was
+silently wrong: the stack declares `environment` in full, so the next `cdk deploy` drops the
+key and the agent goes dark with nothing failing loudly. The key lives in Secrets Manager
+and CloudFormation resolves it at deploy time, so it survives every redeploy and neither the
+repository nor the synthesised template ever holds the value.
+
+```bash
+printf '%s' "$ANTHROPIC_API_KEY" > /tmp/key && \
+  aws secretsmanager create-secret --name oracle-lake/anthropic-api-key \
+    --secret-string file:///tmp/key && rm -f /tmp/key
+```
+
+Deploy without the agent by setting `ORACLE_ANTHROPIC_SECRET_NAME=""`.
 
 ## Pointing at a different published run
 
 The function reads `ORACLE_PARQUET_URL`, which defaults to the newest published run root.
 Republishing does not require a redeploy; repoint that variable, or leave it on the IPNS
 path so it follows the pointer.
+
+## What the first deploy taught
+
+The stack synthesised, the bundle built, the deploy reported success, and every route
+returned 502. DuckDB resolves extensions under `$HOME/.duckdb/extensions/<version>/<platform>/`
+and Lambda sets no `HOME`, so `LOAD httpfs` looked in `/.duckdb/`, missed, and the `INSTALL`
+fallback died with `Can't find the home directory at ''`.
+
+`httpfs` is not statically linked. It had never been in the bundle at all, and it only ever
+loaded locally because a copy already sat in the developer's home directory — so no clean
+machine could ever have cold-started this function. The bundle now downloads it for
+`linux_arm64` at DuckDB's own `version()` and asserts it, and `ORACLE_DUCKDB_EXTENSION_DIR`
+points DuckDB at it.
+
+The lesson generalises: a green `cdk deploy` says CloudFormation converged, not that the
+function runs. Always run the checks below against the returned URL.
 
 ## Verifying a deploy
 
