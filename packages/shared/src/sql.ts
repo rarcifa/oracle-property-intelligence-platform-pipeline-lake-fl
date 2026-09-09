@@ -399,6 +399,49 @@ export function clampLimit(limit: number | undefined): number {
   return Math.min(Math.max(1, Math.floor(limit)), MAX_SEARCH_LIMIT);
 }
 
+/**
+ * Functions that reach the filesystem, the network or another database engine.
+ *
+ * The mutating-keyword list below stops a caller changing state; it does not
+ * stop one READING state. `SELECT * FROM read_text('/etc/passwd')` is a
+ * perfectly valid read-only SELECT, and without this list the public SQL
+ * endpoint is an unauthenticated arbitrary-file-read primitive against the
+ * host. That was live and exploitable before this guard existed: `read_text`
+ * returned the contents of a system file and `glob` listed the repository
+ * directory. The DuckDB connection is separately locked down in
+ * `packages/server/src/data/duckdb.ts`; this is the first of the two layers.
+ */
+const FILESYSTEM_FUNCTIONS = [
+  "read_text",
+  "read_blob",
+  "read_csv",
+  "read_csv_auto",
+  "read_parquet",
+  "parquet_scan",
+  "read_json",
+  "read_json_auto",
+  "read_ndjson",
+  "read_ndjson_auto",
+  "read_xlsx",
+  "sniff_csv",
+  "glob",
+  "delta_scan",
+  "iceberg_scan",
+  "postgres_scan",
+  "postgres_query",
+  "mysql_scan",
+  "mysql_query",
+  "sqlite_scan",
+  "sqlite_query",
+  "parquet_metadata",
+  "parquet_schema",
+  "parquet_file_metadata",
+  "parquet_kv_metadata",
+  "duckdb_settings",
+  "duckdb_extensions",
+  "getenv",
+];
+
 const MUTATING_KEYWORDS = [
   "insert",
   "update",
@@ -463,6 +506,14 @@ export function assertReadOnlySql(sql: string): string {
     const pattern = new RegExp(`\\b${keyword}\\b`, "i");
     if (pattern.test(scrubbed)) {
       throw new Error(`Statement rejected: "${keyword}" is not allowed in a read-only query`);
+    }
+  }
+  for (const fn of FILESYSTEM_FUNCTIONS) {
+    const pattern = new RegExp(`\\b${fn}\\s*\\(`, "i");
+    if (pattern.test(scrubbed)) {
+      throw new Error(
+        `Statement rejected: "${fn}" reads outside the published dataset and is not allowed`,
+      );
     }
   }
   return trimmed;

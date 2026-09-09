@@ -28,14 +28,30 @@ than stretch those skills. The Lake adapter still produces the same per-parcel
 `transformed.zip` artifacts, the same three-way success / permanent / retryable
 classification, and the same `validateRun` gate, so everything downstream is unchanged.
 
-## 3. A fourth permit vendor
+## 3. A fourth permit vendor, implemented but NOT registered
 
 `src/counties/permit-profile.mjs` closes `adapterKey` to `jaxepics`, `click2gov` and
 `etrakit`. Lake's county permit source is Perconti CD Plus behind an Esri MapServer proxy,
-which is none of those. The alternative was to classify every Lake jurisdiction as
-unsupported, which would forfeit permits entirely — and permits are the centre of a roofing
-lead assignment. The permit source is therefore implemented as its own module and
-catalogued as vendor `cdplus` in `docs/lake-sources.yaml`.
+which is none of those.
+
+**What was actually done, stated precisely, because an earlier version of this document
+overstated it.** The harvester is implemented in `src/counties/lake/sources.mjs` and works:
+it fetched 17,915 features, 17,671 distinct permits, in 6.5 seconds, and those permits are
+in the published query table. The vendor is described as `cdplus` in
+`docs/lake-sources.yaml`. But there is **no** `src/counties/lake/permit-profile.mjs`, the
+`adapterKey` enum was **not** extended, and `permit-profiles.mjs` still registers Duval
+alone. The earlier wording here claimed it was "catalogued as vendor `cdplus`", which
+implied a registry entry that does not exist.
+
+**Why it was not registered, rather than an oversight.** The schema's cross-field rule is
+that `status: "supported"` requires `historicalRecords: true`. Lake's county source is a
+rolling 365-day window, so `historicalRecords` is false. Registering it as supported would
+mean asserting the source carries history it does not carry; registering it as anything
+else would mean asserting it is not harvestable when it demonstrably is. The kit's status
+vocabulary has no term for a source that is fully harvestable but current-window only, so
+the profile was left unregistered and this note written instead. Adding a
+`current-window` status, or decoupling `historicalRecords` from `supported`, is the change
+the kit would need.
 
 ## 4. One IPNS name instead of three labels
 
@@ -88,7 +104,26 @@ builds and hashes the DAG locally first, then imports a CAR with
 `x-amz-meta-import: car`, which pins exactly the DAG that was computed. The CID is known
 before anything is uploaded.
 
-## 8. Not run, and why
+## 8. Kit skills and agents that were never invoked
+
+This section exists because the opening claim, that every decision is listed here, was not
+true of the routing itself. Four things the kit provides were not used, and three of them
+should have been.
+
+| Not invoked | What it would have produced | Why it was missed |
+|---|---|---|
+| `deploy-open-data-mcp` | The hosted runtime, which is the gate that zeroes the score | Hosting needed the owner's authorisation, but the skill was never even read for the deploy shape |
+| `integrate-ci-cd` | `.github/workflows`, so "continuous" ingestion actually recurs | Routed by arceus, then dropped under time pressure |
+| `espeon` + `build-rag-systems` | Semantic retrieval question-answering, a distinct scoring line | Silently substituted by the tool-calling chat agent when the UI work was delegated |
+| `donphan` + `use-elephant-mcp` | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server failed to connect at session start and the step was never re-queued |
+| `smeargle` + `responsive-design-tests` | Breakpoint coverage before a demo video | Never named by arceus, because the routing prompt described the UI as functional requirements and never said it would be visually assessed |
+
+Two consequences follow that are worth naming. The county was never registered in
+`catalog/published-counties.json`, so `catalog:update` and `catalog:sync-mcp-json` never
+ran and the root `.mcp.json` contains no reference to Lake. And the UI has no component
+tests and two media queries.
+
+## 9. Not run, and why
 
 - **Sunbiz corporate ingest** — not in the acceptance criteria. Business records come from
   the DOR TPP roll instead.
@@ -102,7 +137,7 @@ before anything is uploaded.
   during consolidation, and the same gate is enforced: published rows must equal distinct
   folios with no null folios.
 
-## 9. Known test failures in the bundled runtime
+## 10. Known test failures in the bundled runtime
 
 Two tests fail for reasons unrelated to this county and were left alone rather than
 weakened: `tests/catalog/no-oracle-node-runtime.test.mjs` asserts the checkout directory is
@@ -112,7 +147,7 @@ checkout-layout assertions. One test was legitimately updated:
 `tests/enrichment-profile.test.mjs` asserted the profile registry contained only `duval`,
 and now expects `duval` and `lake`.
 
-## 10. Two honest inefficiencies, named rather than hidden
+## 11. Two honest inefficiencies, named rather than hidden
 
 **Every run re-uploads the whole DAG.** The published run directory is ~312 MB, dominated by
 the 22 property shards, and an incremental run currently uploads a CAR containing all of it

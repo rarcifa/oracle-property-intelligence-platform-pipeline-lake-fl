@@ -195,3 +195,64 @@ describe("assertReadOnlySql", () => {
     expect(() => assertReadOnlySql("SELECT 'delete from properties' AS s")).not.toThrow();
   });
 });
+
+describe("assertReadOnlySql: filesystem and engine access", () => {
+  // These were live and exploitable before the denylist existed: the public
+  // SQL endpoint answered read_text('/etc/passwd') with the file's byte length
+  // and glob() with a directory listing. A read-only SELECT is not the same
+  // thing as a safe SELECT.
+  it("rejects reading a file off the host", () => {
+    expect(() => assertReadOnlySql("SELECT * FROM read_text('/etc/passwd')")).toThrow(
+      /read_text.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql("SELECT * FROM read_blob('/etc/passwd')")).toThrow(
+      /read_blob.*not allowed/i,
+    );
+  });
+
+  it("rejects listing the filesystem", () => {
+    expect(() => assertReadOnlySql("SELECT count(*) FROM glob('/Users/*')")).toThrow(
+      /glob.*not allowed/i,
+    );
+  });
+
+  it("rejects reading arbitrary data files, not just the obvious ones", () => {
+    for (const sql of [
+      "SELECT * FROM read_csv('/tmp/x.csv')",
+      "SELECT * FROM read_parquet('/tmp/x.parquet')",
+      "SELECT * FROM read_json_auto('/tmp/x.json')",
+      "SELECT * FROM parquet_scan('/tmp/x.parquet')",
+    ]) {
+      expect(() => assertReadOnlySql(sql)).toThrow(/not allowed/i);
+    }
+  });
+
+  it("rejects reaching another database engine", () => {
+    expect(() => assertReadOnlySql("SELECT * FROM postgres_scan('h','p','t')")).toThrow(
+      /postgres_scan.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql("SELECT * FROM sqlite_scan('/tmp/a.db','t')")).toThrow(
+      /sqlite_scan.*not allowed/i,
+    );
+  });
+
+  it("rejects reading the environment or the engine's own configuration", () => {
+    expect(() => assertReadOnlySql("SELECT getenv('S3_SECRET_ACCESS_KEY')")).toThrow(
+      /getenv.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql("SELECT * FROM duckdb_settings()")).toThrow(
+      /duckdb_settings.*not allowed/i,
+    );
+  });
+
+  it("still allows an ordinary query against the published table", () => {
+    const sql =
+      "SELECT count(*) FROM properties WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0";
+    expect(assertReadOnlySql(sql)).toBe(sql);
+  });
+
+  it("does not reject a column whose name merely contains a blocked word", () => {
+    const sql = "SELECT globe_id, read_text_flag FROM properties";
+    expect(assertReadOnlySql(sql)).toBe(sql);
+  });
+});

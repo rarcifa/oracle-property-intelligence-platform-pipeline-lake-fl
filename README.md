@@ -32,7 +32,8 @@ neighbour was extended in its own conventions. Every such decision is listed in
 | sale records                                                  | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
 | distinct owner names                                          | **168,315**                    | FL DOR NAL                                                                            |
 
-Derived lead signals, all queryable:
+Derived lead signals, all queryable. Every figure below is the value in `coverage.json`
+inside the published run, not a number typed by hand:
 
 | Signal                                             | Count   |
 | -------------------------------------------------- | ------- |
@@ -41,8 +42,8 @@ Derived lead signals, all queryable:
 | Roof age dated from a completed roofing permit     | 2,646   |
 | Properties with an open roofing permit             | 226     |
 | Properties with a permit open more than five years | 20      |
-| Out-of-state owners                                | 20,285  |
-| No recorded sale in the DOR window                 | 185,711 |
+| Out-of-state owners                                | 20,236  |
+| No recorded sale in the DOR window                 | 184,829 |
 
 ## Architecture
 
@@ -123,8 +124,11 @@ These are in `coverage.json` inside every published run, and in the source catal
   it carries 2025-2026 sales; the historical DOR map-data files back to 2005 carry parcel
   geometry only, which was verified by downloading the 2010 file and reading its two-field
   attribute table. `no_recorded_sale_in_dor_window` is a lower bound, not a tenure claim.
-- **Coordinates come from the 2025 centroid release against the 2026 roll**, so 4,871
-  parcels (2.26%) publish with null coordinates rather than being dropped.
+- **Coordinates come from the 2025 centroid release against the 2026 roll**, so 6,303
+  parcels (2.92%) publish with null coordinates rather than being dropped. A separate
+  figure, the 2.26% in the readiness exception, measures something else: the gap between
+  the 210,935-row GIS release and the 215,806-row assessed roll. The two are easy to
+  conflate and an earlier draft of this file did exactly that.
 
 ## What is not proven yet
 
