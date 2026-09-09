@@ -11,3 +11,6 @@ artifacts/row-hashes.json
 # Published CARs are large and are reproducible from the run directory; the
 # manifest records their CID and digest.
 *.car
+
+# Turborepo build cache and per-task logs are machine-local build output.
+.turbo/
