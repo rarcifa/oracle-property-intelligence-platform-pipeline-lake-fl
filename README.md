@@ -13,6 +13,7 @@ neighbour was extended in its own conventions. Every such decision is listed in
 
 |                           |                                                                                                                                                                   |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live runtime**          | <https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/> — UI, REST API, MCP and agent on one Lambda Function URL in `us-east-2`                   |
 | **Newest verified run**   | [`artifacts/latest.json`](artifacts/latest.json) — root CID, manifest CID, IPNS name, verified gateways                                                           |
 | **Run history**           | [`artifacts/run-history.json`](artifacts/run-history.json) — every run with sources, counts, deltas, limitations, CIDs                                            |
 | **Artifact manifest**     | `artifacts/manifest-<run>.json` — cid, name, size, codec, sha256 per object                                                                                       |
@@ -74,6 +75,16 @@ python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
   .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
 ```
 
+The application's own suite runs from the repo root. 50 of the 212 tests exercise the
+query layer against a real 215,806-row table rather than a fixture, so they skip unless one
+is reachable; point them at the published run to run everything:
+
+```bash
+pnpm install && pnpm run build
+ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/$(jq -r .rootCid artifacts/latest.json)/query-table.parquet" \
+  pnpm run test:unit          # 212 passed
+```
+
 Full pipeline commands are in [`docs/runbook.md`](docs/runbook.md).
 
 ## Fetch the data with nothing but curl
@@ -84,6 +95,21 @@ curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq .tables.proper
 curl -sL "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-table.parquet
 duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
 ```
+
+## Or hit the deployed runtime
+
+```bash
+U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
+curl -s "$U/api/health"                                    # propertyCount 215806, runId, rootCid
+curl -s "$U/api/stats" | jq .stats.properties              # 215806
+curl -s "$U/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools|length'   # 8
+curl -s "$U/api/sql" -H 'content-type: application/json' \
+  -d '{"sql":"SELECT * FROM read_text(\'/etc/passwd\')"}' | jq .error              # sql_rejected
+```
+
+The last call is the one that matters: an open SQL endpoint over an engine with filesystem
+access is an arbitrary-file-read primitive, and this one was exactly that until it was fixed.
 
 ## Two runs, two CIDs, prior data untouched
 
@@ -149,8 +175,13 @@ here rather than counted as working.
   ranking and the business totals are computed separately in each, which is the one place the
   two could disagree.
 
-There is also no hosted runtime, no pull request and no demo video, because none of those
-were authorised.
+The hosted runtime now exists and is exercised above. It did not on the first attempt: the
+deploy succeeded and every route answered 502, because DuckDB resolves extensions under
+`$HOME/.duckdb/extensions/` and Lambda sets no `HOME`. `httpfs` is not statically linked, so
+it had never been shipped in the bundle at all and had only ever loaded from the developer's
+own home directory. The bundle now ships it and the stack points DuckDB at it.
+
+There is still no pull request and no demo video, because neither was authorised.
 
 ## Team-kit usage
 
