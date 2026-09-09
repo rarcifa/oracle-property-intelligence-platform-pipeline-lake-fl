@@ -6,7 +6,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CfnOutput, Duration, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, SecretValue, Stack, type StackProps } from "aws-cdk-lib";
 import {
   Architecture,
   Code,
@@ -18,6 +18,34 @@ import {
 } from "aws-cdk-lib/aws-lambda";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
+
+/**
+ * Default Secrets Manager secret holding the Anthropic API key.
+ *
+ * Override with `ORACLE_ANTHROPIC_SECRET_NAME`; set it to an empty string to
+ * deploy without the agent, in which case `/api/chat` returns a documented 503
+ * and every other surface is unaffected.
+ */
+const ANTHROPIC_SECRET_NAME =
+  process.env.ORACLE_ANTHROPIC_SECRET_NAME ?? "oracle-lake/anthropic-api-key";
+
+/**
+ * The chat agent's key, as a CloudFormation dynamic reference.
+ *
+ * The key is deliberately NOT a plain environment value in this stack. It was
+ * first set straight on the function with `update-function-configuration`, which
+ * worked and was silently wrong: this stack declares `environment` in full, so
+ * the very next `cdk deploy` would have dropped the key and taken the agent dark
+ * with nothing failing loudly. Resolving it from Secrets Manager makes the
+ * deploy itself carry the key, so it survives every redeploy, and the repository
+ * and the synthesised template hold only `{{resolve:secretsmanager:...}}`.
+ */
+function anthropicKeyEnvironment(): Record<string, string> {
+  if (ANTHROPIC_SECRET_NAME.length === 0) return {};
+  return {
+    ANTHROPIC_API_KEY: SecretValue.secretsManager(ANTHROPIC_SECRET_NAME).unsafeUnwrap(),
+  };
+}
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /**
@@ -62,6 +90,7 @@ export class LakeRuntimeStack extends Stack {
         // `LOAD httpfs` with "Can't find the home directory at ''". The bundle
         // ships the extension; this points DuckDB at it.
         ORACLE_DUCKDB_EXTENSION_DIR: "/var/task/duckdb-extensions",
+        ...anthropicKeyEnvironment(),
       },
       loggingFormat: LoggingFormat.JSON,
       logRetention: RetentionDays.ONE_MONTH,
