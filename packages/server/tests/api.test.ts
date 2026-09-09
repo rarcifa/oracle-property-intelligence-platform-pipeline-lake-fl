@@ -51,10 +51,10 @@ describe.skipIf(!hasParquet)("REST API", () => {
     // More than one gateway must be able to serve a range read, or the runtime
     // is back to depending on a single vendor.
     expect(body.gateways.filter((gateway) => gateway.range).length).toBeGreaterThan(1);
-    // Re-measured 2026-09-10 against the published Parquet: dweb.link answers
-    // 301 on this path. ipfs.io, which used to be listed here, answers 206 with
-    // CORS and is now a usable range gateway.
-    expect(body.unusableGateways.map((entry) => entry.host)).toContain("dweb.link");
+    // Re-measured 2026-09-10 against the published Parquet, following redirects:
+    // six gateways answer 206 with CORS, so the ones that used to be listed as
+    // unusable are not. Only 4everland fails to resolve to the bytes.
+    expect(body.unusableGateways.map((entry) => entry.host)).toContain("4everland.io");
     expect(body.unusableGateways.map((entry) => entry.host)).not.toContain("ipfs.io");
     expect(body.chatEnabled).toBe(false);
   });

@@ -21,15 +21,17 @@ export default tseslint.config(
     ],
   },
   {
-    // Node scripts under infra/ are ESM run directly by node, so they need the
-    // node globals that the TypeScript packages get from their own tsconfig.
-    files: ["infra/**/*.mjs", "infra/**/*.ts"],
+    // Node scripts under infra/ and scripts/ are ESM run directly by node, so
+    // they need the node globals that the TypeScript packages get from their own
+    // tsconfig.
+    files: ["infra/**/*.mjs", "infra/**/*.ts", "scripts/**/*.mjs"],
     languageOptions: {
       globals: {
         process: "readonly",
         console: "readonly",
         Buffer: "readonly",
         fetch: "readonly",
+        URL: "readonly",
       },
     },
   },

@@ -105,19 +105,27 @@ in tension with this project's own rule that a vendor-specific HTTP URL is never
 the source of truth, and made the no-ongoing-cost claim depend on one account
 staying live. The CID is the source of truth; a gateway is transport.
 
-Measured against the published Parquet on 2026-09-10 with a 1 KB range request
-and an `Origin` header, rather than assumed:
+Measured against the published Parquet on 2026-09-10, following redirects
+(`curl -sL -r 0-1023 -H 'Origin: ...'`), rather than assumed:
 
-| Gateway                                   | Range | CORS | Used                                    |
-| ----------------------------------------- | ----- | ---- | --------------------------------------- |
-| `ipfs.filebase.io`                        | 206   | `*`  | first choice                            |
-| `gateway.pinata.cloud`                    | 206   | `*`  | fallback                                |
-| `gw.ipfs-lens.dev`                        | 206   | `*`  | fallback                                |
-| `ipfs.io`                                 | 206   | `*`  | last — rate-limits datacenter egress    |
-| `dweb.link` · `w3s.link` · `4everland.io` | 301   | —    | recorded unusable, not silently omitted |
+| Gateway                                                          | Range | CORS | Used                                     |
+| ---------------------------------------------------------------- | ----- | ---- | ---------------------------------------- |
+| `ipfs.filebase.io` · `gateway.pinata.cloud` · `gw.ipfs-lens.dev` | 206   | `*`  | in order                                 |
+| `ipfs.io` · `dweb.link` · `w3s.link`                             | 206   | `*`  | last — they rate-limit datacenter egress |
+| `4everland.io`                                                   | 301   | `*`  | recorded unusable, not silently omitted  |
 
-An earlier note in this repo claimed Filebase was the only gateway serving both.
-That was out of date; three others do.
+The `-L` matters, and a first pass here got it wrong without it: `dweb.link` and
+`w3s.link` answer 301 to a subdomain gateway and serve the range from there, so
+every real client sees 206. An earlier note in this repo claimed Filebase was the
+only gateway serving both CORS and Range; five others do.
+
+The published run is verified across all of them. Every one of the nine checked
+artifacts — including the 20 MB Parquet and a 14 MB shard — returned bytes
+matching the manifest's length and SHA-256 from **five independent gateways**,
+recorded in `artifacts/verification-<run>.json`. The kit's verifier stops at two
+by design, which is why the record used to name only two; `scripts/reverify-across-gateways.mjs`
+sweeps the full list for the evidence record without changing the pass criterion
+or touching the vendored kit.
 
 ## Import the whole DAG as a CAR, from anyone's gateway
 

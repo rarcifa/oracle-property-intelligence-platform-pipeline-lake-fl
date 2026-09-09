@@ -7,7 +7,10 @@
   "resolvedCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
   "verifiedGateways": [
     "https://ipfs.filebase.io",
-    "https://gw.ipfs-lens.dev"
+    "https://gw.ipfs-lens.dev",
+    "https://gateway.pinata.cloud",
+    "https://ipfs.io",
+    "https://dweb.link"
   ],
   "propertyCount": 215806,
   "publishedAt": "2026-09-09T19:06:09.736Z"

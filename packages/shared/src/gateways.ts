@@ -9,11 +9,16 @@
  * transport is allowed to fail, so the read path now falls over between them.
  *
  * `cors` and `range` are measured, not assumed, against the published 20 MB
- * Parquet with `curl -r 0-1023 -H 'Origin: ...'` (2026-09-10): filebase, pinata,
- * ipfs-lens and ipfs.io each answered HTTP 206 with `content-range` and
- * `access-control-allow-origin: *`. An earlier note here claimed filebase was
- * the only one; it was out of date. `dweb.link`, `w3s.link` and `4everland.io`
- * answered 301 and are recorded as unusable rather than quietly omitted.
+ * Parquet with `curl -sL -r 0-1023 -H 'Origin: ...'` (2026-09-10). Six gateways
+ * answer HTTP 206 with `content-range` and `access-control-allow-origin: *`:
+ * filebase, pinata, ipfs-lens, ipfs.io, dweb.link and w3s.link. Only
+ * `4everland.io` does not, and it is recorded rather than quietly omitted.
+ *
+ * The `-L` matters and the first measurement here was wrong without it: dweb.link
+ * and w3s.link answer 301 to a subdomain gateway and serve the range from there,
+ * so a client that follows redirects — every real one, including the kit's own
+ * verifier — sees 206. An earlier note claiming filebase was the only usable
+ * gateway was simply out of date.
  *
  * `datacenter429` marks a gateway that rate-limits datacenter egress. Those are
  * kept — a browser reads from a residential address and they work there — but
@@ -63,13 +68,30 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     datacenter429: true,
     note: "HTTP 206 + CORS measured, but rate-limits datacenter egress, so it is ordered last.",
   }),
+  Object.freeze({
+    id: "dweb.link",
+    baseUrl: "https://dweb.link",
+    cors: true,
+    range: true,
+    datacenter429: true,
+    note: "301 to a subdomain gateway, then 206 + CORS. Rate-limits datacenter egress.",
+  }),
+  Object.freeze({
+    id: "w3s.link",
+    baseUrl: "https://w3s.link",
+    cors: true,
+    range: true,
+    datacenter429: true,
+    note: "301 to a subdomain gateway, then 206 + CORS. Rate-limits datacenter egress.",
+  }),
 ]);
 
 /** Gateways that cannot serve a range read here. Recorded, not omitted. */
 export const UNUSABLE_IPFS_GATEWAYS: readonly { host: string; reason: string }[] = Object.freeze([
-  Object.freeze({ host: "dweb.link", reason: "HTTP 301 on the published Parquet path" }),
-  Object.freeze({ host: "w3s.link", reason: "HTTP 301, and no CORS header" }),
-  Object.freeze({ host: "4everland.io", reason: "HTTP 301 on the published Parquet path" }),
+  Object.freeze({
+    host: "4everland.io",
+    reason: "HTTP 301 that does not resolve to the bytes, even following redirects",
+  }),
 ]);
 
 /**
