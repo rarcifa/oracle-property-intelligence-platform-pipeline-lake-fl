@@ -1,8 +1,13 @@
 # Oracle Property Intelligence Pipeline — Lake County, FL
 
-Continuous ingestion of Lake County, Florida property, permit, ownership, business and
-contractor data into a **DuckDB-queryable, MCP-ready, CID-addressed** dataset on public
-IPFS, with a UI and an agent for roofing-lead discovery.
+Continuous ingestion of Lake County, Florida property, permit, ownership and business data
+into a **DuckDB-queryable, MCP-ready, CID-addressed** dataset on public IPFS, with a UI and
+an agent for roofing-lead discovery.
+
+Contractor identity and BBB reputation are **not** in it. Both are gated at source behind
+HTTP 403 and are published as real columns that stay null, with the reason attached — see
+[Known limitations](#known-limitations-stated-rather-than-hidden). An earlier version of this
+sentence listed contractor data as loaded, which the rest of this file contradicted.
 
 Built by driving the **soofi-xyz team kit**: routed by `arceus`, executed by `oracle`
 through `onboard-county` and its stage skills against the kit's bundled ingestion runtime.

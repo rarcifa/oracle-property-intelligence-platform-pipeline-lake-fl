@@ -136,7 +136,10 @@ export function SqlConsoleView(): JSX.Element {
       </Panel>
 
       {result ? (
-        <Panel title="Result" subtitle={`${formatCount(result.rowCount)} row(s) returned`}>
+        <Panel
+          title="Result"
+          subtitle={`${formatCount(result.rowCount)} row(s) returned${result.truncated ? " · truncated, add a LIMIT or count(*) for the total" : ""}`}
+        >
           {result.rows.length === 0 ? (
             <EmptyState>The query returned no rows.</EmptyState>
           ) : (

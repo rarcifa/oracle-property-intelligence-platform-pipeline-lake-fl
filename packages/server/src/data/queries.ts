@@ -8,6 +8,7 @@
  */
 
 import {
+  boundStatement,
   BUSINESS_VIEW_NOTE,
   buildBusinessByCitySql,
   buildBusinessByTypeSql,
@@ -273,12 +274,25 @@ export async function runReadOnlySql(
   context: ProvenanceContext,
   sql: string,
   limit: number,
-): Promise<{ rows: QueryRow[]; rowCount: number; sql: string; provenance: ResponseProvenance }> {
-  const rows = await store.query(sql);
+): Promise<{
+  rows: QueryRow[];
+  rowCount: number;
+  truncated: boolean;
+  sql: string;
+  provenance: ResponseProvenance;
+}> {
+  // Bound the work, not just the answer: the cap used to be applied here, after
+  // DuckDB had already produced every row.
+  const rows = await store.query(boundStatement(sql, limit));
   const capped = rows.slice(0, limit);
   return {
     rows: capped,
-    rowCount: rows.length,
+    // Rows returned, not rows the statement could have produced. Knowing the
+    // latter means running the whole statement, which is precisely what the
+    // bound exists to prevent; `count(*)` answers that question cheaply and
+    // honestly. `truncated` says when there was more.
+    rowCount: capped.length,
+    truncated: rows.length > capped.length,
     sql,
     provenance: provenance(context, sql, capped),
   };

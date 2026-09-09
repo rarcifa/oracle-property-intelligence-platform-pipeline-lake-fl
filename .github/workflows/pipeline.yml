@@ -107,6 +107,23 @@ jobs:
       - name: Build seed
         run: node --max-old-space-size=6144 scripts/lake/build-seed.mjs
 
+      # The delta between runs is computed against `artifacts/row-hashes.json`,
+      # a 14 MB working file that is gitignored — correctly, it is regenerated
+      # output. But nothing carried it between runs, so every scheduled run
+      # started with no prior state and would have reported all 215,806 rows as
+      # inserted. "Incremental" would have been true of the code and false of
+      # every number it produced.
+      #
+      # `restore-keys` makes the newest previous cache the starting point, since
+      # the exact key changes every run.
+      - name: Restore the previous run's row hashes
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/row-hashes.json
+          key: lake-row-hashes-${{ github.run_id }}
+          restore-keys: |
+            lake-row-hashes-
+
       - name: Consolidate the query table
         run: |
           D="$PWD/data/downloads/lake"
@@ -150,6 +167,17 @@ jobs:
           echo "::notice::Filebase credentials are not configured, so this run built" \
                "the dataset but published nothing. Configure S3_ACCESS_KEY_ID and" \
                "S3_SECRET_ACCESS_KEY as repository secrets to enable publishing."
+
+      # Saved after publishing, so the next scheduled run diffs against this one.
+      # Always, not only on success: a run that published and then failed later
+      # has still moved the published state forward, and diffing the next run
+      # against stale hashes would misreport it.
+      - name: Save the row hashes for the next run
+        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/row-hashes.json
+          key: lake-row-hashes-${{ github.run_id }}
 
       - uses: actions/upload-artifact@v4
         with:

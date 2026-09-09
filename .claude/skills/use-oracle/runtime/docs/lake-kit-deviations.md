@@ -114,7 +114,7 @@ should have been.
 |---|---|---|
 | `deploy-open-data-mcp` | The hosted runtime, which is the gate that zeroes the score | Hosting needed the owner's authorisation, but the skill was never even read for the deploy shape |
 | `integrate-ci-cd` | `.github/workflows`, so "continuous" ingestion actually recurs | Routed by arceus, then dropped under time pressure |
-| `espeon` + `build-rag-systems` | Semantic retrieval question-answering, a distinct scoring line | Silently substituted by the tool-calling chat agent when the UI work was delegated |
+| `espeon` + `build-rag-systems` | Semantic retrieval question-answering, a distinct scoring line | Silently substituted by the tool-calling chat agent when the UI work was delegated. **Since closed, but not as the skill prescribes** — see section 12 |
 | `donphan` + `use-elephant-mcp` | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server never connected in this session. **Since closed**: the county is registered in the catalog and the MCP maps, and the substance of the smoke test is verified in `artifacts/mcp-smoke.json` |
 | `smeargle` + `responsive-design-tests` | Breakpoint coverage before a demo video | Never named by arceus, because the routing prompt described the UI as functional requirements and never said it would be visually assessed |
 
@@ -174,3 +174,35 @@ behaviour is correct, just wasteful of upload time.
 IPNS paths while serving `/ipfs/<cid>` paths normally. This is the reason the assignment's
 framing is right: the IPNS name is a convenience pointer and the CID is the identity. Every
 run records both, and all retrieval evidence is gathered against CIDs.
+
+## 12. Two skills credited in the README but departed from
+
+The README names `metagross` with `build-frontend-backends`, and retrieval now exists where
+section 8 said it never happened. Both are real, and both depart from the skill they are
+credited to. Recording that here, because crediting a skill while quietly not following it
+is the failure this whole document exists to prevent.
+
+**`build-frontend-backends`, without tRPC.** The skill specifies tRPC between the frontend
+and the backend. This exposes a plain REST API instead, because tRPC's value is a typed
+client-server contract and this backend has three consumers that are not that client: the
+MCP server, `curl`, and the browser's own DuckDB-WASM, which answers most questions without
+calling the backend at all. A typed contract for one of three consumers would have meant
+maintaining the REST surface anyway. The shared types the skill is really after are still
+shared, through `@oracle-lake/shared`, which both sides import.
+
+**`build-rag-systems`, without a vector store.** The skill builds retrieval on a hosted
+embedding model and a managed vector database. Both are ongoing cost, and "no ongoing
+infrastructure cost" is an explicit assignment requirement, so retrieval is deterministic
+instead: TF-IDF with an SVD latent space and BM25, built at package-build time and committed,
+with the index byte-compared against a rebuild in CI. It needs no model key, which is why
+`/api/search` keeps working for a reviewer who has none. What is genuinely lost is
+generalisation to vocabulary the corpus never saw; the alias table in `packages/rag/src/aliases.ts`
+is the explicit, auditable stand-in, and every expansion it makes is scored below the terms
+the user actually typed.
+
+Retrieval also reaches the parcels, not only the documentation about them, which is closer
+to what the skill intends than section 8's original entry suggested. Constraints in a
+question are resolved against the published table's own filter contract and run as SQL. BM25
+over a per-parcel text profile was built and measured first and rejected: it answered "aged
+roof with an open roofing permit in Clermont" with a Clermont parcel that had no open roofing
+permit.

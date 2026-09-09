@@ -94,7 +94,10 @@ export interface ContractorViewResponse {
 /** `POST /api/sql`. */
 export interface SqlResponse {
   rows: Record<string, unknown>[];
+  /** Rows returned. Not the statement's total: see `truncated`. */
   rowCount: number;
+  /** True when the statement had more rows than the cap allowed back. */
+  truncated?: boolean;
   sql: string;
   provenance: ResponseProvenance;
 }

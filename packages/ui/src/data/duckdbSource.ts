@@ -19,6 +19,7 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 import type { Table } from "apache-arrow";
 import {
+  boundStatement,
   assertReadOnlySql,
   assertSchemaMatches,
   buildBusinessByCitySql,
@@ -398,13 +399,17 @@ export async function createDuckDbSource(options: {
     async runSql(sql: string, limit?: number): Promise<SqlResponse> {
       const statement = assertReadOnlySql(sql);
       const capped = clampLimit(limit ?? 200);
-      const executed = `SELECT * FROM (\n${statement}\n) AS q LIMIT ${capped}`;
+      // Same helper the server uses, so the two paths bound identically and one
+      // of them cannot quietly drift into materialising everything.
+      const executed = boundStatement(statement, capped);
       const rows = await runQuery(executed);
+      const page = rows.slice(0, capped);
       return {
-        rows,
-        rowCount: rows.length,
+        rows: page,
+        rowCount: page.length,
+        truncated: rows.length > page.length,
         sql: statement,
-        provenance: provenance(executed, sourceSystemsOf(rows)),
+        provenance: provenance(executed, sourceSystemsOf(page)),
       };
     },
   };

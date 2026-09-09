@@ -518,3 +518,20 @@ export function assertReadOnlySql(sql: string): string {
   }
   return trimmed;
 }
+
+/**
+ * Wrap a caller's statement so the engine stops early.
+ *
+ * `/api/sql` and `/mcp` capped rows in JavaScript, after DuckDB had already
+ * produced them: `SELECT * FROM properties` materialised all 215,806 rows to
+ * return 200. The cap was presentation, not a bound on the work, on an
+ * unauthenticated endpoint.
+ *
+ * One extra row is requested so a caller can be told the result was truncated
+ * instead of being handed a silently short answer. An inner LIMIT is untouched
+ * and still wins when it is smaller.
+ */
+export function boundStatement(sql: string, limit: number): string {
+  const trimmed = sql.trim().replace(/;\s*$/, "");
+  return `SELECT * FROM (\n${trimmed}\n) AS bounded_statement LIMIT ${Math.max(1, Math.floor(limit)) + 1}`;
+}
