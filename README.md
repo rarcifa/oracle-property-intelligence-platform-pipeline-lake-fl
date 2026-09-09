@@ -97,6 +97,20 @@ curl -sL "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-
 duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
 ```
 
+## Import the whole DAG as a CAR, from anyone's gateway
+
+The published `.car` files are reproducible build output and are not committed, but they do
+not need to be: the CAR's root **is** the published root CID, so any gateway will export the
+identical DAG on demand. Nothing here touches Filebase or this repository.
+
+```bash
+ROOT=$(jq -r .rootCid artifacts/latest.json)
+[ "$ROOT" = "$(jq -r .carCid artifacts/latest.json)" ] && echo "car root == published root"
+curl -sL -H 'Accept: application/vnd.ipld.car' \
+  "https://ipfs.filebase.io/ipfs/$ROOT?format=car" -o lake.car     # 326,147,854 bytes
+ipfs dag import lake.car
+```
+
 ## Or hit the deployed runtime
 
 ```bash
