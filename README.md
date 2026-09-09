@@ -208,6 +208,13 @@ These are in `coverage.json` inside every published run, and in the source catal
 
 ### Found after this run was published
 
+Two city values in the DOR roll are source typos: `LAKDY LAKE` and `tavares`, one parcel
+each out of 215,806. They are published exactly as the roll writes them rather than being
+silently corrected, because the published table is meant to be the roll, not an improved
+version of it. Filters are case-insensitive (`upper(address_city) = ...`), so a search for
+Tavares still returns the lowercase row; `LAKDY LAKE` will not match a search for Lady Lake,
+and that is the one parcel it costs. Both show as their own entries in the city facet list.
+
 Unlike the limitations above, this one is **not** in the published `coverage.json`. It was
 found while auditing the runtime, after the run's CID was fixed, and recording it here was
 preferred to quietly leaving it out.
