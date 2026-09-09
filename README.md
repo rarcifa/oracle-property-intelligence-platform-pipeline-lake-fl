@@ -126,6 +126,28 @@ These are in `coverage.json` inside every published run, and in the source catal
 - **Coordinates come from the 2025 centroid release against the 2026 roll**, so 4,871
   parcels (2.26%) publish with null coordinates rather than being dropped.
 
+## What is not proven yet
+
+Three things are implemented and typecheck but have not been exercised, and they are listed
+here rather than counted as working.
+
+- **The chat agent has never called a model.** No `ANTHROPIC_API_KEY` was available in this
+  environment. The Vercel AI SDK path with its five Zod-schema tools and its citation
+  collector is written, and only the "no key returns 503" branch is test-covered. Export a
+  key and run it once before relying on it.
+- **DuckDB-WASM has never run in a real browser.** The mechanism is verified as far as it can
+  be without one: `ipfs.filebase.io` returns HTTP 206 with permissive CORS and an exposed
+  `Content-Range` for the 20 MB Parquet, and DuckDB over HTTPFS opened that exact gateway URL,
+  passed the 59-column schema gate and returned 215,806 rows. The in-browser bootstrap itself
+  is untested. It falls back to the server API and shows the reason, so a failure degrades
+  rather than breaks.
+- **Two groupings differ between the browser and server paths.** The out-of-state owner
+  ranking and the business totals are computed separately in each, which is the one place the
+  two could disagree.
+
+There is also no hosted runtime, no pull request and no demo video, because none of those
+were authorised.
+
 ## Team-kit usage
 
 `arceus` routed the work; `oracle` drove `onboard-county`, `county-discovery`,
