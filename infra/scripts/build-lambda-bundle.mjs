@@ -17,14 +17,16 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   cpSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync,
   existsSync,
-  statSync,
+  mkdirSync,
+  readFileSync,
   readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,6 +163,75 @@ for (const entry of readdirSync(duckdbDir, { withFileTypes: true })) {
   }
 }
 
+// Workspace-internal packages are not on any registry, so their compiled output
+// is copied into node_modules under the names the server imports. Omitting one
+// fails at COLD START, not at deploy: the function boots, the first request
+// hits an unresolvable import, and the stack looks healthy from CloudFormation.
+// `extra` carries non-code assets the package needs at runtime, which is how
+// the retrieval index travels.
+const WORKSPACE_PACKAGES = [
+  { name: "shared", extra: [] },
+  { name: "rag", extra: ["index-data"] },
+];
+
+for (const pkg of WORKSPACE_PACKAGES) {
+  const from = path.join(REPO_ROOT, "packages", pkg.name);
+  const to = path.join(BUNDLE, "node_modules", "@oracle-lake", pkg.name);
+  if (!existsSync(path.join(from, "dist"))) {
+    throw new Error(`packages/${pkg.name}/dist is missing. Run \`pnpm run build\` first.`);
+  }
+  mkdirSync(to, { recursive: true });
+  cpSync(path.join(from, "dist"), path.join(to, "dist"), { recursive: true });
+  cpSync(path.join(from, "package.json"), path.join(to, "package.json"));
+  for (const asset of pkg.extra) {
+    const assetFrom = path.join(from, asset);
+    if (!existsSync(assetFrom)) {
+      throw new Error(
+        `packages/${pkg.name}/${asset} is missing; the function would fail at runtime`,
+      );
+    }
+    cpSync(assetFrom, path.join(to, asset), { recursive: true });
+  }
+  log("bundled_workspace_package", { package: `@oracle-lake/${pkg.name}`, assets: pkg.extra });
+}
+
+// Every workspace import the compiled server actually makes must resolve from
+// inside the bundle. This exists because the retrieval package was silently
+// absent from an earlier bundle: the function would have deployed cleanly,
+// reported healthy, and then failed on the first request with an unresolvable
+// import. Scanning the emitted JavaScript catches that at build time, and
+// catches the next one automatically rather than relying on someone
+// remembering to update WORKSPACE_PACKAGES.
+const imported = new Set();
+const scan = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) scan(full);
+    else if (entry.name.endsWith(".js")) {
+      for (const match of readFileSync(full, "utf8").matchAll(
+        /["'](@oracle-lake\/[a-z0-9-]+)["']/g,
+      )) {
+        imported.add(match[1]);
+      }
+    }
+  }
+};
+scan(path.join(BUNDLE, "dist"));
+
+const bundleRequire = createRequire(path.join(BUNDLE, "dist", "lambda.js"));
+for (const specifier of [...imported].sort()) {
+  try {
+    bundleRequire.resolve(specifier);
+  } catch {
+    throw new Error(
+      `${specifier} is imported by the server but does not resolve from the bundle. ` +
+        "The function would deploy cleanly and then fail at cold start. " +
+        "Add it to WORKSPACE_PACKAGES.",
+    );
+  }
+}
+log("workspace_imports_resolved", { specifiers: [...imported].sort() });
+
 const UNZIPPED_LIMIT_BYTES = 250 * 1024 * 1024;
 const finalBytes = dirBytes(BUNDLE);
 if (finalBytes > UNZIPPED_LIMIT_BYTES) {
@@ -168,17 +239,5 @@ if (finalBytes > UNZIPPED_LIMIT_BYTES) {
     `Bundle is ${finalBytes} bytes unzipped, over Lambda's ${UNZIPPED_LIMIT_BYTES} limit`,
   );
 }
-
-// The workspace-internal shared package is not on any registry, so its compiled
-// output is copied into node_modules under the name the server imports.
-const sharedTarget = path.join(BUNDLE, "node_modules", "@oracle-lake", "shared");
-mkdirSync(sharedTarget, { recursive: true });
-cpSync(path.join(REPO_ROOT, "packages", "shared", "dist"), path.join(sharedTarget, "dist"), {
-  recursive: true,
-});
-cpSync(
-  path.join(REPO_ROOT, "packages", "shared", "package.json"),
-  path.join(sharedTarget, "package.json"),
-);
 
 log("bundle_ready", { path: BUNDLE, bytes: dirBytes(BUNDLE) });

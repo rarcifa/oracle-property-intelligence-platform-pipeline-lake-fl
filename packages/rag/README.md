@@ -102,7 +102,8 @@ src/corpus/artifacts.ts  coverage, limitations, publication, samples
 src/corpus/build.ts      orchestration; pure function of the checkout
 src/index/lsa.ts         TF-IDF, gram matrix, power-iteration SVD, query fold-in
 src/index/bm25.ts        Okapi BM25 with absolute-scale saturation
-src/index/build-index.ts writes the committed index
+src/index/build-index.ts writes the committed index (build-time only)
+src/index/paths.ts       where the committed index lives — no build-time imports
 src/index/load.ts        validates and prepares it
 src/retrieve.ts          the pipeline and the confidence policy
 src/eval/                the evaluation set and its harness
