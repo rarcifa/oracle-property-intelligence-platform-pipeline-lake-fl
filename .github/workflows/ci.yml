@@ -49,11 +49,37 @@ jobs:
       # Skipped tests read as a pass, so CI was green without ever touching the
       # query layer, the REST routes or the MCP tools. Point them at the newest
       # published run so they actually run.
-      - name: Resolve the published Parquet the tests query
+      # Fetch the published Parquet once, then point the suites at the local
+      # copy. They used to range-read it from a public gateway on every query,
+      # which made a green run depend on gateway latency from a datacenter IP:
+      # a freshly published CID is cold, GitHub runners are throttled, and the
+      # suites timed out at 60 s each while the file was perfectly retrievable
+      # minutes later. Retrievability is still asserted below — once, loudly,
+      # where a failure means what it says — rather than implicitly in every
+      # test's timeout budget.
+      - name: Fetch the published Parquet the tests query
         run: |
           ROOT=$(jq -r .rootCid artifacts/latest.json)
           test -n "$ROOT" && test "$ROOT" != "null"
-          echo "ORACLE_PARQUET_URL=https://ipfs.filebase.io/ipfs/$ROOT/query-table.parquet" >> "$GITHUB_ENV"
+          URL="https://ipfs.filebase.io/ipfs/$ROOT/query-table.parquet"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL --max-time 300 "$URL" -o /tmp/query-table.parquet; then
+              echo "::notice::fetched the published Parquet on attempt $attempt"
+              break
+            fi
+            echo "::warning::attempt $attempt could not fetch $URL; a just-published CID can be cold"
+            sleep $((attempt * 20))
+          done
+          test -s /tmp/query-table.parquet
+          echo "ORACLE_PARQUET_PATH=/tmp/query-table.parquet" >> "$GITHUB_ENV"
+          echo "ORACLE_PUBLISHED_PARQUET_URL=$URL" >> "$GITHUB_ENV"
+
+      # The retrievability signal the change above removes from the test path,
+      # kept as its own check so it fails as itself rather than as a timeout.
+      - name: Assert the published root is retrievable from a public gateway
+        run: |
+          curl -fsSL --max-time 300 -o /dev/null --range 0-1023 "$ORACLE_PUBLISHED_PARQUET_URL"
+          echo "::notice::$ORACLE_PUBLISHED_PARQUET_URL serves range requests"
 
       - name: Format
         run: just format
@@ -67,7 +93,7 @@ jobs:
       - name: Test
         run: just test
 
-      # A guard, not a test: if ORACLE_PARQUET_URL ever stops resolving, the
+      # A guard, not a test: if the Parquet source ever stops resolving, the
       # suites above go back to skipping and CI goes back to passing without
       # exercising anything. Fail loudly instead.
       - name: Assert the query-layer suites actually ran
