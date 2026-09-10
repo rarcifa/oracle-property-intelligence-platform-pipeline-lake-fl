@@ -233,6 +233,25 @@ export class OracleDataStore {
     }
     this.activeSource = opened;
 
+    // Take the AWS credentials away from DuckDB before anything can read them.
+    //
+    // httpfs picks up the Lambda's execution-role credentials from the standard
+    // AWS_* environment variables, and `/api/sql` is public and unauthenticated:
+    // `current_setting('s3_access_key_id')` returned a live STS key, a 40-char
+    // secret and a 1,160-char session token to anonymous callers. The SQL guard
+    // is supposed to stop that and its denylist did not, so the credentials do
+    // not stay in the session waiting for the next gap in it — the published
+    // data is read over public HTTPS gateways and needs no AWS identity at all.
+    for (const setting of [
+      "s3_access_key_id",
+      "s3_secret_access_key",
+      "s3_session_token",
+      "s3_region",
+      "s3_endpoint",
+    ]) {
+      await connection.run(`SET ${setting}=''`);
+    }
+
     // Bound the work any one statement may do. This sits before the lockdown
     // because `lock_configuration` freezes the configuration immediately after.
     await connection.run(`SET memory_limit='${resolveMemoryLimit()}'`);

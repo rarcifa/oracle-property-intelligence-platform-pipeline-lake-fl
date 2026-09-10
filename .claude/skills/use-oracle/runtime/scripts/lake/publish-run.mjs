@@ -259,7 +259,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
     // is deliberately not committed. The CAR's DAG root IS the run root, so this
     // locator is retrievable from any gateway with `?format=car`, and the local
     // path is kept beside it only as a build detail.
-    rootCarPath: `ipfs://${rootCid}?format=car`,
+    rootCarPath: `ipfs://${dag.rootCid}?format=car`,
     rootCarLocalPath: path.relative(REPO_ROOT, carPath),
     entries: dag.entries,
   });

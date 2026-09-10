@@ -202,18 +202,12 @@ describe("assertReadOnlySql: filesystem and engine access", () => {
   // and glob() with a directory listing. A read-only SELECT is not the same
   // thing as a safe SELECT.
   it("rejects reading a file off the host", () => {
-    expect(() => assertReadOnlySql("SELECT * FROM read_text('/etc/passwd')")).toThrow(
-      /read_text.*not allowed/i,
-    );
-    expect(() => assertReadOnlySql("SELECT * FROM read_blob('/etc/passwd')")).toThrow(
-      /read_blob.*not allowed/i,
-    );
+    expect(() => assertReadOnlySql("SELECT * FROM read_text('/etc/passwd')")).toThrow(/read_text/i);
+    expect(() => assertReadOnlySql("SELECT * FROM read_blob('/etc/passwd')")).toThrow(/read_blob/i);
   });
 
   it("rejects listing the filesystem", () => {
-    expect(() => assertReadOnlySql("SELECT count(*) FROM glob('/Users/*')")).toThrow(
-      /glob.*not allowed/i,
-    );
+    expect(() => assertReadOnlySql("SELECT count(*) FROM glob('/Users/*')")).toThrow(/glob/i);
   });
 
   it("rejects reading arbitrary data files, not just the obvious ones", () => {
@@ -223,42 +217,38 @@ describe("assertReadOnlySql: filesystem and engine access", () => {
       "SELECT * FROM read_json_auto('/tmp/x.json')",
       "SELECT * FROM parquet_scan('/tmp/x.parquet')",
     ]) {
-      expect(() => assertReadOnlySql(sql)).toThrow(/not allowed/i);
+      expect(() => assertReadOnlySql(sql)).toThrow(/not on the allowlist|not allowed/i);
     }
   });
 
   it("rejects reaching another database engine", () => {
     expect(() => assertReadOnlySql("SELECT * FROM postgres_scan('h','p','t')")).toThrow(
-      /postgres_scan.*not allowed/i,
+      /postgres_scan/i,
     );
     expect(() => assertReadOnlySql("SELECT * FROM sqlite_scan('/tmp/a.db','t')")).toThrow(
-      /sqlite_scan.*not allowed/i,
+      /sqlite_scan/i,
     );
   });
 
   it("rejects reading the environment or the engine's own configuration", () => {
-    expect(() => assertReadOnlySql("SELECT getenv('S3_SECRET_ACCESS_KEY')")).toThrow(
-      /getenv.*not allowed/i,
-    );
-    expect(() => assertReadOnlySql("SELECT * FROM duckdb_settings()")).toThrow(
-      /duckdb_settings.*not allowed/i,
-    );
+    expect(() => assertReadOnlySql("SELECT getenv('S3_SECRET_ACCESS_KEY')")).toThrow(/getenv/i);
+    expect(() => assertReadOnlySql("SELECT * FROM duckdb_settings()")).toThrow(/duckdb_settings/i);
     // Quoting the identifier used to walk straight past the allowlist: the
     // denylist matched `\bduckdb_settings\s*\(`, and `"duckdb_settings"(` has a
     // quote between the name and the paren. The bare form above was the only
     // shape tested, so this suite certified a boundary a trivial variation
     // defeated, and the deployed endpoint disclosed extension_directory.
     expect(() => assertReadOnlySql('SELECT * FROM "duckdb_settings"()')).toThrow(
-      /duckdb_settings.*not allowed/i,
+      /duckdb_settings/i,
     );
     expect(() => assertReadOnlySql('SELECT * FROM "duckdb_functions"()')).toThrow(
-      /duckdb_functions.*not allowed/i,
+      /duckdb_functions/i,
     );
     expect(() => assertReadOnlySql("SELECT * FROM \"read_text\"('/etc/passwd')")).toThrow(
-      /read_text.*not allowed/i,
+      /read_text/i,
     );
     expect(() => assertReadOnlySql("SELECT * FROM `read_csv_auto`('/etc/passwd')")).toThrow(
-      /read_csv_auto.*not allowed/i,
+      /read_csv_auto/i,
     );
     // A quoted identifier must not become a way to smuggle a mutating keyword.
     expect(() => assertReadOnlySql('SELECT * FROM "properties" WHERE "x" = 1')).not.toThrow();

@@ -411,60 +411,6 @@ export function clampLimit(limit: number | undefined): number {
  * directory. The DuckDB connection is separately locked down in
  * `packages/server/src/data/duckdb.ts`; this is the first of the two layers.
  */
-const FILESYSTEM_FUNCTIONS = [
-  "read_text",
-  "read_blob",
-  "read_csv",
-  "read_csv_auto",
-  "read_parquet",
-  "parquet_scan",
-  "read_json",
-  "read_json_auto",
-  "read_ndjson",
-  "read_ndjson_auto",
-  "read_xlsx",
-  "sniff_csv",
-  "glob",
-  "delta_scan",
-  "iceberg_scan",
-  "postgres_scan",
-  "postgres_query",
-  "mysql_scan",
-  "mysql_query",
-  "sqlite_scan",
-  "sqlite_query",
-  "parquet_metadata",
-  "parquet_schema",
-  "parquet_file_metadata",
-  "parquet_kv_metadata",
-  "duckdb_settings",
-  "duckdb_extensions",
-  // The rest of the `duckdb_*` introspection family. Only `duckdb_settings` and
-  // `duckdb_extensions` were listed, so `duckdb_functions()` answered on the
-  // deployed endpoint and enumerated the engine's surface. None of these read
-  // the published table, which is the only thing this endpoint exists to serve.
-  "duckdb_functions",
-  "duckdb_databases",
-  "duckdb_schemas",
-  "duckdb_tables",
-  "duckdb_views",
-  "duckdb_columns",
-  "duckdb_constraints",
-  "duckdb_indexes",
-  "duckdb_types",
-  "duckdb_secrets",
-  "duckdb_temporary_files",
-  "duckdb_memory",
-  "duckdb_keywords",
-  "duckdb_optimizers",
-  "duckdb_log",
-  "duckdb_logs",
-  "pragma_database_size",
-  "pragma_storage_info",
-  "pragma_metadata_info",
-  "getenv",
-];
-
 const MUTATING_KEYWORDS = [
   "insert",
   "update",
@@ -497,31 +443,292 @@ const MUTATING_KEYWORDS = [
 ];
 
 /** Strip string literals and comments so keyword checks cannot be fooled. */
-function stripLiteralsAndComments(sql: string): string {
-  return (
-    sql
-      .replace(/--[^\n]*/g, " ")
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/'(?:''|[^'])*'/g, " 'literal' ")
-      // A quoted IDENTIFIER is unwrapped, not erased. Replacing it with a
-      // placeholder destroyed the name before any denylist could see it, so
-      // `"duckdb_settings"()` passed a guard that stopped `duckdb_settings()` and
-      // the deployed endpoint disclosed extension_directory through it. Keeping
-      // the text means the checks below see the identifier the engine will see.
-      .replace(/"((?:""|[^"])*)"/g, (_match, name: string) => ` ${name.replace(/""/g, '"')} `)
-      .replace(/\$\$[\s\S]*?\$\$/g, " 'dollar' ")
-  );
-}
+/**
+ * Functions a caller may invoke.
+ *
+ * An allowlist, deliberately, replacing an enumerated denylist that failed three
+ * times in a row — each time on something nobody had listed. `duckdb_settings()`
+ * was blocked while `"duckdb_settings"()` was not; then the rest of the
+ * `duckdb_*` family; then `current_setting`, which returned a live AWS session
+ * token to anonymous callers. A denylist can only ever be as complete as the
+ * last person's imagination. Anything absent here is refused, so the failure
+ * mode of forgetting an entry is a rejected query rather than a disclosed
+ * secret.
+ */
+const ALLOWED_FUNCTIONS = new Set([
+  // Aggregates
+  "count",
+  "sum",
+  "avg",
+  "min",
+  "max",
+  "median",
+  "mode",
+  "stddev",
+  "stddev_pop",
+  "stddev_samp",
+  "var_pop",
+  "var_samp",
+  "variance",
+  "quantile",
+  "quantile_cont",
+  "quantile_disc",
+  "approx_count_distinct",
+  "arg_min",
+  "arg_max",
+  "first",
+  "last",
+  "list",
+  "string_agg",
+  "group_concat",
+  "bool_and",
+  "bool_or",
+  "any_value",
+  "corr",
+  "covar_pop",
+  "covar_samp",
+  "entropy",
+  "histogram",
+  "product",
+  // Window
+  "row_number",
+  "rank",
+  "dense_rank",
+  "percent_rank",
+  "cume_dist",
+  "ntile",
+  "lag",
+  "lead",
+  "nth_value",
+  // Conditional and null handling
+  "coalesce",
+  "ifnull",
+  "nullif",
+  "nvl",
+  "greatest",
+  "least",
+  "if",
+  // Numeric
+  "abs",
+  "ceil",
+  "ceiling",
+  "floor",
+  "round",
+  "trunc",
+  "sign",
+  "sqrt",
+  "cbrt",
+  "exp",
+  "ln",
+  "log",
+  "log2",
+  "log10",
+  "pow",
+  "power",
+  "mod",
+  "gcd",
+  "lcm",
+  "acos",
+  "asin",
+  "atan",
+  "atan2",
+  "cos",
+  "sin",
+  "tan",
+  "cot",
+  "degrees",
+  "radians",
+  "pi",
+  "random",
+  "setseed",
+  "even",
+  "factorial",
+  "bit_count",
+  // String
+  "length",
+  "lower",
+  "upper",
+  "trim",
+  "ltrim",
+  "rtrim",
+  "lpad",
+  "rpad",
+  "substr",
+  "substring",
+  "concat",
+  "concat_ws",
+  "replace",
+  "reverse",
+  "repeat",
+  "split_part",
+  "starts_with",
+  "ends_with",
+  "contains",
+  "instr",
+  "position",
+  "strpos",
+  "left",
+  "right",
+  "md5",
+  "sha256",
+  "hash",
+  "format",
+  "printf",
+  "regexp_matches",
+  "regexp_replace",
+  "regexp_extract",
+  "regexp_extract_all",
+  "regexp_split_to_array",
+  "string_split",
+  "str_split",
+  "translate",
+  "ascii",
+  "chr",
+  "nfc_normalize",
+  "strip_accents",
+  "levenshtein",
+  "jaccard",
+  // Dates and times
+  "date_part",
+  "date_trunc",
+  "date_diff",
+  "datediff",
+  "datepart",
+  "datesub",
+  "date_add",
+  "age",
+  "century",
+  "day",
+  "dayname",
+  "dayofmonth",
+  "dayofweek",
+  "dayofyear",
+  "epoch",
+  "epoch_ms",
+  "extract",
+  "hour",
+  "isodow",
+  "isoyear",
+  "microsecond",
+  "millisecond",
+  "minute",
+  "month",
+  "monthname",
+  "quarter",
+  "second",
+  "week",
+  "weekday",
+  "weekofyear",
+  "year",
+  "yearweek",
+  "strftime",
+  "strptime",
+  "to_timestamp",
+  "make_date",
+  "make_time",
+  "make_timestamp",
+  "current_date",
+  "today",
+  // Casting and typing
+  "cast",
+  "try_cast",
+  "typeof",
+  "to_json",
+  "json_extract",
+  "json_extract_string",
+  "json_value",
+  "json_array_length",
+  "json_keys",
+  "json_type",
+  // Lists and structs used by the query layer
+  "list_value",
+  "list_contains",
+  "list_position",
+  "list_sort",
+  "list_distinct",
+  "len",
+  "unnest",
+  "array_length",
+  "array_contains",
+  "struct_pack",
+  // Table-producing helpers the product itself issues
+  "range",
+  "generate_series",
+]);
 
 /**
- * Remove the remaining identifier quoting styles.
+ * Scrub a statement in ONE pass, the way the engine reads it.
  *
- * DuckDB accepts `` `name` `` and `[name]` alongside `"name"`, which
- * `stripLiteralsAndComments` already unwraps. Dropping these characters closes
- * the same gap for the other two spellings.
+ * Sequential regexes could not get this right: a `'` inside a double-quoted
+ * identifier made the literal rule swallow the rest of the statement, so
+ * `SELECT "it's"(), current_setting('extension_directory')` slipped through.
+ * Quoted identifiers are unwrapped so the checks see the name the engine will
+ * see; string literals collapse to a placeholder; comments disappear.
  */
-function unquoteIdentifiers(sql: string): string {
-  return sql.replace(/[`\][]/g, "");
+export function scrubSql(sql: string): string {
+  let out = "";
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i]!;
+    const next = sql[i + 1];
+    if (ch === "-" && next === "-") {
+      while (i < sql.length && sql[i] !== "\n") i += 1;
+      out += " ";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < sql.length && !(sql[i] === "*" && sql[i + 1] === "/")) i += 1;
+      i += 2;
+      out += " ";
+      continue;
+    }
+    if (ch === "'") {
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") {
+          i += 2;
+          continue;
+        }
+        if (sql[i] === "'") {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      out += " 'literal' ";
+      continue;
+    }
+    if (ch === '"' || ch === "`") {
+      const quote = ch;
+      i += 1;
+      let name = "";
+      while (i < sql.length) {
+        if (sql[i] === quote && sql[i + 1] === quote) {
+          name += quote;
+          i += 2;
+          continue;
+        }
+        if (sql[i] === quote) {
+          i += 1;
+          break;
+        }
+        name += sql[i];
+        i += 1;
+      }
+      // Unwrapped, not erased: the denylist and allowlist must read the name.
+      out += name;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/** Every identifier invoked as a function, lowercased. */
+export function calledFunctions(scrubbed: string): string[] {
+  return [...scrubbed.matchAll(/([A-Za-z_][A-Za-z0-9_$]*)\s*\(/g)].map((m) => m[1]!.toLowerCase());
 }
 
 /**
@@ -542,7 +749,7 @@ export function assertReadOnlySql(sql: string): string {
   // form could not — and the deployed `/api/sql` disclosed `extension_directory`
   // through it. Only the quoting characters go: the identifier text itself is
   // preserved, so nothing that was allowed before becomes rejected now.
-  const scrubbed = unquoteIdentifiers(stripLiteralsAndComments(trimmed));
+  const scrubbed = scrubSql(trimmed);
   if (scrubbed.includes(";")) {
     throw new Error("Only a single statement is allowed");
   }
@@ -555,11 +762,71 @@ export function assertReadOnlySql(sql: string): string {
       throw new Error(`Statement rejected: "${keyword}" is not allowed in a read-only query`);
     }
   }
-  for (const fn of FILESYSTEM_FUNCTIONS) {
-    const pattern = new RegExp(`\\b${fn}\\s*\\(`, "i");
-    if (pattern.test(scrubbed)) {
+  // Allowlist. Anything not named above is refused, whether or not anyone
+  // thought to forbid it — SQL keywords that take parentheses are skipped
+  // because they are syntax, not callable functions.
+  const SYNTAX_WORDS = new Set([
+    "select",
+    "from",
+    "where",
+    "and",
+    "or",
+    "not",
+    "in",
+    "on",
+    "as",
+    "by",
+    "group",
+    "order",
+    "having",
+    "limit",
+    "offset",
+    "when",
+    "then",
+    "else",
+    "end",
+    "case",
+    "over",
+    "partition",
+    "filter",
+    "with",
+    "union",
+    "all",
+    "distinct",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "full",
+    "using",
+    "values",
+    "exists",
+    "between",
+    "like",
+    "ilike",
+    "is",
+    "null",
+    "asc",
+    "desc",
+    "interval",
+    "row",
+    "rows",
+    "range",
+    "preceding",
+    "following",
+    "unbounded",
+    "current",
+    "within",
+    "cast",
+    "try_cast",
+    "extract",
+  ]);
+  for (const fn of calledFunctions(scrubbed)) {
+    if (SYNTAX_WORDS.has(fn)) continue;
+    if (!ALLOWED_FUNCTIONS.has(fn)) {
       throw new Error(
-        `Statement rejected: "${fn}" reads outside the published dataset and is not allowed`,
+        `Statement rejected: "${fn}" is not on the allowlist of functions this endpoint exposes`,
       );
     }
   }
