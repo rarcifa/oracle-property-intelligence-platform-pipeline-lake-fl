@@ -50,6 +50,15 @@ describe("chat timeout budget", () => {
     const declared = /timeout:\s*Duration\.seconds\((\d+)\)/.exec(stack);
     expect(declared, "could not find the Lambda timeout in the CDK stack").not.toBeNull();
     const lambdaTimeoutMs = Number(declared![1]) * 1000;
-    expect(loadConfig({}).chatTimeoutMs).toBeLessThan(lambdaTimeoutMs);
+    // A Function URL in BUFFERED invoke mode kills the request at 60 s however
+    // long the function itself may run, so the Lambda timeout is not on its own
+    // a sufficient bound. Assert against whichever ceiling is actually lower,
+    // or the abort silently becomes unreachable again.
+    const BUFFERED_FUNCTION_URL_LIMIT_MS = 60_000;
+    const bufferedMode = !/invokeMode/i.test(stack);
+    const wall = bufferedMode
+      ? Math.min(lambdaTimeoutMs, BUFFERED_FUNCTION_URL_LIMIT_MS)
+      : lambdaTimeoutMs;
+    expect(loadConfig({}).chatTimeoutMs).toBeLessThan(wall);
   });
 });

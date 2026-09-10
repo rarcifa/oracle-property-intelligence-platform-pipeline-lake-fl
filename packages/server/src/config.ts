@@ -107,16 +107,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),
     anthropicApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
     chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-fable-5-1",
-    // Must stay under the Lambda timeout so this abort fires first and the
-    // caller gets the agent's own message rather than a platform error.
+    // Must fire before the request is killed from outside, so the caller gets
+    // this agent's own message rather than a dropped connection.
     //
-    // This has now moved twice. It was 120 s against a 60 s Lambda, where the
-    // abort could never fire; that was corrected to 45 s. But 45 s was below
-    // what the work actually takes: the loop runs up to ten tool calls, which
-    // measured 15-27 s idle and exceeded 45 s under concurrent load, so every
-    // request aborted during an evaluation. The real fix was to raise the
-    // Lambda ceiling and keep a genuine margin under it, rather than to keep
-    // trimming the budget until the abort fit inside a limit that was too low.
-    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "120000", 10),
+    // The binding limit is NOT the Lambda timeout. A Lambda Function URL in
+    // BUFFERED invoke mode caps a request at 60 s no matter how long the
+    // function may run, so the stack's 150 s ceiling is headroom, not the wall.
+    // Measured: the loop answers in 31-59 s, and under concurrency a third of
+    // requests cross 60 s and have the connection closed under them.
+    //
+    // This budget has moved three times, twice wrongly. 120 s against a 60 s
+    // Lambda could never fire; 45 s was below what the work costs and aborted
+    // healthy requests; 120 s against a 150 s Lambda missed that the Function
+    // URL, not the Lambda, is what kills the request. 50 s is under the real
+    // wall with margin. Raising it past 60 s requires RESPONSE_STREAM invoke
+    // mode first — the limit is the transport, not this number.
+    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "50000", 10),
   };
 }
