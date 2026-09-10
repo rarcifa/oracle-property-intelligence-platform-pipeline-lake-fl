@@ -95,6 +95,15 @@ export function DataSourceProvider({ children }: { children: ReactNode }): JSX.E
       setMode("connecting");
       setMetaError(null);
 
+      // Start the WASM runtime NOW, not after the run pointer arrives. It costs
+      // about nine seconds — two CDN round trips and the parquet extension —
+      // and none of it depends on which CID we are about to read, so the two
+      // waits used to run back to back for no reason. Errors are swallowed
+      // here: this is a warm-up, and the real attempt below reports failures.
+      const warming = import("./duckdbSource.js")
+        .then((module) => module.warmDuckDbRuntime())
+        .catch(() => undefined);
+
       let runMeta: RunMetaResponse;
       try {
         runMeta = await getJson<RunMetaResponse>("/api/meta/run");
@@ -132,8 +141,9 @@ export function DataSourceProvider({ children }: { children: ReactNode }): JSX.E
       }
 
       try {
-        // Imported on demand so the DuckDB-WASM bootstrap and Arrow decoder are
-        // not in the first paint's critical path.
+        // Already in flight since the top of `connect`; awaiting it here just
+        // joins that work rather than starting it.
+        await warming;
         const { createDuckDbSource } = await import("./duckdbSource.js");
         const browser = await createDuckDbSource({
           rootCid,

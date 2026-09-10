@@ -135,29 +135,30 @@ function toFacetValues(rows: readonly Record<string, unknown>[]): FacetValue[] {
 /** Budget for pointing the booted runtime at one gateway and reading its footer. */
 const ATTACH_TIMEOUT_MS = 15_000;
 
-export async function createDuckDbSource(options: {
-  rootCid: string;
-  runId: string | null;
-  timeoutMs?: number;
-}): Promise<BrowserDataSource> {
-  // Several gateways, not one. Pinning `ipfs.filebase.io` — the vendor that
-  // also pins the data — made the browser depend on a single account staying
-  // live, against this project's own rule that a vendor URL is not the source of
-  // truth. Each candidate asks for the same CID; the first that opens wins.
-  const candidates = parquetCandidates(options.rootCid);
-  const timeoutMs = options.timeoutMs ?? DUCKDB_INIT_TIMEOUT_MS;
-  let url = candidates[0]!;
+/** The instantiated WASM runtime, shared across calls. */
+let runtimePromise: Promise<{
+  db: duckdb.AsyncDuckDB;
+  worker: Worker;
+  workerUrl: string;
+}> | null = null;
 
-  // The WASM runtime is instantiated ONCE and the gateway is retried around it.
-  // Booting per candidate was tried and was a regression: instantiate alone
-  // costs about 16 s, so splitting the budget across four gateways timed every
-  // one of them out and the page silently fell back to the server path. Only
-  // attaching the file and reading its footer is per-gateway, and that is cheap.
-  const bootRuntime = async (): Promise<{
-    db: duckdb.AsyncDuckDB;
-    worker: Worker;
-    workerUrl: string;
-  }> => {
+/**
+ * Start the WASM runtime without waiting for the published run pointer.
+ *
+ * Instantiating costs about nine seconds — two jsDelivr round trips and the
+ * parquet extension — and none of it depends on which CID we are about to read.
+ * It used to begin only after `/api/meta/run` resolved, so the two waits ran
+ * back to back. Kicking it off at page load overlaps them.
+ *
+ * A failure is never cached: a rejected promise is still a promise, and a
+ * transient CDN blip must not disable the browser path for the tab's lifetime.
+ */
+export function warmDuckDbRuntime(): Promise<{
+  db: duckdb.AsyncDuckDB;
+  worker: Worker;
+  workerUrl: string;
+}> {
+  runtimePromise ??= (async () => {
     const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
     if (!bundle.mainWorker) {
       throw new Error("No DuckDB-WASM worker bundle is available for this browser");
@@ -173,9 +174,33 @@ export async function createDuckDbSource(options: {
     const db = new duckdb.AsyncDuckDB(logger, worker);
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
     return { db, worker, workerUrl };
-  };
+  })().catch((error: unknown) => {
+    runtimePromise = null;
+    throw error;
+  });
+  return runtimePromise;
+}
 
-  const runtime = await withTimeout(bootRuntime(), timeoutMs, "DuckDB-WASM initialisation");
+export async function createDuckDbSource(options: {
+  rootCid: string;
+  runId: string | null;
+  timeoutMs?: number;
+}): Promise<BrowserDataSource> {
+  // Several gateways, not one. Pinning `ipfs.filebase.io` — the vendor that
+  // also pins the data — made the browser depend on a single account staying
+  // live, against this project's own rule that a vendor URL is not the source of
+  // truth. Each candidate asks for the same CID; the first that opens wins.
+  const candidates = parquetCandidates(options.rootCid);
+  const timeoutMs = options.timeoutMs ?? DUCKDB_INIT_TIMEOUT_MS;
+  let url = candidates[0]!;
+
+  // The runtime is instantiated once per tab and the gateway is retried around
+  // it. Booting per candidate was tried and was a regression: instantiate alone
+  // costs about nine seconds, so splitting the budget across four gateways timed
+  // every one of them out and the page silently fell back to the server path.
+  // Only attaching the file and reading its footer is per-gateway, and that is
+  // cheap.
+  const runtime = await withTimeout(warmDuckDbRuntime(), timeoutMs, "DuckDB-WASM initialisation");
   const { db, worker, workerUrl } = runtime;
 
   /** Point the instantiated runtime at one gateway and prove it reads. */
