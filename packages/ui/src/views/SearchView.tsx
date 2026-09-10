@@ -18,6 +18,7 @@ import { Pager } from "../components/Pager.js";
 import { ErrorPanel, Panel, Skeleton } from "../components/Primitives.js";
 import { PropertyTable } from "../components/PropertyTable.js";
 import { SqlBlock } from "../components/SqlBlock.js";
+import { SemanticSearchPanel } from "./SemanticSearchPanel.js";
 import { useDataSource } from "../data/DataSourceProvider.js";
 import { useAsync } from "../hooks/useAsync.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -474,16 +475,7 @@ export function SearchView(): JSX.Element {
             : `Show filters${activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}`}
         </button>
 
-        <Panel
-          title="Search is structured, not semantic"
-          subtitle="These filters compile to SQL against the published table, and every result is exact. For a question in plain English — over the parcels and over the documentation about them — use Ask, or POST /api/search, which returns both."
-        >
-          <p className="dim" style={{ margin: 0, fontSize: 12.5 }}>
-            The semantic corpus is not searched here. Naming it plainly because a reader told
-            &ldquo;semantic retrieval is under Search&rdquo; would look for it on this page and not
-            find it.
-          </p>
-        </Panel>
+        <SemanticSearchPanel />
 
         <Panel
           title="Map"
