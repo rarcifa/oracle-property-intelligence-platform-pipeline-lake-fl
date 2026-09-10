@@ -1,0 +1,19 @@
+{
+  "name": "@oracle-lake/infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CDK stack for the Lake County hosted runtime",
+  "scripts": {
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --require-approval never",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1029.0",
+    "aws-cdk-lib": "^2.219.0",
+    "constructs": "^10.4.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

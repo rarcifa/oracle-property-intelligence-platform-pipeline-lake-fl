@@ -1,0 +1,289 @@
+/**
+ * Append-only run history for a county's publications.
+ *
+ * Each run pins a new immutable snapshot and re-points one mutable IPNS name
+ * at it. The history is what keeps the superseded snapshots citable: it holds
+ * every prior root, manifest and CAR CID, the sources and windows that were
+ * read, the per-table row deltas that prove the run actually ingested
+ * something new, the limitations that were hit, and which gateways served the
+ * bytes back. Appending is therefore the only permitted mutation — a prior
+ * entry can never be edited, re-numbered or dropped, because a rewritten
+ * history is indistinguishable from a fabricated one.
+ *
+ * @module core/run-history
+ */
+
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+
+import { isCidV1Base32 } from "./cid.mjs";
+
+/** Schema version stamped into every history document this runtime writes. */
+export const RUN_HISTORY_SCHEMA_VERSION = "elephant.run-history.v1";
+
+const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+const ISO_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const IPNS_NAME_PATTERN = /^k[a-z0-9]{20,}$/;
+
+const cidSchema = z
+  .string()
+  .refine(isCidV1Base32, "must be a CIDv1 base32 string");
+const isoTimestamp = z
+  .string()
+  .regex(ISO_TIMESTAMP_PATTERN, "must be an ISO-8601 UTC timestamp");
+const counter = z.number().int().nonnegative();
+
+/** One source read by a run, with the window that was requested from it. */
+export const runSourceSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    url: z.string().url(),
+    window: z.string().trim().min(1).nullable(),
+    recordCount: counter,
+  })
+  .strict();
+
+/** Per-table row accounting, the evidence that ingestion is ongoing. */
+export const runTableSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    rows: counter,
+    inserted: counter,
+    updated: counter,
+    unchanged: counter,
+    removed: counter,
+  })
+  .strict();
+
+/** One immutable, already-published run. */
+export const runRecordSchema = z
+  .object({
+    runId: z.string().regex(RUN_ID_PATTERN, "must be a stable run identifier"),
+    startedAt: isoTimestamp,
+    finishedAt: isoTimestamp,
+    mode: z.enum(["full", "incremental"]),
+    sources: z.array(runSourceSchema),
+    tables: z.array(runTableSchema),
+    limitations: z.array(z.string().trim().min(1)),
+    rootCid: cidSchema,
+    manifestCid: cidSchema,
+    carCid: cidSchema,
+    ipnsName: z
+      .string()
+      .regex(IPNS_NAME_PATTERN, "must be an IPNS network key")
+      .nullable(),
+    resolvedCid: cidSchema.nullable(),
+    verifiedGateways: z.array(z.string().url()),
+    status: z.enum(["succeeded", "partial", "failed"]),
+  })
+  .strict()
+  .refine(
+    (run) => Date.parse(run.finishedAt) >= Date.parse(run.startedAt),
+    "finishedAt must not precede startedAt",
+  );
+
+/** The whole history document, newest run first. */
+export const runHistorySchema = z
+  .object({
+    schemaVersion: z.literal(RUN_HISTORY_SCHEMA_VERSION),
+    runs: z.array(runRecordSchema),
+  })
+  .strict()
+  .refine((history) => {
+    const ids = history.runs.map((run) => run.runId);
+    return new Set(ids).size === ids.length;
+  }, "runs must have unique runId values");
+
+/**
+ * Render Zod issues as one readable, actionable error message.
+ *
+ * @param {import("zod").ZodError} error validation error
+ * @returns {string}
+ */
+function describeIssues(error) {
+  return error.issues
+    .map((issue) => {
+      const location =
+        issue.path.length === 0 ? "<root>" : issue.path.join(".");
+      return `${location}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+/**
+ * Validate a run history document, throwing a single clear error.
+ *
+ * @param {unknown} value candidate history
+ * @returns {import("zod").infer<typeof runHistorySchema>} the validated history
+ */
+export function validateRunHistory(value) {
+  const result = runHistorySchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid run history: ${describeIssues(result.error)}`);
+  }
+  return result.data;
+}
+
+/**
+ * Validate a single run record, throwing a single clear error.
+ *
+ * @param {unknown} value candidate run record
+ * @returns {import("zod").infer<typeof runRecordSchema>} the validated record
+ */
+export function validateRunRecord(value) {
+  const result = runRecordSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid run record: ${describeIssues(result.error)}`);
+  }
+  return result.data;
+}
+
+/**
+ * Recursively serialize JSON with lexicographically sorted object keys, so two
+ * documents can be compared for meaning rather than for formatting.
+ *
+ * @param {unknown} value JSON-compatible value
+ * @returns {string}
+ */
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * Read a history file, keeping both the validated document and the runs
+ * exactly as they were stored, so an append can prove it changed nothing.
+ *
+ * @param {string} historyPath path to the history JSON file
+ * @returns {Promise<{ history: import("zod").infer<typeof runHistorySchema>, storedRuns: unknown[] }>}
+ */
+async function loadRunHistory(historyPath) {
+  let text;
+  try {
+    text = await readFile(historyPath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return {
+        history: { schemaVersion: RUN_HISTORY_SCHEMA_VERSION, runs: [] },
+        storedRuns: [],
+      };
+    }
+    throw error;
+  }
+  const parsed = JSON.parse(text);
+  return {
+    history: validateRunHistory(parsed),
+    storedRuns: Array.isArray(parsed?.runs) ? parsed.runs : [],
+  };
+}
+
+/**
+ * Read a run history from disk, returning an empty history when the file does
+ * not exist yet.
+ *
+ * @param {string} historyPath path to the history JSON file
+ * @returns {Promise<import("zod").infer<typeof runHistorySchema>>}
+ */
+export async function readRunHistory(historyPath) {
+  return (await loadRunHistory(historyPath)).history;
+}
+
+/**
+ * Prepend one completed run to the history and write it back.
+ *
+ * The only accepted change is a new newest entry. A repeated runId is refused
+ * outright, and the retained tail is compared against what was on disk so a
+ * silently altered prior run is refused too — published CIDs are immutable.
+ *
+ * @param {string} historyPath path to the history JSON file
+ * @param {unknown} runRecord the completed run to record
+ * @returns {Promise<import("zod").infer<typeof runHistorySchema>>} the written history
+ */
+export async function appendRun(historyPath, runRecord) {
+  if (typeof historyPath !== "string" || historyPath.length === 0) {
+    throw new TypeError("historyPath is required");
+  }
+  const { history: previous, storedRuns } = await loadRunHistory(historyPath);
+  const record = validateRunRecord(runRecord);
+  if (previous.runs.some((run) => run.runId === record.runId)) {
+    throw new Error(
+      `Run '${record.runId}' is already recorded in ${historyPath}; published run history is append-only`,
+    );
+  }
+  const next = validateRunHistory({
+    schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+    runs: [record, ...previous.runs],
+  });
+  if (
+    next.runs.length !== storedRuns.length + 1 ||
+    canonicalJson(next.runs.slice(1)) !== canonicalJson(storedRuns)
+  ) {
+    throw new Error(
+      `Refusing to write ${historyPath}: appending run '${record.runId}' would alter a previously recorded run`,
+    );
+  }
+  const body = Buffer.from(`${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await mkdir(path.dirname(historyPath), { recursive: true });
+  const temporaryPath = `${historyPath}.${process.pid}.tmp`;
+  await writeFile(temporaryPath, body);
+  await rename(temporaryPath, historyPath);
+  return next;
+}
+
+/**
+ * Coerce a `key -> rowHash` input into a Map.
+ *
+ * @param {Map<string, string> | Record<string, string> | undefined | null} rows row hashes by key
+ * @param {string} field field name used in the thrown error
+ * @returns {Map<string, string>}
+ */
+function asRowMap(rows, field) {
+  if (rows === undefined || rows === null) return new Map();
+  if (rows instanceof Map) return rows;
+  if (typeof rows === "object" && !Array.isArray(rows)) {
+    return new Map(Object.entries(rows));
+  }
+  throw new TypeError(
+    `${field} must be a Map or a plain object of key -> rowHash`,
+  );
+}
+
+/**
+ * Compare two snapshots of a table by row hash.
+ *
+ * A row present in both with the same hash is unchanged, a differing hash is
+ * an update, a key only in the current snapshot is an insert, and a key only
+ * in the previous snapshot was removed. These counts are what an incremental
+ * run publishes to show it ingested something.
+ *
+ * @param {Map<string, string> | Record<string, string>} previousRows key -> rowHash before the run
+ * @param {Map<string, string> | Record<string, string>} currentRows key -> rowHash after the run
+ * @returns {{ inserted: number, updated: number, unchanged: number, removed: number }}
+ */
+export function computeTableDeltas(previousRows, currentRows) {
+  const previous = asRowMap(previousRows, "previousRows");
+  const current = asRowMap(currentRows, "currentRows");
+  let inserted = 0;
+  let updated = 0;
+  let unchanged = 0;
+  for (const [key, hash] of current) {
+    if (!previous.has(key)) inserted += 1;
+    else if (previous.get(key) === hash) unchanged += 1;
+    else updated += 1;
+  }
+  let removed = 0;
+  for (const key of previous.keys()) {
+    if (!current.has(key)) removed += 1;
+  }
+  return { inserted, updated, unchanged, removed };
+}

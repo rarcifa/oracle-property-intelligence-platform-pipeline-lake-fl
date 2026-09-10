@@ -1,0 +1,189 @@
+# Continuous ingestion.
+#
+# The assignment requires that ingestion be ongoing rather than a one-shot bulk
+# load. This is what makes it recur: a daily incremental refresh windowed on the
+# permit layer's own LastModDate, a monthly full rebuild, and manual dispatch.
+#
+# Publishing is gated on the Filebase credentials being configured as repository
+# secrets. Without them the job still runs the full ingest and consolidation and
+# uploads the artifacts for inspection, but it does not publish, and it says so
+# rather than reporting a success it did not achieve.
+name: Lake County ingestion
+
+on:
+  schedule:
+    # Daily incremental, 07:20 UTC. Off the hour to avoid the scheduler's peak.
+    - cron: "20 7 * * *"
+    # Monthly full rebuild, on the 3rd, after the DOR roll settles.
+    - cron: "40 6 3 * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Ingestion mode"
+        type: choice
+        options: [incremental, full]
+        default: incremental
+      publish:
+        description: "Publish to IPFS after building"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run at a time. Two concurrent publishes would race the single IPNS
+  # pointer and the run-history file.
+  group: lake-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Job level, deliberately. The publish guard below tests
+    # `env.S3_ACCESS_KEY_ID`, and a step's own `env:` block is not in scope when
+    # that step's `if:` is evaluated — so with these declared on the step, the
+    # guard read an empty string every time: publishing could never run and the
+    # "skipped" notice always did. Declared here, the guard sees them.
+    env:
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+    defaults:
+      run:
+        working-directory: .claude/skills/use-oracle/runtime
+    steps:
+      - uses: actions/checkout@v4
+
+      # Needed by the retrieval-index rebuild after a publish; the ingestion
+      # runtime itself is npm.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+
+      - name: Install DuckDB
+        run: |
+          curl -sSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Install runtime
+        run: npm ci
+
+      - name: Resolve mode
+        id: mode
+        working-directory: .
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "40 6 3 * *" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=incremental" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The readiness gate runs before any acquisition, exactly as it does
+      # locally. A BLOCKED catalog stops the run here.
+      - name: County readiness gate
+        working-directory: .
+        run: |
+          python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
+            .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
+
+      - name: Acquire sources
+        run: |
+          if [ "${{ steps.mode.outputs.mode }}" = "full" ]; then
+            node scripts/lake/fetch-sources.mjs
+          else
+            node scripts/lake/fetch-sources.mjs --only rolls
+            node scripts/lake/fetch-sources.mjs --only centroids
+            node scripts/lake/fetch-sources.mjs --only permits \
+              --since "$(date -u -d '2 days ago' +%Y-%m-%d)"
+          fi
+
+      - name: Build seed
+        run: node --max-old-space-size=6144 scripts/lake/build-seed.mjs
+
+      # The delta between runs is computed against `artifacts/row-hashes.json`,
+      # a 14 MB working file that is gitignored — correctly, it is regenerated
+      # output. But nothing carried it between runs, so every scheduled run
+      # started with no prior state and would have reported all 215,806 rows as
+      # inserted. "Incremental" would have been true of the code and false of
+      # every number it produced.
+      #
+      # `restore-keys` makes the newest previous cache the starting point, since
+      # the exact key changes every run.
+      - name: Restore the previous run's row hashes
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/row-hashes.json
+          key: lake-row-hashes-${{ github.run_id }}
+          restore-keys: |
+            lake-row-hashes-
+
+      - name: Consolidate the query table
+        run: |
+          D="$PWD/data/downloads/lake"
+          O="$PWD/data/artifacts/publish/lake/query-table.parquet"
+          mkdir -p "$(dirname "$O")"
+          sed -e "s|\$DOWNLOAD_DIR|$D|g" -e "s|\$OUT_PARQUET|$O|g" \
+              -e "s|\$AS_OF_YEAR|$(date -u +%Y)|g" \
+              scripts/lake/build-query-table.sql > /tmp/lake-qt.sql
+          duckdb -c ".read /tmp/lake-qt.sql"
+
+      - name: Assemble the publish set
+        id: build
+        run: |
+          RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          node scripts/lake/build-publish-set.mjs --run-id "$RUN_ID"
+
+      - name: Publish to IPFS
+        if: ${{ env.S3_ACCESS_KEY_ID != '' }}
+        run: |
+          node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
+            --run-id "${{ steps.build.outputs.run_id }}" \
+            --mode "${{ steps.mode.outputs.mode }}"
+
+      # The retrieval corpus is built from the run's own coverage, schema, index
+      # and sample extracts, so a new run leaves the committed index describing
+      # the previous one. Rebuilding here keeps the uploaded artifacts internally
+      # consistent; the deployed function picks the new index up on its next
+      # `cdk deploy`, which a republish needs anyway to move to the new CID.
+      - name: Rebuild the retrieval index for the new run
+        if: ${{ env.S3_ACCESS_KEY_ID != '' }}
+        working-directory: .
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @oracle-lake/rag run build:index
+          git --no-pager diff --stat -- packages/rag/index-data || true
+
+      - name: Report that publishing was skipped
+        if: ${{ env.S3_ACCESS_KEY_ID == '' }}
+        run: |
+          echo "::notice::Filebase credentials are not configured, so this run built" \
+               "the dataset but published nothing. Configure S3_ACCESS_KEY_ID and" \
+               "S3_SECRET_ACCESS_KEY as repository secrets to enable publishing."
+
+      # Saved after publishing, so the next scheduled run diffs against this one.
+      # Always, not only on success: a run that published and then failed later
+      # has still moved the published state forward, and diffing the next run
+      # against stale hashes would misreport it.
+      - name: Save the row hashes for the next run
+        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/row-hashes.json
+          key: lake-row-hashes-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lake-run-${{ steps.build.outputs.run_id }}
+          path: |
+            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/coverage.json
+            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/index.json
+            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/query-table.parquet
+          retention-days: 30

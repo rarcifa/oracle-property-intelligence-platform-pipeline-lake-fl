@@ -1,0 +1,17 @@
+{
+  "runId": "20260909T185056Z",
+  "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "manifestCid": "bafkreidgtpx6dbrbmlilwpyb5zj3vdowipsxquhzy4tr2pdzlr6l5xslaq",
+  "carCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+  "resolvedCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "verifiedGateways": [
+    "https://ipfs.filebase.io",
+    "https://gw.ipfs-lens.dev",
+    "https://gateway.pinata.cloud",
+    "https://ipfs.io",
+    "https://dweb.link"
+  ],
+  "propertyCount": 215806,
+  "publishedAt": "2026-09-09T19:06:09.736Z"
+}

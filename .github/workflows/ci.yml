@@ -1,0 +1,88 @@
+# Runs the recipe contract from the kit's `integrate-ci-cd` skill.
+#
+# That skill's caller workflows delegate to reusable workflows in
+# `Spring-Oaks-Capital-LLC/github-workflows`, an organisation this repository
+# is not a member of, so those callers would fail on a "workflow not found"
+# error rather than run. The recipe names here are identical to the ones the
+# skill mandates, so adopting the shared pipeline later replaces this file
+# without touching the justfile.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: pnpm
+
+      - uses: extractions/setup-just@v2
+
+      - name: Install
+        run: just setup
+
+      # The design lane drives a real Chromium. Without this it fails on a
+      # missing browser, which is why `just test` could not honestly run in CI.
+      - name: Install Playwright browsers
+        run: pnpm --filter @oracle-lake/ui exec playwright install --with-deps chromium
+
+      # 50 of the 212 application tests exercise the query layer against a real
+      # 215,806-row table rather than a fixture, and skip when none is reachable.
+      # Skipped tests read as a pass, so CI was green without ever touching the
+      # query layer, the REST routes or the MCP tools. Point them at the newest
+      # published run so they actually run.
+      - name: Resolve the published Parquet the tests query
+        run: |
+          ROOT=$(jq -r .rootCid artifacts/latest.json)
+          test -n "$ROOT" && test "$ROOT" != "null"
+          echo "ORACLE_PARQUET_URL=https://ipfs.filebase.io/ipfs/$ROOT/query-table.parquet" >> "$GITHUB_ENV"
+
+      - name: Format
+        run: just format
+
+      - name: Lint
+        run: just lint
+
+      - name: Type check
+        run: just type-check
+
+      - name: Test
+        run: just test
+
+      # A guard, not a test: if ORACLE_PARQUET_URL ever stops resolving, the
+      # suites above go back to skipping and CI goes back to passing without
+      # exercising anything. Fail loudly instead.
+      - name: Assert the query-layer suites actually ran
+        run: |
+          pnpm vitest run packages/server/tests/api.test.ts packages/server/tests/queries.test.ts \
+            packages/server/tests/mcp.test.ts --reporter=json --outputFile=/tmp/query-layer.json
+          SKIPPED=$(jq '[.testResults[].assertionResults[] | select(.status == "skipped" or .status == "pending")] | length' /tmp/query-layer.json)
+          PASSED=$(jq '[.testResults[].assertionResults[] | select(.status == "passed")] | length' /tmp/query-layer.json)
+          echo "query-layer tests: passed=$PASSED skipped=$SKIPPED"
+          test "$SKIPPED" -eq 0
+          test "$PASSED" -ge 50
+
+      - name: Build
+        run: just build
+
+      # The county source catalog is fail-closed. A change that breaks the
+      # readiness gate must not merge, because every ingestion stage downstream
+      # refuses to run against a BLOCKED catalog anyway.
+      - name: County readiness gate
+        run: just readiness

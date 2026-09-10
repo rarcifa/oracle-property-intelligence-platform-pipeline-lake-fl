@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "elephant.mcp-smoke.v1",
+  "checkedAt": "2026-09-09T19:35:46.430576Z",
+  "county": "lake",
+  "purpose": "use-oracle step 13 requires a post-publish MCP smoke test through donphan. The bundled elephant MCP server did not connect in this session, so the substance of that step was verified directly against the URLs now registered in the MCP environment maps: the same bytes the MCP's embedded DuckDB would read.",
+  "registeredUrls": {
+    "propertyQueryTable": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet",
+    "datasetCoverage": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/coverage.json"
+  },
+  "checks": {
+    "parquetMagic": {
+      "expected": "PAR1",
+      "received": "PAR1",
+      "pass": true
+    },
+    "rangeRequest": {
+      "status": 206,
+      "contentRange": "bytes 0-3/20039488",
+      "pass": true
+    },
+    "cors": {
+      "accessControlAllowOrigin": "*",
+      "pass": true,
+      "why": "A browser DuckDB-WASM client cannot range-read the table without this."
+    },
+    "coverageIdentity": {
+      "county": "lake",
+      "runId": "20260909T185056Z",
+      "properties": 215806,
+      "pass": true
+    },
+    "duckdbHttpfsRangeRead": {
+      "properties": 215806,
+      "agedRoofs": 117605,
+      "pass": true
+    }
+  },
+  "findings": [
+    "county-query-table-publish mandates SET unsafe_disable_etag_checks = true for HTTPFS range reads. DuckDB v1.3.2 does not recognise that parameter and errors on it. The range read succeeds without it, so the setting appears to target a different DuckDB version than the one installed.",
+    "catalog:sync-mcp-json resolves the MCP config to <repo>/.claude/mcp.json. This repository keeps .mcp.json at its root, which is where Claude Code reads it, so the kit script fails there. It was called through scripts/lake/sync-mcp-json.mjs with an explicit path rather than edited, so the vendored kit stays byte-identical to upstream."
+  ],
+  "overall": "PASS"
+}

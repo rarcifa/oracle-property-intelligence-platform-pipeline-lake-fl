@@ -1,0 +1,501 @@
+{
+  "runId": "20260909T185056Z",
+  "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "verifications": [
+    {
+      "name": "manifest.json",
+      "cid": "bafkreidgtpx6dbrbmlilwpyb5zj3vdowipsxquhzy4tr2pdzlr6l5xslaq",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 9477,
+          "sha256": "sha256:669befe1862162d0bb3f01ee53ba8dd643e57850f9c7271d3c795c7cbede4b04",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 9477,
+          "sha256": "sha256:669befe1862162d0bb3f01ee53ba8dd643e57850f9c7271d3c795c7cbede4b04",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 9477,
+          "sha256": "sha256:669befe1862162d0bb3f01ee53ba8dd643e57850f9c7271d3c795c7cbede4b04",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 9477,
+          "sha256": "sha256:669befe1862162d0bb3f01ee53ba8dd643e57850f9c7271d3c795c7cbede4b04",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 9477,
+          "sha256": "sha256:669befe1862162d0bb3f01ee53ba8dd643e57850f9c7271d3c795c7cbede4b04",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "coverage.json",
+      "cid": "bafkreiheideoon45cloduxqb5c6w4apxg6by7gytl7ivob2ug3vhqscfxm",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 2502,
+          "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 2502,
+          "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 2502,
+          "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 2502,
+          "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 2502,
+          "sha256": "sha256:e440c8e7379d12dc3a5e01e8bd6e01f737838f9b135fd157075436ea784845bb",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "index.json",
+      "cid": "bafkreigs3wehdzvscut3l4zgcvkihbu7x6b7xf7rkv5fy4hhaieeizsb3u",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:d2dd8871e6b21527b5f326155483869fbf83fb97f1557a5c70e70208446641dd",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "query-table.parquet",
+      "cid": "bafybeihzvn35om3zs2fijssicpo6ius3z7aqzuv5u62c6r4bch23dzplkq",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 20039488,
+          "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 20039488,
+          "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 20039488,
+          "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 20039488,
+          "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 20039488,
+          "sha256": "sha256:b024431bff93bd897010be7d43571cc7fad36d27b8475c3e957d19a32a5b1c16",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/aged-roofs.json",
+      "cid": "bafkreielchnm6dwukdx5v3ekqf4ztsjpcelsppsegwdabtufpsh5o3v2hq",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/open-roofing-permits.json",
+      "cid": "bafkreibxnq2ykgfk7an2sllkmxkzikqalg4qaqjigdu3p4y7bsfqugxrsu",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 56013,
+          "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 56013,
+          "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 56013,
+          "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 56013,
+          "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 56013,
+          "sha256": "sha256:376c358518aaf81ba92d6a65d5942a0059b900412830e9b7f31f0c8b0a1af195",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/out-of-area-owners.json",
+      "cid": "bafkreiepbuwdm754uixttywqtbmweu2j3futv4uj6izycs3opzdgfrq3hi",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "schema.json",
+      "cid": "bafkreibrloxqjev5bx5iebtrv2zf5h3hsto5f25tvvzslmxu3omdfidlli",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 5586,
+          "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 5586,
+          "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 5586,
+          "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 5586,
+          "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 5586,
+          "sha256": "sha256:315baf0492bd0dfa820671aeb25e9f6794ddd2ebb3ad7325b2f4db9832a06b5a",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "shards/shard-0000.json",
+      "cid": "bafybeihzjyiotkg5adohrd67znun7j463g5icw52nxosw2bsgml6jnbqp4",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev",
+        "https://gateway.pinata.cloud",
+        "https://ipfs.io",
+        "https://dweb.link"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 14037180,
+          "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 14037180,
+          "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+          "error": null
+        },
+        {
+          "gateway": "https://gateway.pinata.cloud",
+          "ok": true,
+          "status": 200,
+          "bytes": 14037180,
+          "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+          "error": null
+        },
+        {
+          "gateway": "https://ipfs.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 14037180,
+          "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+          "error": null
+        },
+        {
+          "gateway": "https://dweb.link",
+          "ok": true,
+          "status": 200,
+          "bytes": 14037180,
+          "sha256": "sha256:9ca533fb73284b709b0fdc8853fdb72342f3641f21b59392aed086e367c518a3",
+          "error": null
+        }
+      ]
+    }
+  ]
+}

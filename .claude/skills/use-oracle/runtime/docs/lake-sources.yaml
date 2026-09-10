@@ -1,0 +1,478 @@
+county: Lake
+state: FL
+slug: lake
+fips: "12069"
+dor_county_number: "45"
+snapshot_time: "2026-09-09T18:00:00Z"
+
+parcel:
+  canonical_source: Florida DOR 2026 preliminary NAL
+  assessed_parcel_count: 215806
+  gis_feature_count: 210935
+  count_difference: 4871
+  count_difference_pct: 2.2571
+  discrepancy_threshold_pct: 2.0
+  discrepancy_explanation: >-
+    The canonical denominator is the DOR 2026 preliminary NAL (215,806 rows, measured).
+    The geometry source is the Florida GIO statewide parcel-centroid 2025 release
+    (210,935 Lake rows, measured), which is one roll year older, so parcels first
+    assessed for 2026 - new splits, new condo units and new construction - have no
+    2025 centroid yet. Geometry is never used as the parcel denominator and never
+    seeds a parcel; it only decorates a NAL row that already exists.
+  separately_assessed_without_geometry: acknowledged
+  identifier_proven: true
+  identifier_name: DOR Parcel ID (with Alternate Key as the permit join)
+  identifier_format: "NN-NN-NN-NNNN-NNN-NNNNN (23 characters); ALT_KEY is 7 digits"
+  join_rule: >-
+    PARCEL_ID and ALT_KEY are both unique across all 215,806 NAL rows (measured:
+    215,806 distinct of each). ALT_KEY joins the CD Plus permit layer's
+    Alternate_Key; the undashed PARCEL_ID matches the layer's Parcel_ID.
+  measured_coverage:
+    year_built_known: 169007
+    physical_zip_known: 212737
+    owner_name_known: 215620
+    distinct_owner_names: 168315
+    out_of_state_owners: 20236
+    sale_recorded_in_dor_window: 30977
+
+sales:
+  source: Florida DOR SDF 2026 preliminary plus NAL SALE_YR1/SALE_YR2
+  record_count: 37020
+  parcels_with_a_sale: 30977
+  window_first: "2025"
+  window_last: "2026"
+  ten_year_tenure_provable: false
+  ten_year_tenure_evidence: >-
+    Only the current roll is published: the NAL folder exposes 2026P alone, and both
+    SDF and NAL SALE_YR1 span 2025-2026 only. The DOR Map Data archive publishes Lake
+    parcel files back to 2005F, but they carry parcel geometry only - the 2010 Lake
+    file was downloaded and its attribute table holds exactly two fields, CO_NO and
+    PARCEL_ID, across 178,377 records. Attribute-bearing PAR files begin at 2024F.
+    Ownership tenure beyond the 2025-2026 window therefore cannot be proven from any
+    published Lake source. The query table exposes no_recorded_sale_in_dor_window as
+    an explicit lower bound and never claims a tenure length.
+
+permits:
+  expected_jurisdiction_count: 15
+  assumes_unified_countywide_history: false
+  countywide_layer_record_count: 17915
+  countywide_distinct_permit_count: 17671
+  countywide_distinct_parcel_count: 12454
+  roofing_permit_count: 3312
+  open_permit_count: 3753
+  open_roofing_permit_count: 247
+  roofing_permit_types: [RF, RFC, RFR, ROC, ROR]
+  open_permit_statuses: [APPLY, INSPECT, ISSUED, READY, RENEWED]
+  coverage_finding: >-
+    The county CD Plus layer is NOT a countywide permit archive. Two measured limits.
+    First, jurisdiction: a spatial test of every permit parcel against the 14 Census
+    city polygons puts 45 of 17,915 features (0.25%) inside any city limit, and those
+    are Lake County government facilities that the county permits for itself. The
+    layer is unincorporated Lake County only, and no municipality delegates permitting
+    to the county. Mailing city is not a jurisdiction signal - 4,688 features carry a
+    CLERMONT mailing address while sitting in unincorporated south Lake.
+    Second, time: Permit_LastModDate spans 2025-09-09 to 2026-09-08, exactly a 365-day
+    rolling window, and only 846 of 17,671 permits (4.8%) were issued before
+    2024-09-09. The layer publishes recently-modified permits, not history.
+  jurisdictions:
+    - jurisdiction: Unincorporated Lake County
+      key: unincorporated
+      status: supported
+      vendor: Perconti CD Plus via Esri MapServer proxy
+      portal_kind: read-only-data-service
+      portal: https://utility.arcgis.com/usrsvcs/servers/365d9a169bc34110a3db2157c76f6c95/rest/services/Individual/CDPermitParcels/MapServer/0
+      historical_records: false
+      anonymous_access: true
+      adapter: cdplus
+      implementation_status: certified
+      parcel_search: Query by Alternate_Key or Parcel_ID; OBJECTID range paging at 2,000 rows per page
+      enumeration_status: certified-bulk
+      throughput: 17,915 features in 6.5 s at concurrency 4; IN lists over ~50 values return HTTP 500
+      known_exclusions: >-
+        Rolling 365-day Permit_LastModDate window; permits issued and closed before
+        2024-09-09 are absent (4.8% of the layer predates that date). Contractor of
+        record is not exposed by the layer and its detail pages are Cloudflare-gated.
+      records_request:
+        recipient_office: Lake County Office of Building Services
+        request_portal_url: https://www.lakecountyfl.gov/Public-Records-Request
+        request_email: null
+        system_scope: >-
+          CD Plus permit database, complete history - all permits issued prior to the
+          current 12-month Permit_LastModDate window, with ALT_KEY, parcel id, permit
+          type, status, applied/issued/CO dates and contractor of record
+        route: records-first
+    - jurisdiction: Clermont
+      key: clermont
+      status: supported
+      vendor: CentralSquare eTRAKiT 3
+      portal_kind: historical-search
+      portal: https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx
+      historical_records: true
+      anonymous_access: true
+      adapter: etrakit
+      implementation_status: discovered
+      parcel_search: SITE_APN search labelled "AK NUMBER", which is the NAL ALT_KEY
+      enumeration_status: discovered-open-portal
+      probe: >-
+        Re-probed 2026-09-09: the permit search page returns HTTP 200, 785,477 bytes in 1.9 s
+        with no session, no challenge and no login. The parcel field is labelled "AK NUMBER"
+        and posts as SITE_APN, which is the NAL ALT_KEY, so the join needs no translation.
+        Search is an ASP.NET postback carrying __VIEWSTATE, so an adapter must round-trip the
+        form; permit detail is reachable by a plain GET once a permit number is known.
+      known_exclusions: >-
+        Detail pages expose contractor names and inspection history, which the county layer
+        does not. Not harvested: an eTRAKiT adapter and a throughput measurement are needed
+        first, and neither was in scope for this run. This is the single most valuable
+        remaining source, because it is the only open route to contractor of record anywhere
+        in the county.
+    - jurisdiction: Groveland
+      key: groveland
+      status: blocked
+      vendor: CentralSquare eTRAKiT on aspgov.com
+      portal_kind: historical-search
+      portal: https://gvld-trk.aspgov.com/etrakit/
+      historical_records: true
+      anonymous_access: false
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-login-required
+      known_exclusions: Permit search redirects to login.aspx; no anonymous session could be established
+      records_request:
+        recipient_office: City of Groveland City Clerk / Records Custodian
+        request_portal_url: https://groveland-fl.gov/
+        request_email: null
+        system_scope: CentralSquare eTRAKiT building permit records held by the Building Division
+        route: records-first
+    - jurisdiction: Eustis
+      key: eustis
+      status: blocked
+      vendor: Citizenserve
+      portal_kind: historical-search
+      portal: https://www.eustis.org/Home/Do-it-online/Apply-or-Search-for-Permits
+      historical_records: true
+      anonymous_access: false
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-bot-challenge
+      known_exclusions: >-
+        eustis.org returns HTTP 403 from Akamai bot protection on every path including
+        robots.txt; the Citizenserve installation id could not be determined.
+      records_request:
+        recipient_office: City of Eustis City Clerk, Records Custodian
+        request_portal_url: https://www.eustis.org/
+        request_email: null
+        system_scope: Citizenserve permit records maintained by Development Services / Building Division
+        route: records-first
+    - jurisdiction: Minneola
+      key: minneola
+      status: blocked
+      vendor: unknown, building official contracted to SAFEbuilt
+      portal_kind: historical-search
+      portal: https://www.minneola.us/building-department
+      historical_records: true
+      anonymous_access: false
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-cloudflare-challenge
+      known_exclusions: >-
+        Cloudflare managed challenge on all HTML; the permit portal URL and vendor were
+        never confirmed. Building official duties are delegated to SAFEbuilt, so records
+        may be held by the contractor.
+      records_request:
+        recipient_office: City of Minneola City Clerk
+        request_portal_url: https://www.minneola.us/
+        request_email: buildingservices@minneola.us
+        system_scope: >-
+          Building permit records held by the City and by its contracted building
+          official SAFEbuilt; section 119.0701 makes contractor-held records subject to
+          Chapter 119
+        route: records-first
+    - jurisdiction: Leesburg
+      key: leesburg
+      status: blocked
+      vendor: CD Plus OPRS since 2021-09-01, Click2Gov before it
+      portal_kind: historical-search
+      portal: https://cdpservices.leesburgflorida.gov/prod/oprs_pt/
+      predecessor_portal: https://lees-egov.aspgov.com/Click2GovBPO/
+      historical_records: true
+      anonymous_access: false
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-captcha
+      known_exclusions: >-
+        The current portal is gated by reCAPTCHA v2 and the legacy Click2Gov host resets
+        the TLS connection. History is split across two systems at 2021-09-01.
+      records_request:
+        recipient_office: City of Leesburg Building Division
+        request_portal_url: https://cdpservices.leesburgflorida.gov/prod/oprs_pt/
+        request_email: Permits@leesburgflorida.gov
+        system_scope: >-
+          CD Plus / OPRS permits issued on or after 2021-09-01 and Click2Gov BPO permits
+          issued before 2021-09-01 - both systems
+        route: records-first
+    - jurisdiction: Tavares
+      key: tavares
+      status: unavailable
+      vendor: CentralSquare Click2Gov
+      portal_kind: historical-search
+      portal: https://tava-egov.aspgov.com/Click2GovBP/selectpermit.html
+      historical_records: true
+      anonymous_access: false
+      adapter: none
+      implementation_status: documented-gap
+      enumeration_status: unreachable-from-egress
+      known_exclusions: Both the portal host and tavaresfl.gov reset the connection with no challenge page
+      records_request:
+        recipient_office: City of Tavares City Clerk, Susie Novack
+        request_portal_url: https://www.tavaresfl.gov/
+        request_email: susie.novack@tavaresfl.gov
+        system_scope: Click2Gov / CentralSquare permit records, Community Development Department, Building Division
+        route: records-first
+    - jurisdiction: Mount Dora
+      key: mount-dora
+      status: blocked
+      vendor: BS&A Online
+      portal_kind: historical-search
+      portal: https://bsaonline.com/SiteSearch/BuildingDepartmentRecordSearch?uid=2978
+      historical_records: true
+      anonymous_access: true
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-bot-challenge
+      known_exclusions: >-
+        The record search renders behind per-visit session tokens, honeypots and
+        reCAPTCHA v3; BS&A terms also restrict automated access.
+      records_request:
+        recipient_office: City of Mount Dora Building Department
+        request_portal_url: https://www.mountdora.com/
+        request_email: null
+        system_scope: BS&A Online Community Development / Building Department permit records, municipality uid 2978
+        route: records-first
+    - jurisdiction: Umatilla
+      key: umatilla
+      status: manual-only
+      vendor: none
+      portal_kind: records-information
+      portal: https://www.umatillafl.org/development-public-services/page/permitting
+      historical_records: false
+      anonymous_access: true
+      adapter: none
+      implementation_status: documented-gap
+      enumeration_status: no-public-historical-search
+      known_exclusions: Every permit deep link returns 404; the city reports the portal is having technical difficulties
+      records_request:
+        recipient_office: City of Umatilla City Clerk, Jessica Burnham
+        request_portal_url: https://www.umatillafl.org/186/Public-Records-Requests
+        request_email: jburnham@umatillafl.org
+        system_scope: Building Division / Development and Public Services issued building permit files
+        route: records-first
+    - jurisdiction: Astatula
+      key: astatula
+      status: manual-only
+      vendor: none
+      portal_kind: records-information
+      portal: http://townofastatula.com/docs/permitting/
+      historical_records: false
+      anonymous_access: true
+      adapter: none
+      implementation_status: documented-gap
+      enumeration_status: no-public-historical-search
+      known_exclusions: The town publishes PDF application forms only; there is no search interface
+      records_request:
+        recipient_office: Town of Astatula Town Clerk, Charles Jacien, Custodian of Public Records
+        request_portal_url: http://townofastatula.com/
+        request_email: townhall@astatula.org
+        system_scope: Town of Astatula Building Department permit files and permit register
+        route: records-first
+    - jurisdiction: Fruitland Park
+      key: fruitland-park
+      status: blocked
+      vendor: BS&A Online
+      portal_kind: historical-search
+      portal: https://bsaonline.com/SiteSearch/BuildingDepartmentRecordSearch?uid=3105
+      historical_records: true
+      anonymous_access: true
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-bot-challenge
+      known_exclusions: Record search is JavaScript-rendered behind a bot challenge; queries are not executable without a browser
+      records_request:
+        recipient_office: City of Fruitland Park City Clerk, Gwen Keough-Johns
+        request_portal_url: https://www.fruitlandpark.org/cityclerk/page/public-records
+        request_email: PublicRecords@fruitlandpark.org
+        system_scope: BS&A Building Department permit records, municipality uid 3105
+        route: records-first
+    - jurisdiction: Howey-in-the-Hills
+      key: howey-in-the-hills
+      status: blocked
+      vendor: iWorq
+      portal_kind: historical-search
+      portal: https://howey.portal.iworq.net/HOWEY/permits/600
+      historical_records: true
+      anonymous_access: true
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-captcha
+      known_exclusions: >-
+        Search submission is gated by invisible reCAPTCHA v2; unauthenticated queries
+        return an empty result body. Permitting is administered by Willdan/Alpha, so
+        records may be contractor-held.
+      records_request:
+        recipient_office: Town of Howey-in-the-Hills Town Clerk, John Brock
+        request_portal_url: https://www.howey.org/281/Public-Records-Request
+        request_email: publicrecords@howey.org
+        system_scope: iWorq permit records administered by Willdan/Alpha for the Town of Howey-in-the-Hills
+        route: records-first
+    - jurisdiction: Lady Lake
+      key: lady-lake
+      status: blocked
+      vendor: Citizenserve
+      portal_kind: historical-search
+      portal: https://www6.citizenserve.com/Portal/PortalController
+      historical_records: true
+      anonymous_access: true
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-egress-tls-failure
+      known_exclusions: The Citizenserve host fails the TLS handshake from this egress; anonymous search is advertised but unreachable
+      records_request:
+        recipient_office: Town of Lady Lake Town Clerk, records management liaison officer
+        request_portal_url: https://ladylakefl.nextrequest.com/
+        request_email: hello@ladylake.org
+        system_scope: Building Services Division permit records held in the Citizenserve system, installation 383
+        route: records-first
+    - jurisdiction: Mascotte
+      key: mascotte
+      status: blocked
+      vendor: iWorq
+      portal_kind: historical-search
+      portal: https://mascottefl.portal.iworq.net/MASCOTTEFL/permits/600
+      historical_records: true
+      anonymous_access: true
+      adapter: none
+      implementation_status: fail-closed
+      enumeration_status: blocked-captcha
+      known_exclusions: Invisible reCAPTCHA v2 on search; the city's own site is unreachable from this egress
+      records_request:
+        recipient_office: City of Mascotte City Clerk, custodian of public records
+        request_portal_url: https://www.cityofmascotte.com/154/City-Clerk-Forms
+        request_email: Annamarie.Reno@cityofmascotte.com
+        system_scope: iWorq permit records for the Mascotte building department, including records held by Alpha Inspections
+        route: records-first
+    - jurisdiction: Montverde
+      key: montverde
+      status: manual-only
+      vendor: iWorq not yet live, Citizenserve installation 401
+      portal_kind: records-information
+      portal: https://montverdefl.portal.iworq.net/portalhome/montverdefl
+      historical_records: false
+      anonymous_access: true
+      adapter: none
+      implementation_status: documented-gap
+      enumeration_status: no-public-historical-search
+      known_exclusions: >-
+        The iWorq portal shows "Search Existing Permits: Coming Soon"; records are split
+        by permit-number vintage between legacy Alpha Inspections files and Citizenserve.
+      records_request:
+        recipient_office: Town of Montverde Town Clerk, Caroline Trepanier
+        request_portal_url: https://www.mymontverde.com/
+        request_email: clerk@mymontverde.com
+        system_scope: >-
+          Both the legacy Alpha Inspections permit files and the Citizenserve permit
+          records for the Town of Montverde
+        route: records-first
+
+business:
+  source: Florida DOR TPP (NAP) 2026 preliminary
+  account_count: 33346
+  construction_naics_count: 1883
+  roofing_naics_238160_count: 44
+  note: >-
+    Business and contractor records come from the tangible-personal-property roll, which
+    carries NAICS codes, owner names and situs addresses. Sunbiz corporate ingest is not
+    in this assignment's acceptance criteria and was not run.
+
+source_inventory:
+  property_bulk: https://floridarevenue.com/property/dataportal
+  parcel_geometry: https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Parcel_Centroid_Version/FeatureServer/0
+  permits_unincorporated: https://utility.arcgis.com/usrsvcs/servers/365d9a169bc34110a3db2157c76f6c95/rest/services/Individual/CDPermitParcels/MapServer/0
+  property_appraiser: https://lakecopropappr.com
+  bbb: https://www.bbb.org
+  permit_authority_boundary: >-
+    Unincorporated Lake County plus 14 independent municipalities, each with its own
+    building department and permit system
+
+access_states:
+  cloudflare_challenged:
+    hosts:
+      - www.lakecountyfl.gov
+      - c.lakecountyfl.gov
+      - gis.lakecountyfl.gov
+    evidence: HTTP 403 with server cloudflare and cf-mitigated challenge on every path
+    consequence: Permit detail pages carrying contractor of record cannot be fetched
+  correction_to_prior_findings: >-
+    lakecopropappr.com returned HTTP 200 from this egress on 2026-09-09, contradicting an
+    earlier record of a blanket 403. The county 403 is a Cloudflare managed challenge
+    across the whole lakecountyfl.gov estate rather than datacenter-egress filtering.
+
+destination:
+  writes_in_scope: true
+  proven: true
+  mode: Filebase S3 publication with a single owned IPNS name and immutable CID snapshots
+  bucket: elephant-oracle-open-data-lake
+  public_prefix: lake/
+  independent_identity_sources:
+    - filebase_s3_list_buckets_with_configured_credentials
+    - filebase_names_api_network_key_for_owned_label
+  proof_detail: >-
+    The S3 endpoint lists exactly one bucket, elephant-oracle-open-data-lake, under the
+    configured credentials, and the Filebase Names API independently returns the owned
+    label oracle-open-data-lake with network key
+    k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un at sequence 3. The two
+    are independent surfaces over the same account.
+
+publication:
+  status: in-progress
+  ipns_label: oracle-open-data-lake
+  ipns_name: k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un
+  single_ipns_deviation: >-
+    The Filebase free plan permits exactly one IPNS name and it is already provisioned.
+    The kit assumes a separate label per dataset (oracle-query-table-lake,
+    oracle-dataset-coverage-lake). This county publishes one run-root directory under the
+    single owned name, with the query table and coverage as paths beneath it, and records
+    the resolved CID for every run. Deviation recorded in docs/lake-kit-deviations.md.
+  prior_immutable_publication:
+    run_root_cid: bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau
+    manifest_cid: bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy
+    published_at: "2026-09-09"
+
+enrichment:
+  bbb:
+    status: gated
+    source_access_status: blocked
+    advertised_listing_count: null
+    expected_count: null
+    listing_page_cap: null
+    cap_acknowledged: false
+    blocker: >-
+      bbb.org answers HTTP 403 to this egress, and the kit requires BBB browser work to
+      run on approved AWS-managed remote compute, which this local-only, no-ongoing-cost
+      deployment does not have. bbb_rating is published as a real column that stays null,
+      with the reason carried in enrichment_status.
+  contractor_identity:
+    status: gated
+    blocker: >-
+      Contractor of record lives on the county permit detail pages, which are behind the
+      Cloudflare managed challenge on c.lakecountyfl.gov. The Clermont eTRAKiT portal does
+      expose contractor names for that municipality and is open to plain HTTP; it is
+      catalogued as a discovered, not yet harvested, source.
+
+approved_exceptions:
+  - gate: parcel
+    reason: >-
+      The 2.26% gap between the 2026 assessed roll and the 2025 GIO centroid release is a
+      release-year offset, not a missing-parcel defect. The tax roll remains the sole
+      parcel denominator, geometry never seeds a parcel, and parcels without a 2025
+      centroid publish with null coordinates rather than being dropped.
+    approved_by: rarcifa
+    approved_at: "2026-09-09T18:00:00Z"

@@ -1,122 +1,285 @@
-# Oracle Property Intelligence Platform Pipeline - Lake County, FL
+# Oracle Property Intelligence Pipeline — Lake County, FL
 
-## Context
+Continuous ingestion of Lake County, Florida property, permit, ownership and business data
+into a **DuckDB-queryable, MCP-ready, CID-addressed** dataset on public IPFS, with a UI and
+an agent for roofing-lead discovery.
 
-This repository is the **data gathering and ingestion pipeline** that supplies the [Roofing CRM & Lead Identification UI](https://github.com/prismteam-ai/roofing-crm). The CRM helps roofing companies explore properties in their service area, identify aging roofs and open roofing permits, and turn those signals into leads. This pipeline story covers collecting, loading, reconciling, and exposing the underlying property and permit datasets; the CRM UI/workflow itself is out of scope here.
+Contractor identity and BBB reputation are **not** in it. Both are gated at source behind
+HTTP 403 and are published as real columns that stay null, with the reason attached — see
+[Known limitations](#known-limitations-stated-rather-than-hidden). An earlier version of this
+sentence listed contractor data as loaded, which the rest of this file contradicted.
 
-The Oracle ingestion pipeline has been started, but the full **Lake County, FL** dataset has not been completely uploaded, reconciled, or demonstrated. The infrastructure must be designed so Oracle does not carry ongoing infrastructure cost by default. For this candidate exercise, the candidate acts as both Oracle and builder: they are responsible for completing the pipeline and proving the low-cost infrastructure approach.
+Built by driving the **soofi-xyz team kit**: routed by `arceus`, executed by `oracle`
+through `onboard-county` and its stage skills against the kit's bundled ingestion runtime.
+Where the assignment needs something no kit skill covers — CAR files, CIDv1, per-run
+artifact manifests, multi-gateway verification, run history with deltas — the kit's nearest
+neighbour was extended in its own conventions. Every such decision is listed in
+[`.claude/skills/use-oracle/runtime/docs/lake-kit-deviations.md`](.claude/skills/use-oracle/runtime/docs/lake-kit-deviations.md).
 
-The pipeline must be continuous and incremental (ongoing ingestion of new and changed records over time) and must publish eligible data artifacts to Elephant IPFS (the Elephant protocol’s decentralized storage layer, following Lexicon / elephant-cli / Filebase+IPNS conventions used by the Elephant oracle skills).
+|                           |                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live runtime**          | <https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/> — UI, REST API, MCP and agent on one Lambda Function URL in `us-east-2`                   |
+| **Newest verified run**   | [`artifacts/latest.json`](artifacts/latest.json) — root CID, manifest CID, IPNS name, verified gateways                                                           |
+| **Run history**           | [`artifacts/run-history.json`](artifacts/run-history.json) — every run with sources, counts, deltas, limitations, CIDs                                            |
+| **Artifact manifest**     | `artifacts/manifest-<run>.json` — cid, name, size, codec, sha256 per object                                                                                       |
+| **Gateway evidence**      | `artifacts/verification-<run>.json` — which gateways returned matching bytes                                                                                      |
+| **Source catalog**        | [`docs/lake-sources.yaml`](.claude/skills/use-oracle/runtime/docs/lake-sources.yaml) · [findings](.claude/skills/use-oracle/runtime/docs/lake-county-findings.md) |
+| **Runbook · cost · demo** | [runbook](docs/runbook.md) · [cost](docs/cost.md) · [demo script](docs/demo-script.md)                                                                            |
 
-Published artifacts must remain independently retrievable from the public IPFS network after the candidate’s local environment, demo session, and any single pinning vendor are gone. **Content identifiers (CIDs) are the durable identity of each artifact.** A vendor HTTP gateway URL is a convenience locator, not the artifact.
+The assignment brief this submission answers is preserved verbatim as
+[`ASSIGNMENT.md`](ASSIGNMENT.md); this file is the project's own README.
 
-In addition to standard property intelligence, the pipeline must surface signals relevant to **roofing lead generation**, including roof age, open roofing permits (especially long-open permits), contractor identity, BBB rating scores where available, ownership/contact fields where available, and accurate property coordinates for radius-based search.
+## What is loaded
 
-## Description
+| Table                                                                 | Rows                           | Source                                                                                |
+| --------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| properties (one row per assessed parcel, 59 columns)                  | **215,806**                    | FL DOR NAL 2026P                                                                      |
+| permits (3,312 roofing · 3,753 open · 247 open roofing)               | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
+| permits linked to an assessed parcel · valid unlinked                 | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
+| coordinates                                                           | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
+| business accounts in the source roll (1,883 construction, 44 roofing) | **33,346**                     | FL DOR TPP 2026P                                                                      |
+| business accounts matched to a parcel and published                   | **2,060** (6.2%)               | street+zip match; the TPP roll carries no parcel key                                  |
+| sale records                                                          | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
+| distinct owner names                                                  | **168,315**                    | FL DOR NAL                                                                            |
 
-Complete the Oracle pipeline by loading all available Lake County, FL property, permit, ownership, business, contractor, location, and public-source data into an MCP-ready database. Use IPFS and DuckDB to minimize Oracle-hosted infrastructure costs while enabling UI and agent access to answer property intelligence questions that support the roofing CRM—especially aged-roof and open-permit lead discovery within a map radius.
+Derived lead signals, all queryable. Every figure below is the value in `coverage.json`
+inside the published run, not a number typed by hand:
 
-The pipeline must demonstrate that data is ingested on an ongoing basis (not a one-shot bulk load): support incremental / windowed refreshes, preserve run history with record deltas and timestamps, and re-publish updated artifacts to Elephant IPFS as **new immutable CIDs** (do not mutate a previously published CID).
+| Signal                                             | Count   |
+| -------------------------------------------------- | ------- |
+| Roof age known                                     | 169,028 |
+| Roofs 15 years or older                            | 117,605 |
+| Roof age dated from a completed roofing permit     | 2,646   |
+| Properties with an open roofing permit             | 226     |
+| Properties with a permit open more than five years | 20      |
+| Out-of-state owners                                | 20,236  |
+| No recorded sale in the DOR window                 | 184,829 |
 
-## Acceptance Criteria
+## Architecture
 
-### Geography & coverage
-- Target **Lake County, FL** as the default and primary county for ingestion and demos.
+```
+bulk sources (no scraping fleet: every source is a download or a bounded Esri page walk)
+  ├─ FL DOR NAL / SDF / TPP  ── 42 s
+  ├─ FL GIO parcel centroids ── 210,935 rows, ids-only + OBJECTID ranges, ~10 s
+  └─ Lake CD Plus permits    ── 17,915 features, 6.5 s, windowed for incremental runs
+        │
+  seed  ├─ data/seeds/lake.csv, 215,806 rows, no PII, reconciliation enforced
+        │
+  DuckDB├─ join → 59-column query table → gate: rows == distinct folio, 0 null folios
+        │
+publish ├─ UnixFS DAG built and hashed LOCALLY → CIDv1 base32 → CAR
+        ├─ CAR imported to Filebase with x-amz-meta-import: car, pinning the exact DAG
+        ├─ IPNS re-pointed, then READ BACK and compared to the published root
+        └─ every listed CID fetched from independent public gateways, bytes and sha256 compared
+        │
+  read  └─ DuckDB range-reads the Parquet by CID. No server in the read path.
+```
 
-### Data loading
-- Run the Oracle pipeline until all available county data is uploaded.
-- Load available property records into the database.
-- Load available permit records into the database, with emphasis on **roofing-related permits**.
-- Preserve permit status, open/close dates (or equivalent), and duration-open signals so long-open permits can be identified.
-- Load available ownership records into the database.
-- Load available contractor records into the database.
-- Load available BBB / contractor rating scores where publicly available.
-- Load available business records into the database.
-- Load available location and coordinate data into the database (required for GPS/pin-drop radius queries in the CRM).
-- Capture roof age or best-available proxies (e.g., year built, last roofing permit/completion date) so properties with roofs older than a configurable threshold (default suggestion: **15 years**) can be queried.
-- Reconcile duplicate entities across all uploaded datasets.
-- Preserve source provenance for uploaded records.
-- Design and implement the pipeline as continuous / incremental:
-  - Support ongoing ingestion of new and changed records (scheduled or on-demand refreshes, change detection or bounded windows, idempotent steps).
-  - Maintain a visible history of pipeline runs (timestamps, source list, record counts, deltas, any source limitations).
-  - Demonstrate that data continues to be ingested and published over time (multiple runs or simulated ongoing updates).
+## Quick start
 
-### Infrastructure & access
-- Optimize pipeline performance where feasible.
-- Identify slow source sites or constrained data sources.
-- Document pipeline speed limitations and source constraints.
-- Design the infrastructure so Oracle does not carry ongoing infrastructure cost by default.
-- Use IPFS for decentralized storage of eligible dataset artifacts.
-- Use DuckDB for local or portable analytical querying.
-- Structure the database to support MCP access.
-- Enable agent access to query the database.
-- Provide a UI for exploring the uploaded data.
+```bash
+(cd .claude/skills/use-oracle/runtime && npm ci)
+npm test --prefix .claude/skills/use-oracle/runtime
+python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
+  .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
+```
 
-### IPFS publication
-- Treat IPFS **CIDs** as the durable identity of published artifacts. Do not treat a vendor-specific HTTP URL as the source of truth.
-- Prefer **CIDv1** (base32) for every published object.
-- Keep published bytes **retrievable from the public IPFS network**, not only from a private node, authenticated gateway, vendor dashboard, or laptop that is running during the demo.
-- Publish a machine-readable **artifact manifest** (JSON) for each pipeline run. Include every eligible object (query table, coverage, indexes, sample extracts, and any directory roots) with at least:
-  - `cid`
-  - logical `name` / path
-  - `size` in bytes
-  - IPFS codec (`file` vs `directory`)
-  - content digest (e.g. SHA-256 of the raw bytes, or equivalent)
-  - optional provider `origins` (multiaddrs) if a candidate-operated node is still serving the blocks
-- If IPNS is used, record both the IPNS name and the **resolved CID** for that run. IPNS is a pointer; the CID is the snapshot.
-- On incremental republish, keep prior CIDs immutable. New data produces a new CID. Run history must retain previous CIDs.
-- For directory artifacts, also publish a **CAR** of the DAG rooted at that CID so the snapshot can be imported by any IPFS node without re-encoding.
-- Demonstrate that each listed CID can be fetched from **at least two independent public gateways** that this environment does not operate (for example `https://ipfs.io/ipfs/<cid>` and `https://dweb.link/ipfs/<cid>`), and that the retrieved bytes match the manifest size/digest.
-- Include the artifact manifest (and CARs, if any) in the repository or demo packet so a third party can fetch the dataset by CID after the candidate environment is gone.
+The application's own suite runs from the repo root. 50 of the 212 tests exercise the
+query layer against a real 215,806-row table rather than a fixture, so they skip unless one
+is reachable; point them at the published run to run everything:
 
-### Roofing CRM–supporting queries
-- Support radius-based property identification using coordinates (around a GPS point or map pin).
-- Support questions about properties with roofs older than 15 years (or a configurable age threshold).
-- Support questions about properties with **open roofing permits**, including those that have remained open for many years.
-- Support returning permit details with contractor name and BBB rating score where available.
-- Support questions about properties that have not exchanged ownership in more than 10 years.
-- Support questions about properties with regional (or out-of-area) owners.
-- Return source-backed answers where source data is available.
+```bash
+pnpm install && pnpm run build
+ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/$(jq -r .rootCid artifacts/latest.json)/query-table.parquet" \
+  pnpm run test:unit          # 212 passed
+```
 
-### Demonstration
-- Demonstrate the uploaded dataset through the UI.
-- Demonstrate the uploaded dataset through an agent query aligned to roofing lead discovery.
-- Demonstrate that Oracle can operate without carrying the infrastructure cost.
-- Demonstrate public, CID-addressed IPFS publication using the artifact manifest and independent gateway retrieval (not a private-only locator).
-- Confirm the candidate fulfilled both Oracle and builder responsibilities for this milestone.
-- Pass the demo using real uploaded Lake County records.
+Full pipeline commands are in [`docs/runbook.md`](docs/runbook.md).
 
-## Demo Transcript
-- Presenter: “I will demonstrate that the Oracle pipeline has loaded the available dataset for Lake County, Florida, that the data is queryable through DuckDB, that eligible artifacts are stored on IPFS as content-addressed snapshots, and that both the UI and agent can answer property intelligence questions that support roofing lead generation.”
-- Presenter: “First, I am opening the pipeline run summary.”
-  - Expected Result: The system displays the completed pipeline run, source list, county coverage, record counts, timestamps, and any documented source limitations.
-- Presenter: “Show the total uploaded records by source.”
-  - Expected Result: The system shows uploaded property, permit, ownership, contractor (with BBB rating where available), business, and coordinate records with collection timestamps and provenance.
-- Presenter: “Now I am opening the DuckDB-backed query layer.”
-  - Expected Result: The system confirms that the loaded data is available for structured querying without requiring Oracle-hosted database infrastructure.
-- Presenter: “Show the published artifact manifest for this run.”
-  - Expected Result: A JSON (or equivalent) listing every eligible artifact with CID, size, logical name, codec, and digest. Gateway URLs, if shown, are derived from those CIDs. An IPNS name, if used, is shown together with the resolved CID.
-- Presenter: “Retrieve one published artifact by CID from a public gateway that this environment does not operate, then again from a second independent public gateway.”
-  - Expected Result: Both fetches succeed and the bytes match the manifest size/digest. Serving the object only from a private, local, or authenticated gateway is a fail.
-- Presenter: “Show that a later incremental publish produced a new CID without mutating the previous one.”
-  - Expected Result: The prior CID still resolves; the new run has a distinct CID; IPNS (if used) now points at the new CID; both CIDs appear in run history. A CAR is available for any directory root.
-- Presenter: “Using the UI, show properties within a sample radius that have roofs older than 15 years.”
-  - Expected Result: Matching properties are returned with roof-age basis, coordinates, and source provenance.
-- Presenter: “Show properties in that area with open roofing permits, prioritizing permits that have remained open for many years, including contractor and BBB rating where available.”
-  - Expected Result: Results include permit status/open duration, contractor identity, BBB score when present, and clear source backing.
-- Presenter: “Now I am asking the same type of questions through the agent.”
-  - Agent Prompt: “Which properties in Lake County within five miles of [city xyz] have roofs older than 15 years?”
-    - Expected Result: The agent returns matching properties, explains the reasoning, and includes source-backed evidence.
-  - Agent Prompt: “Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?”
-    - Expected Result: The agent returns a filtered list with permit age/open duration, contractor details, BBB rating when available, and clearly identifies any assumptions or missing data.
-- Presenter: “Finally, I will show that the system is MCP-ready.”
-  - Expected Result: The system demonstrates an MCP-ready interface or documented MCP-compatible query structure that agents and the roofing CRM can use without changing the data model.
+## Fetch the data with nothing but curl
 
-## Out of Scope
-- Roofing CRM UI, map pin/GPS interaction design, and lead outreach workflows (covered in [roofing-crm](https://github.com/prismteam-ai/roofing-crm)).
-- Live outbound messaging to property owners.
+```bash
+ROOT=$(jq -r .rootCid artifacts/latest.json)
+curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq .tables.properties.rows
+curl -sL "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-table.parquet
+duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
+```
 
-## Reference
-- [Roofing CRM & Lead Identification UI](https://github.com/prismteam-ai/roofing-crm)
-- [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit)
-- [Elephant Oracle Skills](https://github.com/elephant-xyz/skills)
+## No single gateway can take this down
+
+Both read paths — the Lambda and the browser — try several gateways for the same
+CID and use the first that answers. Pinning one vendor's gateway put the runtime
+in tension with this project's own rule that a vendor-specific HTTP URL is never
+the source of truth, and made the no-ongoing-cost claim depend on one account
+staying live. The CID is the source of truth; a gateway is transport.
+
+Measured against the published Parquet on 2026-09-10, following redirects
+(`curl -sL -r 0-1023 -H 'Origin: ...'`), rather than assumed:
+
+| Gateway                                                          | Range | CORS | Used                                     |
+| ---------------------------------------------------------------- | ----- | ---- | ---------------------------------------- |
+| `ipfs.filebase.io` · `gateway.pinata.cloud` · `gw.ipfs-lens.dev` | 206   | `*`  | in order                                 |
+| `ipfs.io` · `dweb.link` · `w3s.link`                             | 206   | `*`  | last — they rate-limit datacenter egress |
+| `4everland.io`                                                   | 301   | `*`  | recorded unusable, not silently omitted  |
+
+The `-L` matters, and a first pass here got it wrong without it: `dweb.link` and
+`w3s.link` answer 301 to a subdomain gateway and serve the range from there, so
+every real client sees 206. An earlier note in this repo claimed Filebase was the
+only gateway serving both CORS and Range; five others do.
+
+The published run is verified across all of them. Every one of the nine checked
+artifacts — including the 20 MB Parquet and a 14 MB shard — returned bytes
+matching the manifest's length and SHA-256 from **five independent gateways**,
+recorded in `artifacts/verification-<run>.json`. The kit's verifier stops at two
+by design, which is why the record used to name only two; `scripts/reverify-across-gateways.mjs`
+sweeps the full list for the evidence record without changing the pass criterion
+or touching the vendored kit.
+
+## Import the whole DAG as a CAR, from anyone's gateway
+
+The published `.car` files are reproducible build output and are not committed, but they do
+not need to be: the CAR's root **is** the published root CID, so any gateway will export the
+identical DAG on demand. Nothing here touches Filebase or this repository.
+
+```bash
+ROOT=$(jq -r .rootCid artifacts/latest.json)
+[ "$ROOT" = "$(jq -r .carCid artifacts/latest.json)" ] && echo "car root == published root"
+curl -sL -H 'Accept: application/vnd.ipld.car' \
+  "https://ipfs.filebase.io/ipfs/$ROOT?format=car" -o lake.car     # 326,147,854 bytes
+ipfs dag import lake.car
+```
+
+## Or hit the deployed runtime
+
+```bash
+U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
+curl -s "$U/api/health"                                    # propertyCount 215806, runId, rootCid
+curl -s "$U/api/stats" | jq .stats.properties              # 215806
+curl -s "$U/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools|length'   # 8
+curl -s "$U/api/sql" -H 'content-type: application/json' \
+  -d '{"sql":"SELECT * FROM read_text(\'/etc/passwd\')"}' | jq .error              # sql_rejected
+```
+
+The last call is the one that matters: an open SQL endpoint over an engine with filesystem
+access is an arbitrary-file-read primitive, and this one was exactly that until it was fixed.
+
+## Two runs, two CIDs, prior data untouched
+
+| Run                | Mode        | Root CID            | Property deltas   | Gateways verified |
+| ------------------ | ----------- | ------------------- | ----------------- | ----------------- |
+| `20260909T182356Z` | full        | `bafybeigb3g…rltee` | 215,806 inserted  | 5                 |
+| `20260909T185056Z` | incremental | `bafybeiay65…z33q`  | 215,806 unchanged | 2                 |
+
+The IPNS name resolves to the newest run; every run's own root CID is permanent. Run one's
+root still resolves after run two republished, and the run before both of them, published
+earlier the same day, was independently re-checked from three gateways and returns a
+byte-identical manifest — that evidence is in `artifacts/prior-publication.json`.
+
+The incremental run's deltas are genuinely zero, and that is reported rather than dressed
+up. It re-fetched the 304 permits whose `Permit_LastModDate` had moved in the preceding four
+days and merged them by permit number, which collapsed 244 duplicate feature rows but
+changed no property-level value. A delta appears when a permit changes status, a roof gets a
+new completion date, or the DOR publishes a new roll. The mechanism is exercised and the
+result is honest: nothing that this pipeline measures had changed yet.
+
+## Known limitations, stated rather than hidden
+
+These are in `coverage.json` inside every published run, and in the source catalog.
+
+- **The county permit layer is a rolling 365-day window, not an archive.** `Permit_LastModDate`
+  spans one year and only 846 of 17,671 permits were issued before 2024-09-09. Deep permit
+  history is not available from it; incremental runs accumulate history going forward.
+- **It covers unincorporated Lake County only.** A spatial test puts 45 of 17,915 features
+  inside any of the 14 municipal boundaries, and those are county-owned facilities. Each
+  municipality runs its own system; 13 of 14 are blocked, unavailable or manual-only, and
+  each has a named records-request recipient in the catalog. Exactly one, Clermont, has an
+  open portal, and it is catalogued as discovered but not yet harvested.
+- **Contractor identity and BBB ratings are not published.** Contractor of record lives on
+  county permit detail pages behind a Cloudflare managed challenge covering the whole
+  `lakecountyfl.gov` estate; `bbb.org` answers 403. Both are real columns that stay null,
+  with the reason in `enrichment_status`. Nothing is invented.
+- **Ten-year ownership tenure cannot be proven.** Only the current DOR roll is published and
+  it carries 2025-2026 sales; the historical DOR map-data files back to 2005 carry parcel
+  geometry only, which was verified by downloading the 2010 file and reading its two-field
+  attribute table. `no_recorded_sale_in_dor_window` is a lower bound, not a tenure claim.
+- **Coordinates come from the 2025 centroid release against the 2026 roll**, so 6,303
+  parcels (2.92%) publish with null coordinates rather than being dropped. A separate
+  figure, the 2.26% in the readiness exception, measures something else: the gap between
+  the 210,935-row GIS release and the 215,806-row assessed roll. The two are easy to
+  conflate and an earlier draft of this file did exactly that.
+
+### Found after this run was published
+
+Two city values in the DOR roll are source typos: `LAKDY LAKE` and `tavares`, one parcel
+each out of 215,806. They are published exactly as the roll writes them rather than being
+silently corrected, because the published table is meant to be the roll, not an improved
+version of it. Filters are case-insensitive (`upper(address_city) = ...`), so a search for
+Tavares still returns the lowercase row; `LAKDY LAKE` will not match a search for Lady Lake,
+and that is the one parcel it costs. Both show as their own entries in the city facet list.
+
+Unlike the limitations above, this one is **not** in the published `coverage.json`. It was
+found while auditing the runtime, after the run's CID was fixed, and recording it here was
+preferred to quietly leaving it out.
+
+**Business coverage is 6.2% of the source roll, and the published total double counts.**
+The TPP roll carries no parcel key, so accounts are located by a normalized street+zip
+match against the roll's situs addresses. 32,738 of the 33,346 accounts carry a situs
+address and 2,060 of them match a parcel, so the other 94% are not published. Separately,
+a matched address group is attributed to _every_ parcel sharing that address, so summing
+`business_account_count` across parcels yields 4,451 rather than 2,060 — 90 address groups
+covering 180 accounts span 1,214 parcels. The UI labels that figure "TPP account–parcel
+matches" rather than a count of businesses, and the Business view says so in full.
+
+`NAICS_CD` is present on every one of the 33,346 source rows but is not carried into the
+published table, so the roll's 44 roofing contractors (10 of which match a parcel) cannot
+be queried here. Carrying it, and de-duplicating the shared-address attribution, both
+require rebuilding and republishing the query table under a new root CID; neither was done
+in this run, and neither is recorded in the published `coverage.json`, whose six
+limitations predate this finding.
+
+## What is not proven yet
+
+One thing is implemented and typechecks but has not been exercised, and it is listed here
+rather than counted as working.
+
+- **The chat agent has never called a model.** No `ANTHROPIC_API_KEY` was available in this
+  environment. The Vercel AI SDK path with its five Zod-schema tools and its citation
+  collector is written, and only the "no key returns 503" branch is test-covered. Export a
+  key and run it once before relying on it.
+
+Two items that were listed here have since been exercised against the deployed runtime and
+are no longer open:
+
+- **DuckDB-WASM now runs in a real browser.** Chromium loads the deployed app, the mode pill
+  reads "Browser DuckDB-WASM · range-reading IPFS", every view renders from the Parquet
+  range-read straight off `ipfs.filebase.io`, and the console is clean. It still falls back to
+  the server API and shows the reason, so a failure degrades rather than breaks.
+- **The browser and server paths agree.** They were compared figure by figure on the deployed
+  runtime: business totals (2,726 properties with an account, 4,451 accounts) and the by-city
+  ranking, owner posture (50,010 out of county, 20,236 out of state, 184,829 with no sale on
+  the roll) and all seven roof-age bands are identical in both.
+
+Fixing the browser path is what surfaced a real bug, now fixed: DuckDB returns `sum()` over an
+integer column as HUGEINT, Arrow carries that as a Decimal128, and the UI decoded it with
+`Array.from`. "Permit records joined" and "Roofing permit records" rendered as an em-dash in
+the browser while the REST API answered 17,457 and 3,256 for the same SQL, and the SQL console
+printed `[17457, 0, 0, 0]`. Both now read correctly.
+
+The hosted runtime now exists and is exercised above. It did not on the first attempt: the
+deploy succeeded and every route answered 502, because DuckDB resolves extensions under
+`$HOME/.duckdb/extensions/` and Lambda sets no `HOME`. `httpfs` is not statically linked, so
+it had never been shipped in the bundle at all and had only ever loaded from the developer's
+own home directory. The bundle now ships it and the stack points DuckDB at it.
+
+There is still no pull request and no demo video, because neither was authorised.
+
+## Team-kit usage
+
+`arceus` routed the work; `oracle` drove `onboard-county`, `county-discovery`,
+`county-readiness-preflight`, `county-seed-data`, `county-permit-adapter`,
+`county-ingest-run`, `county-open-data-publish` and `county-query-table-publish`;
+`metagross` with `build-frontend-backends` built the application; `apply-engineering-guidelines`
+applies throughout. The readiness validator is a hard gate and passes on all five gates.
+Deviations, including the stack question that had to be put back to the operator because the
+bundled runtime contains no Restate stack, are documented rather than glossed.
