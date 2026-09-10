@@ -47,7 +47,19 @@ SELECT
       END)                                                                 AS longest_open_permit_days,
   max(coalesce(issued_date, applied_date))                                 AS latest_permit_date,
   max(CASE WHEN lower(is_roofing)='true' THEN co_date END)                        AS roof_co_date,
-  max(CASE WHEN lower(is_roofing)='true' THEN issued_date END)                    AS roof_issued_date
+  -- Only a roofing permit that is no longer open is evidence of a roof.
+  --
+  -- An issued permit means the work was started or merely planned; it becomes
+  -- evidence of a re-roof when it closes. Counting an open one made the roof
+  -- read as NEW: a permit issued nine years ago and never closed published as
+  -- `roof_age_years: 9` on a house built in 1974, so the parcel with the
+  -- strongest possible lead signal — an old roof with roofing work stalled
+  -- open for years — was ranked as recently re-roofed and dropped out of every
+  -- aged-roof query. Where a roofing permit is still open the roof is the one
+  -- the building has always had, so the age falls back to `year_built`, which
+  -- `roof_age_basis` then reports honestly.
+  max(CASE WHEN lower(is_roofing)='true' AND lower(is_open)<>'true'
+      THEN issued_date END)                                                AS roof_issued_date
 FROM permit
 WHERE alternate_key IS NOT NULL AND alternate_key <> ''
 GROUP BY 1;
