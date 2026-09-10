@@ -28,16 +28,17 @@ neighbour was extended in its own conventions. Every such decision is listed in
 
 ## What is loaded
 
-| Table                                                                 | Rows                           | Source                                                                                |
-| --------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| properties (one row per assessed parcel, 59 columns)                  | **215,806**                    | FL DOR NAL 2026P                                                                      |
-| permits (3,312 roofing · 3,753 open · 247 open roofing)               | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
-| permits linked to an assessed parcel · valid unlinked                 | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
-| coordinates                                                           | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
-| business accounts in the source roll (1,883 construction, 44 roofing) | **33,346**                     | FL DOR TPP 2026P                                                                      |
-| business accounts matched to a parcel and published                   | **2,060** (6.2%)               | street+zip match; the TPP roll carries no parcel key                                  |
-| sale records                                                          | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
-| distinct owner names                                                  | **168,315**                    | FL DOR NAL                                                                            |
+| Table                                                                        | Rows                           | Source                                                                                |
+| ---------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| properties (one row per assessed parcel, 59 columns)                         | **215,806**                    | FL DOR NAL 2026P                                                                      |
+| permits in the source layer (3,312 roofing · 3,753 open · 247 open roofing)  | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
+| permits linked to an assessed parcel · valid unlinked                        | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
+| permits as counted in the published table (3,256 roofing · 226 open roofing) | **17,457**                     | the linked subset — the API and UI report against this denominator, not 17,671        |
+| coordinates                                                                  | **209,503** (97.1%)            | FL GIO parcel centroids 2025                                                          |
+| business accounts in the source roll (1,883 construction, 44 roofing)        | **33,346**                     | FL DOR TPP 2026P                                                                      |
+| business accounts matched to a parcel and published                          | **2,060** (6.2%)               | street+zip match; the TPP roll carries no parcel key                                  |
+| sale records                                                                 | **37,020** over 30,977 parcels | FL DOR SDF 2026P                                                                      |
+| distinct owner names                                                         | **168,315**                    | FL DOR NAL                                                                            |
 
 Derived lead signals, all queryable. Every figure below is the value in `coverage.json`
 inside the published run, not a number typed by hand:
@@ -126,7 +127,12 @@ only gateway serving both CORS and Range; five others do.
 
 The published run is verified across all of them. Every one of the nine checked
 artifacts — including the 20 MB Parquet and a 14 MB shard — returned bytes
-matching the manifest's length and SHA-256 from **five independent gateways**,
+matching the manifest's length and SHA-256 from **five independent gateways**
+_from this egress_. Two of those five, `ipfs.io` and `dweb.link`, rate-limit
+datacenter traffic, so a reviewer running from cloud infrastructure will
+typically reproduce three of the five rather than all of them — the bytes are
+identical either way, and saying "five" without that caveat sets up a
+reproduction that appears to fail,
 recorded in `artifacts/verification-<run>.json`. The kit's verifier stops at two
 by design, which is why the record used to name only two; `scripts/reverify-across-gateways.mjs`
 sweeps the full list for the evidence record without changing the pass criterion

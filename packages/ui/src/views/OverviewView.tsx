@@ -88,6 +88,11 @@ export function OverviewView(): JSX.Element {
             <Kv
               label="Verified gateways"
               value={run.verifiedGateways.length > 0 ? run.verifiedGateways.join(", ") : null}
+              note={
+                run.verifiedGateways.some((gateway) => /ipfs\.io|dweb\.link/.test(gateway))
+                  ? "ipfs.io and dweb.link rate-limit datacenter egress, so a reviewer on cloud infrastructure typically reproduces the first three, not all five."
+                  : undefined
+              }
             />
             <Kv label="Properties in pointer" value={formatCount(run.propertyCount)} />
             <Kv
@@ -101,7 +106,7 @@ export function OverviewView(): JSX.Element {
 
       <Panel
         title="Run history"
-        subtitle="Every publish, with its CIDs and the record deltas it produced. A run never overwrites the one before it."
+        subtitle="Every publish, with its CIDs and the record deltas it produced. A run never overwrites the one before it. The timestamps are when the publish set was assembled, not ingest wall-clock — both runs here were published in the same batch, which is why they are seconds apart while their run ids are 27 minutes apart."
       >
         {runHistory === null || runHistory.runs.length === 0 ? (
           <p className="dim" style={{ margin: 0 }}>
@@ -435,12 +440,15 @@ function Kv({
   mono = false,
   onCopy,
   copied,
+  note,
 }: {
   label: string;
   value: string | null;
   mono?: boolean;
   onCopy?: (text: string) => void;
   copied?: string | null;
+  /** Caveat shown under the value, for a figure that needs one to be honest. */
+  note?: string;
 }): JSX.Element {
   const display = value === null ? "—" : mono ? shortCid(value, 14, 8) : value;
   return (
@@ -459,6 +467,11 @@ function Kv({
       ) : (
         <span title={value ?? undefined}>{display}</span>
       )}
+      {note ? (
+        <span className="dim" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
+          {note}
+        </span>
+      ) : null}
     </div>
   );
 }
