@@ -41,10 +41,25 @@ interface Bucket {
   updatedAt: number;
 }
 
-/** Default: enough for real use, far below what a scraper wants. */
+/**
+ * Default budget per caller, per container.
+ *
+ * Measured rather than assumed, and the first measurement was wrong: 16
+ * concurrent calls once returned 10x200 and 6x429, which looked like the limiter
+ * working, and a later identical run returned 16x200. The difference was how
+ * many containers Lambda happened to spin up. Each has its own bucket, so under
+ * fan-out this bounds a caller per container and NOT in aggregate.
+ *
+ * The real worst case is `reservedConcurrentExecutions` x `refillPerMinute`,
+ * so these numbers are set to make that number defensible: 5/min x 25 = 125
+ * requests per minute, not the 250 the previous values allowed. A genuine
+ * aggregate limit needs shared state, which the no-ongoing-cost design rules
+ * out — so the honest move is to bound what can be bounded and say plainly what
+ * this does not do.
+ */
 export const DEFAULT_CHAT_RATE_LIMIT: RateLimiterOptions = {
-  capacity: 10,
-  refillPerMinute: 10,
+  capacity: 5,
+  refillPerMinute: 5,
 };
 
 export function createRateLimiter(options: RateLimiterOptions): RateLimiter {

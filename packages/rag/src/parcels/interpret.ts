@@ -424,7 +424,20 @@ export function interpretParcelQuery(
     )
     .join(" ")
     .trim();
-  if (residual.length > 0) filters.q = residual;
+  if (residual.length > 0) {
+    // Recorded in the interpretation, not just applied. `q` becomes a LIKE
+    // against the address, so it is a filter like any other — and it was the
+    // only one that never appeared on screen. "aged roofs on Nicolette Court"
+    // returned zero rows while the panel showed only the roof-age filter, which
+    // makes a real result look like an empty dataset.
+    filters.q = residual;
+    interpretation.push({ filter: "q", value: residual, phrase: residual });
+  }
 
-  return { filters, interpretation, answersAboutParcels: interpretation.length > 0 };
+  // A bare free-text term is not a question about the parcels — "why is
+  // contractor_name empty" would otherwise start filtering addresses by its own
+  // leftover words. Only a structured constraint makes this a parcel query;
+  // `q` narrows one that already exists.
+  const structured = interpretation.some((entry) => entry.filter !== "q");
+  return { filters, interpretation, answersAboutParcels: structured };
 }

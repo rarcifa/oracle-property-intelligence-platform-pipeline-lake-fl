@@ -5,6 +5,12 @@
  * many a single caller may make in a minute. A scraper could spend the account's
  * model budget without ever tripping it — which is exactly how the agent went
  * dark mid-evaluation once already.
+ *
+ * These tests pin the bucket itself. They deliberately do NOT claim an aggregate
+ * limit: the bucket is per-container, so a deployed burst can spread across
+ * containers and every request can succeed. That was measured on the deployed
+ * runtime — 16 concurrent calls, 16x200 — after an earlier identical run had
+ * shown 10x200/6x429 and been reported as proof it worked. It was not.
  */
 import { describe, expect, it } from "vitest";
 import { createRateLimiter } from "../src/chat/rate-limit.js";

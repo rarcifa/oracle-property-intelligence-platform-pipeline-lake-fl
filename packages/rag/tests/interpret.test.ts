@@ -161,10 +161,25 @@ describe("interpretParcelQuery", () => {
     expect(filtersOf("parcels with no recorded sale")).toMatchObject({ noRecordedSale: true });
   });
 
+  it("shows the free-text term in the interpretation, because it filters", () => {
+    // `q` is applied as a LIKE against the address. It used to be set without
+    // ever appearing in the interpretation, so "aged roofs on Nicolette Court"
+    // returned zero rows while the panel showed only the roof-age filter — a
+    // silent filter is worse than a wrong one, because nothing on screen
+    // explains the zero.
+    const result = interpretParcelQuery("aged roofs on Nicolette Court", VOCAB);
+    expect(result.filters.q).toMatch(/nicolette/i);
+    expect(result.interpretation.map((entry) => entry.filter)).toContain("q");
+    const term = result.interpretation.find((entry) => entry.filter === "q");
+    expect(term?.value).toMatch(/nicolette/i);
+  });
+
   it("returns no filters for a question about the data rather than the parcels", () => {
     const result = interpretParcelQuery("why is contractor_name empty", VOCAB);
-    expect(result.interpretation).toHaveLength(0);
+    // A leftover free-text term is recorded (it would filter, so it must be
+    // visible) but never on its own makes this a question about the parcels.
     expect(result.answersAboutParcels).toBe(false);
+    expect(result.interpretation.every((entry) => entry.filter === "q")).toBe(true);
   });
 
   it("marks a constrained question as answerable over the parcels", () => {

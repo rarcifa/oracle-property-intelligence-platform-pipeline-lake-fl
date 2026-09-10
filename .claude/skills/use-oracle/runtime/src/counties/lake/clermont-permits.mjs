@@ -128,7 +128,7 @@ const LICENSE_PATTERN = /\b(?:CCC|CGC|CBC|CRC|CFC|CMC|CAC|CVC|AEC|EC|CPC|CUC)\s?
  * @returns {string | null} Collapsed text, or null when empty or an `&nbsp;` placeholder.
  */
 export function cleanCell(value) {
-  const text = toText(String(value ?? "").replace(/ /g, " ")).replace(/\s+/g, " ");
+  const text = toText(String(value ?? "").replace(/ /g, " ")).replace(/\s+/g, " ");
   return text === "" ? null : text;
 }
 
