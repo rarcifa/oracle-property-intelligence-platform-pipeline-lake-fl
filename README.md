@@ -26,9 +26,6 @@ neighbour was extended in its own conventions. Every such decision is listed in
 | **Source catalog**        | [`docs/lake-sources.yaml`](.claude/skills/use-oracle/runtime/docs/lake-sources.yaml) · [findings](.claude/skills/use-oracle/runtime/docs/lake-county-findings.md) |
 | **Runbook · cost · demo** | [runbook](docs/runbook.md) · [cost](docs/cost.md) · [demo script](docs/demo-script.md)                                                                            |
 
-The assignment brief this submission answers is preserved verbatim as
-[`ASSIGNMENT.md`](ASSIGNMENT.md); this file is the project's own README.
-
 ## What is loaded
 
 | Table                                                                 | Rows                           | Source                                                                                |

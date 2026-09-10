@@ -2,7 +2,7 @@
 
 Assignment: https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl (its README is the story).
 It is scored by the soofi-xyz team kit's `slowking` agent; kit-usage conformance is judged by consulting `arceus`.
-The point is to demonstrate how well we use the EXISTING team kit. Full brief with verified facts: `MASTER_PROMPT.md`.
+The point is to demonstrate how well we use the EXISTING team kit. The assignment README is the brief; verified facts are recorded below and in `.claude/skills/use-oracle/runtime/docs/lake-sources.yaml`.
 
 ## The kit lives in this repo
 
@@ -23,7 +23,7 @@ The point is to demonstrate how well we use the EXISTING team kit. Full brief wi
 ## Verified facts (2026-09-09) — reuse, do not re-probe
 
 - Filebase creds in `.env` (git-ignored); bucket `elephant-oracle-open-data-lake`; free plan = ONE IPNS name, already created: `oracle-open-data-lake` = `k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un`. Plain S3 uploads get Filebase's own CIDv0; a CAR upload with metadata `import: car` pins exactly the CIDv1 DAG you computed.
-- Sources: FL DOR Data Portal (NAL 215,806 parcels, SDF 37,020 sales 2025–26 only, TPP 33,346 businesses; only the current roll is published), FL GIO centroid FeatureServer (210,935 rows; use ids-only + OBJECTID ranges, offset paging breaks past 20k), Lake CD Plus permit layer (17,671 distinct permits; join on `Alternate_Key` = NAL `ALT_KEY`; window on `Permit_LastModDate`; `IN` lists > 50 return 500). Endpoints in `MASTER_PROMPT.md`.
+- Sources: FL DOR Data Portal (NAL 215,806 parcels, SDF 37,020 sales 2025–26 only, TPP 33,346 businesses; only the current roll is published), FL GIO centroid FeatureServer (210,935 rows; use ids-only + OBJECTID ranges, offset paging breaks past 20k), Lake CD Plus permit layer (17,671 distinct permits; join on `Alternate_Key` = NAL `ALT_KEY`; window on `Permit_LastModDate`; `IN` lists > 50 return 500). Endpoints in `.claude/skills/use-oracle/runtime/docs/lake-sources.yaml`.
 - Gated (403 from every egress): permit detail pages (contractor names), bbb.org, DBPR, Sunbiz search, lakecopropappr.com.
 - Gateways: `ipfs.io`, `dweb.link`, `w3s.link` 429 datacenter IPs (incl. GitHub runners); `gateway.pinata.cloud` and `gw.ipfs-lens.dev` work; `ipfs.filebase.io` supports CORS + Range.
 - Prior immutable publication (2026-09-09): root `bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau`, manifest `bafkreibfwqfcvonyswytxuej2rnzfjocr3yp5zuuu537n27jla4ylerwpy`.
