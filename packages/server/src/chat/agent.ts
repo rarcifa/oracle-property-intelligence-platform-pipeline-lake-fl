@@ -110,7 +110,7 @@ Rules you must follow without exception:
 1. Never state a number you did not obtain from a tool call in this turn. If you need a count, run a query. Never estimate, never round a count, never reuse a number from an earlier turn without re-querying it.
 2. Every answer must name its evidence in prose: which columns and which upstream source systems the numbers came from, and, when the claim is about specific properties, the parcel ids. Parcel ids live in request_identifier.
 3. contractor_name and bbb_rating are real columns that are null for every row because their sources answer HTTP 403: county permit detail pages sit behind a Cloudflare managed challenge, and bbb.org refuses this egress. If a question needs a contractor name or a BBB rating, say plainly that the value is gated at the source and give the reason. Never invent one, never infer one from an owner name, and never present the null as "no contractor worked on this property".
-4. has_sunbiz_tenant is false for every row because Sunbiz search is gated and was not ingested. business_account_count comes from the DOR tangible personal property roll and is evidence of business activity at the situs address, not a business directory.
+4. has_sunbiz_tenant is null for every row because Sunbiz corporate data was not ingested; null means absence was never established, not that there is no tenant. business_account_count comes from the DOR tangible personal property roll and is evidence of business activity at the situs address, not a business directory.
 5. ${TENURE_CAVEAT}
 6. The permit layer publishes a rolling 365-day window and covers unincorporated Lake County only. Absence of a permit is not proof that no permit exists; say so when a question turns on it.
 7. roof_age_basis names the evidence behind roof age: a completed roofing permit, an issued roofing permit, or the structure's year built. Always report the basis alongside a roof-age claim, because a year-built roof age is an upper bound on roof age, not a measurement of the roof.
@@ -134,7 +134,7 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     getDatasetInfo: tool({
       description:
         "Headline counts for the whole published dataset, the coverage snapshot's per-table row counts, and every documented limitation. Call this when a question is about the dataset as a whole, or to establish a denominator.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({}).strict(),
       execute: async () => {
         const provenance = await context.provenance();
         const [stats, coverage] = await Promise.all([
@@ -162,7 +162,7 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     searchProperties: tool({
       description:
         "Filtered property search. Returns a page of rows plus the true total number of matching parcels, which is the number to quote for 'how many' questions. Supports roof-age thresholds, permit posture, owner locality, value and year ranges, city, property type, and radius search (lat, lon and radiusMiles together).",
-      inputSchema: filtersForAgent,
+      inputSchema: filtersForAgent.strict(),
       execute: async (input) => {
         const provenance = await context.provenance();
         const result = await searchProperties(context.store, provenance, {
@@ -187,13 +187,15 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     resolveCityCentre: tool({
       description:
         "The published centre of a city, as the mean of its parcel centroids. ALWAYS call this before a radius search for a named place, and pass the lat and lon it returns straight to searchProperties. Never supply a coordinate for a place name from your own knowledge: it varies between answers, and the same question then returns different totals.",
-      inputSchema: z.object({
-        city: z
-          .string()
-          .min(1)
-          .max(80)
-          .describe("City name as it appears on the roll, e.g. CLERMONT"),
-      }),
+      inputSchema: z
+        .object({
+          city: z
+            .string()
+            .min(1)
+            .max(80)
+            .describe("City name as it appears on the roll, e.g. CLERMONT"),
+        })
+        .strict(),
       execute: async (input) => {
         const provenance = await context.provenance();
         const result = await getCityCentre(context.store, provenance, input.city);
@@ -216,9 +218,11 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     getProperty: tool({
       description:
         "Every published column for one parcel, with the upstream systems that contributed to it and the reason each permanently-null column is null.",
-      inputSchema: z.object({
-        parcelId: z.string().trim().min(3).max(64).describe("request_identifier of the parcel."),
-      }),
+      inputSchema: z
+        .object({
+          parcelId: z.string().trim().min(3).max(64).describe("request_identifier of the parcel."),
+        })
+        .strict(),
       execute: async ({ parcelId }) => {
         const provenance = await context.provenance();
         const detail = await getProperty(context.store, provenance, parcelId);
@@ -241,14 +245,16 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     runSql: tool({
       description:
         "Run a single read-only SELECT or WITH statement against the view `properties`. Use this for aggregates, group-bys and anything the other tools cannot express. Mutating statements are rejected.",
-      inputSchema: z.object({
-        sql: z
-          .string()
-          .min(1)
-          .max(8000)
-          .describe("A single read-only SELECT or WITH statement over the view `properties`."),
-        limit: z.number().int().min(1).max(200).optional(),
-      }),
+      inputSchema: z
+        .object({
+          sql: z
+            .string()
+            .min(1)
+            .max(8000)
+            .describe("A single read-only SELECT or WITH statement over the view `properties`."),
+          limit: z.number().int().min(1).max(200).optional(),
+        })
+        .strict(),
       execute: async ({ sql, limit }) => {
         let safeSql: string;
         try {
@@ -288,21 +294,23 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     searchDocuments: tool({
       description:
         "Semantic search over the Lake County documentation corpus: the source catalog with all 15 permit jurisdictions and their records-request routes, one document per published column explaining what it means and when it is null, the coverage snapshot's documented limitations, the published run's CIDs, and the project's README, runbook, cost model and county findings. Use it for questions the SQL tools cannot answer - why a column is empty, what a source covers, how a value was derived, which jurisdictions are blocked and how to request their records. It returns cited passages with provenance, or an explicit abstention when the corpus has no document for the question.",
-      inputSchema: z.object({
-        query: z
-          .string()
-          .trim()
-          .min(3)
-          .max(400)
-          .describe("The question, in the user's own words. Do not translate it into SQL."),
-        topK: z
-          .number()
-          .int()
-          .min(1)
-          .max(8)
-          .optional()
-          .describe("How many passages to return. Default 5."),
-      }),
+      inputSchema: z
+        .object({
+          query: z
+            .string()
+            .trim()
+            .min(3)
+            .max(400)
+            .describe("The question, in the user's own words. Do not translate it into SQL."),
+          topK: z
+            .number()
+            .int()
+            .min(1)
+            .max(8)
+            .optional()
+            .describe("How many passages to return. Default 5."),
+        })
+        .strict(),
       execute: async ({ query, topK }) => {
         try {
           const result = searchCorpus({ query, topK: topK ?? 5 });
@@ -331,7 +339,7 @@ function buildTools(context: AppContext, collector: CitationCollector) {
     getGatingReasons: tool({
       description:
         "The permit posture of the dataset and the exact reasons contractor identity and BBB ratings are absent. Call this whenever a question touches contractors, BBB ratings, or whether a permit's details are available.",
-      inputSchema: z.object({}),
+      inputSchema: z.object({}).strict(),
       execute: async () => {
         const provenance = await context.provenance();
         const view = await getContractorView(context.store, provenance);

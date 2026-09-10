@@ -203,7 +203,10 @@ describe("query-table row mapping", () => {
     const row = mapJoinedRecordToQueryTableRow({ nal: NAL_ROW, permits: [{ is_roofing: false, is_open: false }] });
     expect(row.contractor_name).toBeNull();
     expect(row.bbb_rating).toBeNull();
-    expect(row.has_bbb_contractor).toBe(false);
+    // Null, not false: neither absence was ever established, so a boolean would
+    // assert something no source checked. The test name has always said null.
+    expect(row.has_bbb_contractor).toBeNull();
+    expect(row.has_sunbiz_tenant).toBeNull();
     expect(row.enrichment_status).toContain("contractor_gated_403");
     expect(row.enrichment_status).toContain("bbb_gated_403");
   });

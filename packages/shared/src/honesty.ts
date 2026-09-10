@@ -77,8 +77,10 @@ export const ALWAYS_NULL_COLUMNS: Readonly<Record<string, string>> = Object.free
   contractor_name:
     "Gated at source: county permit detail pages answer HTTP 403 (Cloudflare managed challenge).",
   bbb_rating: "Gated at source: bbb.org answers HTTP 403 to this egress.",
-  has_bbb_contractor: "Always false: BBB enrichment is gated at source.",
-  has_sunbiz_tenant: "Always false: Sunbiz search is gated at source and was not ingested.",
+  has_bbb_contractor:
+    "Always null: BBB enrichment is gated at source, so absence was never established.",
+  has_sunbiz_tenant:
+    "Always null: Sunbiz corporate data was not ingested, so absence was never established.",
   property_cid:
     "Not populated by this run; the run publishes a single columnar table, not per-property CIDs.",
 });

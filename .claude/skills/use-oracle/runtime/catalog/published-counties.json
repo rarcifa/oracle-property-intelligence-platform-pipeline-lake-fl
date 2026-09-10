@@ -56,11 +56,11 @@
       "stateCode": "FL",
       "countyFips": "12069",
       "status": "published",
-      "queryTableUrl": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet",
-      "datasetCoverageUrl": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/coverage.json",
+      "queryTableUrl": "https://ipfs.filebase.io/ipns/k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un/query-table.parquet",
+      "datasetCoverageUrl": "https://ipfs.filebase.io/ipns/k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un/coverage.json",
       "permitQueryTableUrl": null,
       "placesTableUrl": null,
-      "updatedAt": "2026-09-09T19:34:17.000Z"
+      "updatedAt": "2026-09-10T15:39:44.000Z"
     },
     {
       "countyKey": "lee",

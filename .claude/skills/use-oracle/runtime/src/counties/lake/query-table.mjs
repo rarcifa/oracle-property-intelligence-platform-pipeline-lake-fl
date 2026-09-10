@@ -351,8 +351,11 @@ export function mapJoinedRecordToQueryTableRow(record) {
     latest_permit_date: permitDates.length > 0 ? permitDates[permitDates.length - 1] : null,
     contractor_name: null,
     bbb_rating: null,
-    has_bbb_contractor: false,
-    has_sunbiz_tenant: false,
+    // Null, not false. Neither was checked: BBB is 403-gated and Sunbiz was
+    // not ingested, so `false` would assert an absence nobody established.
+    // Same rule as contractor_name and bbb_rating directly above.
+    has_bbb_contractor: null,
+    has_sunbiz_tenant: null,
     has_business_account: businessAccounts > 0,
     business_account_count: businessAccounts,
     business_naics_codes: record.businessNaicsCodes ?? null,
