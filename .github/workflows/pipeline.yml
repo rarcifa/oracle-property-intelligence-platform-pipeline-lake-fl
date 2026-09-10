@@ -95,9 +95,27 @@ jobs:
           python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
             .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
 
+      - name: Restore the permit merge base
+        uses: actions/cache/restore@v4
+        with:
+          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
+          key: lake-permits-base-${{ github.run_id }}
+          restore-keys: |
+            lake-permits-base-
+
+      # The permit window is an optimisation over a full fetch, and it is only
+      # valid when there is a base to merge it into. Without one, a windowed
+      # fetch IS the dataset — which published 281 permits over 17,671 and
+      # passed every gate on the way, because nothing downstream can tell a
+      # small county from a truncated one. So the base is restored first, and
+      # its absence forces a full permit fetch whatever the mode says.
       - name: Acquire sources
         run: |
+          BASE="$PWD/data/downloads/lake/permits-base.csv"
           if [ "${{ steps.mode.outputs.mode }}" = "full" ]; then
+            node scripts/lake/fetch-sources.mjs
+          elif [ ! -f "$BASE" ]; then
+            echo "::notice::no cached permit base — fetching permits in full; a window without a base would be the whole dataset"
             node scripts/lake/fetch-sources.mjs
           else
             node scripts/lake/fetch-sources.mjs --only rolls
@@ -158,14 +176,6 @@ jobs:
       # would publish a table containing two days of permits and report the rest
       # as removed — "incremental" would be true of the code and false of the
       # data. The base is cached between runs and merged here.
-      - name: Restore the permit merge base
-        uses: actions/cache/restore@v4
-        with:
-          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
-          key: lake-permits-base-${{ github.run_id }}
-          restore-keys: |
-            lake-permits-base-
-
       - name: Merge the permit window into the base
         run: |
           D="$PWD/data/downloads/lake"
@@ -189,7 +199,7 @@ jobs:
             mv "$D/permits-merged.csv" "$D/permits.csv"
             echo "::notice::merged the permit window into the cached base"
           else
-            echo "::notice::no cached base (or full run) — using the fetched permits as the base"
+            echo "::notice::full permit set fetched — recording it as the new base"
           fi
           cp "$D/permits.csv" "$D/permits-base.csv"
           wc -l < "$D/permits.csv"

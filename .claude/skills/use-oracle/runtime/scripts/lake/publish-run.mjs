@@ -254,6 +254,14 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   await mkdir(ARTIFACTS_DIR, { recursive: true });
 
   const started = new Date().toISOString();
+
+  // Before the DAG is hashed, the CAR uploaded, or IPNS moved — a truncated
+  // acquisition must fail here, not become an immutable published root.
+  const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
+  const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
+  const previousRun = await readPreviousRun(historyPath);
+  assertTablesPlausible(coverageTableRows(coverage), previousRun);
+
   const dag = await buildRunDag(runDir);
   log("dag_built", { rootCid: dag.rootCid, blocks: dag.blocks.length, artifacts: dag.entries.length });
 
@@ -449,12 +457,10 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
     ),
   ];
 
-  const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
-  const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousHashes = await readPreviousRowHashes(historyPath);
-  const previousRun = await readPreviousRun(historyPath);
   const currentHashes = await readCurrentRowHashes(path.join(runDir, "query-table.parquet"));
   const deltas = computeTableDeltas(previousHashes, currentHashes);
+  const tableAccounting = buildTableAccounting(coverage, deltas, previousRun);
 
   const runRecord = {
     runId,
@@ -481,7 +487,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
         recordCount: coverage.tables.permits.rows,
       },
     ],
-    tables: buildTableAccounting(coverage, deltas, previousRun),
+    tables: tableAccounting,
     limitations: coverage.limitations,
     rootCid: dag.rootCid,
     manifestCid,
@@ -598,6 +604,67 @@ export async function readIpnsPointer(token, fetchImpl = fetch) {
   if (!entry) return null;
   return { networkKey: entry.network_key, cid: entry.cid, sequence: Number(entry.sequence) };
 }
+
+/**
+ * The per-table row counts a coverage snapshot claims, as plain pairs.
+ *
+ * @param {object} coverage - A run's coverage snapshot.
+ * @returns {{name: string, rows: number}[]} Row counts per published table.
+ */
+export function coverageTableRows(coverage) {
+  const rows = [
+    { name: "properties", rows: coverage.tables.properties.rows },
+    { name: "permits", rows: coverage.tables.permits.rows },
+    { name: "coordinates", rows: coverage.tables.coordinates.rows },
+  ];
+  const business = coverage.tables.businessAccounts;
+  if (business) rows.push({ name: "businessAccounts", rows: business.matchedToParcel });
+  return rows;
+}
+
+/**
+ * Refuse to publish a run in which a table has implausibly collapsed.
+ *
+ * A windowed permit fetch with no base to merge into produced 281 permits where
+ * the previous run had 17,671, and published it. Every gate passed: readiness
+ * ran, the DAG hashed, CIDs matched byte for byte, gateways verified. They all
+ * check that the bytes are what they claim to be, and none of them can tell a
+ * small county from a truncated one.
+ *
+ * So the shape of the data is checked against the last run that was actually
+ * published. A table may grow freely and may shrink a little — parcels are
+ * combined, permits are voided — but losing most of a table means the source
+ * was not fully acquired, and that is a failure, not a publication.
+ *
+ * Fail-closed by design, and overridable only deliberately: a genuine large
+ * contraction is published by setting ORACLE_ALLOW_TABLE_SHRINK, which records
+ * the intent in the run's own environment rather than silently tolerating it.
+ *
+ * @param {{name: string, rows: number}[]} tables - This run's per-table row counts.
+ * @param {object | null} previousRun - The previously recorded run, if any.
+ * @param {NodeJS.ProcessEnv} [env] - Environment, for the override.
+ * @returns {void}
+ * @throws {Error} When a table has lost more than the tolerated fraction.
+ */
+export function assertTablesPlausible(tables, previousRun, env = process.env) {
+  if (!previousRun) return;
+  if (env.ORACLE_ALLOW_TABLE_SHRINK === "1") return;
+  const previous = new Map((previousRun.tables ?? []).map((table) => [table.name, table.rows]));
+  for (const table of tables) {
+    const before = previous.get(table.name);
+    if (typeof before !== "number" || before === 0) continue;
+    if (table.rows >= before * MINIMUM_TABLE_RETENTION) continue;
+    throw new Error(
+      `Refusing to publish: table '${table.name}' fell from ${before} to ${table.rows} rows ` +
+        `(${((table.rows / before) * 100).toFixed(1)}% retained, floor is ` +
+        `${(MINIMUM_TABLE_RETENTION * 100).toFixed(0)}%). A table this much smaller means the ` +
+        `source was not fully acquired. Set ORACLE_ALLOW_TABLE_SHRINK=1 to publish a genuine contraction.`,
+    );
+  }
+}
+
+/** A published table may shrink, but losing half of it is a failed acquisition. */
+export const MINIMUM_TABLE_RETENTION = 0.5;
 
 /**
  * Read the most recently recorded run, for table-level movement.

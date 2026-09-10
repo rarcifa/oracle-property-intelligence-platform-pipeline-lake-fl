@@ -46,6 +46,16 @@ export const runSourceSchema = z
   .strict();
 
 /**
+ * How a table's numbers were derived, for records old and new.
+ *
+ * @param {{basis?: string}} table - A run's table accounting record.
+ * @returns {"row-hash" | "row-count"} The basis, defaulting for older records.
+ */
+export function tableBasis(table) {
+  return table.basis === "row-count" ? "row-count" : "row-hash";
+}
+
+/**
  * Per-table row accounting, the evidence that ingestion is ongoing.
  *
  * Two bases, because only one table is hashed per row. `row-hash` carries real
@@ -63,8 +73,15 @@ export const runTableSchema = z
   .object({
     name: z.string().trim().min(1),
     rows: counter,
-    /** Older records predate this field and are all row-hash. */
-    basis: z.enum(["row-hash", "row-count"]).default("row-hash"),
+    /**
+     * Optional, never defaulted. A zod `.default()` here injects the field into
+     * records read back from disk, which makes validation rewrite history that
+     * is supposed to be immutable — `appendRun` compares the validated result
+     * against the stored bytes and correctly refuses to write. Records written
+     * before this field existed have no basis and are row-hash by construction;
+     * read them with `tableBasis` rather than defaulting them at parse time.
+     */
+    basis: z.enum(["row-hash", "row-count"]).optional(),
     inserted: counter.optional(),
     updated: counter.optional(),
     unchanged: counter.optional(),
@@ -75,7 +92,7 @@ export const runTableSchema = z
   .strict()
   .refine(
     (table) =>
-      table.basis === "row-hash"
+      tableBasis(table) === "row-hash"
         ? [table.inserted, table.updated, table.unchanged, table.removed].every(
             (value) => typeof value === "number",
           )
