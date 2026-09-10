@@ -124,6 +124,15 @@ try {
     "One Lambda, no database. The header names the run and the immutable root CID the browser is reading from public IPFS.",
     5200,
   );
+  // The browser engine loads DuckDB-WASM and range-reads the Parquet by CID,
+  // falling back to server compute if that is slow to come up. A take that
+  // opened on the fallback showed "Server DuckDB" through a walkthrough whose
+  // point is that no server is in the data path.
+  await until(
+    page,
+    () => /Browser DuckDB-WASM/i.test(document.body.innerText),
+    "the browser DuckDB-WASM engine to come up",
+  );
   await wait(4200);
   await reveal(page, 780);
   await caption(
@@ -256,9 +265,21 @@ try {
     page,
     "6 · Answering from the published run",
     "Note the second half of that question: it asks for something the data does not contain.",
-    12000,
+    3000,
   );
-  await wait(11000);
+  // Wait for the answer itself. A take captioned "it refuses to invent the
+  // contractor" over a spinner, because the caption ran on a timer. The marker
+  // must be something that cannot exist before the answer does: "CITATIONS" is
+  // a heading that renders early, so key on a citation carrying real SQL.
+  await until(
+    page,
+    () =>
+      /SQL THIS CITATION RAN/i.test(document.body.innerText) &&
+      !/Thinking/i.test(document.body.innerText),
+    "the agent to finish answering",
+    170000,
+  );
+  await wait(3000);
   await reveal(page, 620);
   await caption(
     page,

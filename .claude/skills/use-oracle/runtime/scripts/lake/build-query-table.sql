@@ -128,7 +128,17 @@ COPY (
     TRY_CAST(n.TV_NSD AS DOUBLE)                                            AS taxable_value,
     nullif(trim(n.OWN_NAME), '')                                            AS owner_name,
     nullif(trim(n.OWN_NAME), '')                                            AS owners_text,
-    CASE WHEN trim(coalesce(n.OWN_NAME,'')) = '' THEN 0 ELSE 1 END          AS owner_count,
+    -- The roll packs co-owners into one name field: "TAYLOR JAMES THOMAS &
+    -- ANGEL LE" is two people. Publishing 1 for every populated row made the
+    -- tenant view headline "more than one owner: 0" while 86,697 parcels name
+    -- two owners, and gave any consumer a column that never varies. Empty
+    -- segments are dropped, because the roll also carries truncated names like
+    -- "FRANKLIN ELIZABETH &" where the second owner did not survive export.
+    CASE WHEN trim(coalesce(n.OWN_NAME,'')) = '' THEN 0
+         ELSE greatest(
+           1,
+           len(list_filter(str_split(trim(n.OWN_NAME), '&'), x -> trim(x) <> ''))
+         ) END                                                                  AS owner_count,
     nullif(trim(n.OWN_CITY), '')                                            AS owner_mailing_city,
     nullif(trim(n.OWN_STATE), '')                                           AS owner_mailing_state,
     nullif(trim(n.OWN_ZIPCD), '')                                           AS owner_mailing_zip,

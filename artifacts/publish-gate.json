@@ -9,9 +9,9 @@
       "approvalNote": "Owner authorised republishing the Lake County 2026 roll to public IPFS via Filebase and re-pointing the oracle-open-data-lake IPNS name (task 6, 2026-09-10).",
       "recordedBy": "Claude Code agent, recording an authorisation the owner gave in conversation; not typed by the approver",
       "lastDryRunWatermark": null,
-      "lastPublishedWatermark": "bafybeidslvwzrmoczzrxek2fxydtbqvvvzgld4e3p3t2bkschep22ky4hq",
-      "lastPublishedRunId": "20260910T214904Z",
-      "lastPublishedAt": "2026-09-10T21:55:03.000Z"
+      "lastPublishedWatermark": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+      "lastPublishedRunId": "20260910T225242Z",
+      "lastPublishedAt": "2026-09-10T22:54:59.000Z"
     }
   }
 }

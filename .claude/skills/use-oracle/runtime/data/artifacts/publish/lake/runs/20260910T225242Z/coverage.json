@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "elephant.coverage.v1",
+  "county": "lake",
+  "countyName": "Lake",
+  "stateCode": "FL",
+  "countyFips": "12069",
+  "runId": "20260910T225242Z",
+  "exportedAt": "2026-09-10T22:52:59.102Z",
+  "denominator": {
+    "basis": "source_roll_row_count",
+    "source": "Florida DOR 2026 preliminary NAL",
+    "assessedParcelCount": 215806,
+    "publishedParcelCount": 215806,
+    "publishedFraction": 1
+  },
+  "tables": {
+    "properties": {
+      "rows": 215806,
+      "source": "FL DOR NAL 2026P"
+    },
+    "permits": {
+      "rows": 17671,
+      "linked": 17457,
+      "validUnlinked": 214,
+      "unmatchedParcelKeys": 119,
+      "linkedPermitRecordsOnProperties": 17457,
+      "source": "Lake County CD Plus permit layer"
+    },
+    "coordinates": {
+      "rows": 209503,
+      "source": "FL GIO parcel centroids 2025"
+    },
+    "businessAccounts": {
+      "rows": 33346,
+      "withSitusAddress": 32738,
+      "matchedToParcel": 2060,
+      "attributedAcrossParcels": 4451,
+      "propertiesWithAccount": 2726,
+      "sharedAddressGroups": 90,
+      "source": "FL DOR TPP 2026P"
+    }
+  },
+  "signals": {
+    "roofAgeKnown": 169026,
+    "roofAgeFifteenPlus": 117788,
+    "propertiesWithPermits": 12335,
+    "roofingPermitRecords": 3256,
+    "propertiesWithOpenRoofingPermit": 226,
+    "permitsOpenOverFiveYears": 20,
+    "outOfStateOwners": 20236,
+    "outOfCountyOwners": 50039,
+    "noRecordedSaleInDorWindow": 184829,
+    "distinctOwners": 168315,
+    "propertiesWithBusinessAccount": 2726
+  },
+  "limitations": [
+    "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
+    "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
+    "Contractor of record is not published. It lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate. contractor_name is a real column that stays null.",
+    "BBB ratings are not published. bbb.org answers 403 to this egress and the kit requires BBB browser work on approved AWS remote compute, which this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null.",
+    "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
+    "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
+    "214 of 17671 permits reference a parcel key absent from the assessed roll (119 distinct keys). They are valid records, counted here and not discarded, but they attach to no published property row.",
+    "Business coverage is a fraction of the TPP roll, and the published per-parcel total double counts. The roll carries no parcel key, so accounts are located by a normalized street+zip match against the roll's situs addresses: 32738 of 33346 accounts carry a situs address and 2060 match a parcel (6.2%), so the rest are not published. A matched address group is then attributed to every parcel sharing that address, so summing business_account_count across the 2726 parcels that carry one yields 4451 rather than 2060: 90 address groups span more than one parcel. 2060 is the distinct account match; 4451 counts account-parcel matches, not businesses."
+  ]
+}

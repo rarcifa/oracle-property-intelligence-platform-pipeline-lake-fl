@@ -2,6 +2,84 @@
   "schemaVersion": "elephant.run-history.v1",
   "runs": [
     {
+      "runId": "20260910T225242Z",
+      "startedAt": "2026-09-10T22:52:59.293Z",
+      "finishedAt": "2026-09-10T22:54:59.051Z",
+      "mode": "full",
+      "sources": [
+        {
+          "name": "fl-dor-nal-2026p",
+          "url": "https://floridarevenue.com/property/dataportal",
+          "window": "2026 preliminary roll",
+          "recordCount": 215806
+        },
+        {
+          "name": "fl-gio-parcel-centroids-2025",
+          "url": "https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Parcel_Centroid_Version/FeatureServer/0",
+          "window": "2025 release",
+          "recordCount": 209503
+        },
+        {
+          "name": "lake-cdplus-permits",
+          "url": "https://utility.arcgis.com/usrsvcs/servers/365d9a169bc34110a3db2157c76f6c95/rest/services/Individual/CDPermitParcels/MapServer/0",
+          "window": "full scan",
+          "recordCount": 17671
+        }
+      ],
+      "tables": [
+        {
+          "name": "properties",
+          "rows": 215806,
+          "basis": "row-hash",
+          "inserted": 0,
+          "updated": 0,
+          "unchanged": 215806,
+          "removed": 0
+        },
+        {
+          "name": "permits",
+          "rows": 17671,
+          "basis": "row-count",
+          "previousRows": 17671,
+          "rowsDelta": 0
+        },
+        {
+          "name": "coordinates",
+          "rows": 209503,
+          "basis": "row-count",
+          "previousRows": 209503,
+          "rowsDelta": 0
+        },
+        {
+          "name": "businessAccounts",
+          "rows": 2060,
+          "basis": "row-count",
+          "previousRows": 2060,
+          "rowsDelta": 0
+        }
+      ],
+      "limitations": [
+        "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
+        "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
+        "Contractor of record is not published. It lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate. contractor_name is a real column that stays null.",
+        "BBB ratings are not published. bbb.org answers 403 to this egress and the kit requires BBB browser work on approved AWS remote compute, which this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null.",
+        "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
+        "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
+        "214 of 17671 permits reference a parcel key absent from the assessed roll (119 distinct keys). They are valid records, counted here and not discarded, but they attach to no published property row.",
+        "Business coverage is a fraction of the TPP roll, and the published per-parcel total double counts. The roll carries no parcel key, so accounts are located by a normalized street+zip match against the roll's situs addresses: 32738 of 33346 accounts carry a situs address and 2060 match a parcel (6.2%), so the rest are not published. A matched address group is then attributed to every parcel sharing that address, so summing business_account_count across the 2726 parcels that carry one yields 4451 rather than 2060: 90 address groups span more than one parcel. 2060 is the distinct account match; 4451 counts account-parcel matches, not businesses."
+      ],
+      "rootCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+      "manifestCid": "bafkreigyltpgm7qxu7ccyfqeyg3q2c3ygdrqkgwnajjunrplv3xf32phmi",
+      "carCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+      "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+      "resolvedCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+      "verifiedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "status": "succeeded"
+    },
+    {
       "runId": "20260910T214904Z",
       "startedAt": "2026-09-10T21:50:29.393Z",
       "finishedAt": "2026-09-10T21:55:03.633Z",
