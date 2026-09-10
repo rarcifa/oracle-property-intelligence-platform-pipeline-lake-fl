@@ -64,6 +64,27 @@ async function go(page, path, title, body, settle = 3200) {
   await caption(page, title, body);
 }
 
+/**
+ * Wait for the page to actually reach a state, rather than sleeping and hoping.
+ *
+ * Fixed sleeps produced a take in which the agent was still thinking while the
+ * caption said it had answered — the recording asserted something the screen
+ * did not show.
+ *
+ * @param {import("@playwright/test").Page} page - Page.
+ * @param {() => boolean} predicate - Runs in the browser; true when ready.
+ * @param {string} what - What is being waited for, for the failure message.
+ * @param {number} [timeout] - Milliseconds before giving up.
+ * @returns {Promise<void>}
+ */
+async function until(page, predicate, what, timeout = 120000) {
+  try {
+    await page.waitForFunction(predicate, null, { timeout, polling: 500 });
+  } catch {
+    throw new Error(`demo beat never became ready: ${what}`);
+  }
+}
+
 /** Scroll smoothly so the recording reads as a walkthrough, not a slideshow. */
 async function reveal(page, px = 900, ms = 2600) {
   await page.evaluate(
