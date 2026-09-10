@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CfnOutput, Duration, SecretValue, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, Stack, type StackProps } from "aws-cdk-lib";
 import {
   Architecture,
   Code,
@@ -19,6 +19,7 @@ import {
   Tracing,
 } from "aws-cdk-lib/aws-lambda";
 import { Alarm, ComparisonOperator, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
@@ -45,9 +46,12 @@ const ANTHROPIC_SECRET_NAME =
  */
 function anthropicKeyEnvironment(): Record<string, string> {
   if (ANTHROPIC_SECRET_NAME.length === 0) return {};
-  return {
-    ANTHROPIC_API_KEY: SecretValue.secretsManager(ANTHROPIC_SECRET_NAME).unsafeUnwrap(),
-  };
+  // The NAME, not the value. This was a CloudFormation dynamic reference with
+  // `unsafeUnwrap()`, which resolves at deploy time and writes the plaintext key
+  // into the function's own configuration, where anyone in the account holding
+  // `lambda:GetFunctionConfiguration` can read it. The function fetches the
+  // secret itself at cold start instead, so the key is never in the config.
+  return { ORACLE_ANTHROPIC_SECRET_ID: ANTHROPIC_SECRET_NAME };
 }
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -135,6 +139,12 @@ export class LakeRuntimeStack extends Stack {
       loggingFormat: LoggingFormat.JSON,
       logRetention: RetentionDays.ONE_MONTH,
     });
+
+    // Least privilege: read that one secret, nothing else. This is the only IAM
+    // grant the stack adds beyond the default execution role.
+    if (ANTHROPIC_SECRET_NAME.length > 0) {
+      Secret.fromSecretNameV2(this, "AnthropicKey", ANTHROPIC_SECRET_NAME).grantRead(runtime);
+    }
 
     // One alarm per failure mode, self-resolving. The guidelines forbid
     // per-item alerts, so these watch rates and clear themselves when the rate

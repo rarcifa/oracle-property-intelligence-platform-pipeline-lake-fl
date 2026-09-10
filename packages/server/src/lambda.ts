@@ -13,6 +13,7 @@
  * @module lambda
  */
 
+import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { MetricUnit, Metrics } from "@aws-lambda-powertools/metrics";
 import { Tracer } from "@aws-lambda-powertools/tracer";
@@ -61,11 +62,36 @@ let coldStart = true;
  *
  * @returns The router, shared across invocations.
  */
+/**
+ * Resolve the model key from Secrets Manager, once, at cold start.
+ *
+ * It used to be a CloudFormation dynamic reference, which resolves at deploy
+ * time and writes the plaintext into the function's own configuration — readable
+ * by anyone in the account holding `lambda:GetFunctionConfiguration`. Fetching it
+ * here keeps it out of the configuration entirely; the only thing deployed is
+ * the secret's name and an IAM grant to read it.
+ *
+ * Absence is not an error: without a key the agent returns its documented 503
+ * and every other surface is unaffected.
+ */
+async function resolveModelKey(): Promise<void> {
+  const secretId = process.env.ORACLE_ANTHROPIC_SECRET_ID;
+  if (process.env.ANTHROPIC_API_KEY || !secretId) return;
+  try {
+    const client = new SecretsManagerClient({});
+    const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
+    if (result.SecretString) process.env.ANTHROPIC_API_KEY = result.SecretString.trim();
+  } catch (error) {
+    logger.error("model_key_unavailable", { secretId, error: String(error) });
+  }
+}
+
 async function getRouter(): Promise<Router> {
   // Never cache a failure — see the note in `OracleDataStore.init`. A cold start
   // that loses a race with a rate-limiting gateway must not brick this container
   // for the rest of its life.
   bootstrap ??= (async (): Promise<Router> => {
+    await resolveModelKey();
     const config = loadConfig(process.env);
     const store = new OracleDataStore({ source: config.parquetSource });
     await store.init();
