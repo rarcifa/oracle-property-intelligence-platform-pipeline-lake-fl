@@ -106,15 +106,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     latestPath: env.ORACLE_LATEST_PATH ?? resolve(REPO_ROOT, "artifacts/latest.json"),
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),
     anthropicApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
-    chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-fable-5-1",
+    chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-haiku-4-5",
     // Must fire before the request is killed from outside, so the caller gets
     // this agent's own message rather than a dropped connection.
     //
-    // The binding limit is NOT the Lambda timeout. A Lambda Function URL in
-    // BUFFERED invoke mode caps a request at 60 s no matter how long the
-    // function may run, so the stack's 150 s ceiling is headroom, not the wall.
-    // Measured: the loop answers in 31-59 s, and under concurrency a third of
-    // requests cross 60 s and have the connection closed under them.
+    // The Function URL runs in RESPONSE_STREAM invoke mode, so the transport
+    // no longer caps a request at the 60 s that BUFFERED mode imposed, and the
+    // function timeout is once again the real bound.
     //
     // This budget has moved three times, twice wrongly. 120 s against a 60 s
     // Lambda could never fire; 45 s was below what the work costs and aborted
@@ -122,6 +120,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // URL, not the Lambda, is what kills the request. 50 s is under the real
     // wall with margin. Raising it past 60 s requires RESPONSE_STREAM invoke
     // mode first — the limit is the transport, not this number.
-    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "50000", 10),
+    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "120000", 10),
   };
 }

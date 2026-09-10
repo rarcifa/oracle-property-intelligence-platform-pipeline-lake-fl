@@ -55,7 +55,7 @@ describe("chat timeout budget", () => {
     // a sufficient bound. Assert against whichever ceiling is actually lower,
     // or the abort silently becomes unreachable again.
     const BUFFERED_FUNCTION_URL_LIMIT_MS = 60_000;
-    const bufferedMode = !/invokeMode/i.test(stack);
+    const bufferedMode = !/invokeMode:\s*InvokeMode\.RESPONSE_STREAM/.test(stack);
     const wall = bufferedMode
       ? Math.min(lambdaTimeoutMs, BUFFERED_FUNCTION_URL_LIMIT_MS)
       : lambdaTimeoutMs;

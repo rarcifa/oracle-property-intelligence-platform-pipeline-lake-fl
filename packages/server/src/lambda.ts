@@ -182,7 +182,7 @@ function decodeBody(event: FunctionUrlEvent): unknown {
  * @param event - Function URL event.
  * @returns The HTTP response, base64-encoded when the body is binary.
  */
-export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
+export async function bufferedHandler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
   const method = event.requestContext?.http?.method ?? "GET";
   const path = event.rawPath ?? "/";
   const segment = tracer.getSegment();
@@ -257,3 +257,50 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
     segment?.close();
   }
 }
+
+/**
+ * The Lambda streaming globals, injected by the Node runtime.
+ *
+ * Declared rather than imported: they exist only inside the managed runtime,
+ * which is also why every path below tolerates their absence.
+ */
+declare const awslambda:
+  | {
+      streamifyResponse: (
+        fn: (event: FunctionUrlEvent, responseStream: NodeJS.WritableStream) => Promise<void>,
+      ) => unknown;
+      HttpResponseStream: {
+        from: (
+          stream: NodeJS.WritableStream,
+          metadata: { statusCode: number; headers: Record<string, string> },
+        ) => NodeJS.WritableStream;
+      };
+    }
+  | undefined;
+
+/**
+ * The deployed entry point.
+ *
+ * The Function URL runs in RESPONSE_STREAM invoke mode, because BUFFERED mode
+ * caps a request at 60 s however long this function may run — and the agent
+ * loop legitimately takes longer than that. Nothing here streams token by
+ * token yet: the full response is written in one chunk. The reason to be in
+ * streaming mode is the transport limit, which rises from 60 s to 15 minutes,
+ * not incremental delivery. Token streaming can be layered on later without
+ * another invoke-mode change.
+ *
+ * Falls back to the buffered handler when the streaming globals are absent, so
+ * the module still loads under test and outside the managed runtime.
+ */
+export const handler =
+  typeof awslambda === "undefined"
+    ? bufferedHandler
+    : awslambda.streamifyResponse(async (event, responseStream) => {
+        const result = await bufferedHandler(event);
+        const stream = awslambda!.HttpResponseStream.from(responseStream, {
+          statusCode: result.statusCode,
+          headers: result.headers,
+        });
+        stream.write(result.isBase64Encoded ? Buffer.from(result.body, "base64") : result.body);
+        stream.end();
+      });

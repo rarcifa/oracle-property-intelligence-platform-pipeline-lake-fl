@@ -44,7 +44,7 @@ describe("chat availability", () => {
   });
 
   it("defaults to the configured model id", () => {
-    expect(agentWith("sk-ant-test").modelId).toBe("claude-fable-5-1");
+    expect(agentWith("sk-ant-test").modelId).toBe("claude-haiku-4-5");
   });
 });
 

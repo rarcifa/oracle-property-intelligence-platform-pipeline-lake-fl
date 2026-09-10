@@ -13,6 +13,7 @@ import {
   Code,
   Function as LambdaFunction,
   FunctionUrlAuthType,
+  InvokeMode,
   HttpMethod,
   LoggingFormat,
   Runtime,
@@ -331,6 +332,11 @@ export class LakeRuntimeStack extends Stack {
     // with filesystem access is an arbitrary-file-read primitive.
     const url = runtime.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
+      // BUFFERED caps a request at 60 s regardless of this function's timeout,
+      // which is below what the agent loop costs. RESPONSE_STREAM raises that
+      // ceiling to 15 minutes, making the function timeout above the real
+      // bound. Every other route answers in well under a second either way.
+      invokeMode: InvokeMode.RESPONSE_STREAM,
       cors: {
         allowedOrigins: ["*"],
         allowedMethods: [HttpMethod.GET, HttpMethod.POST],
