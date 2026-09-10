@@ -44,12 +44,18 @@ let bootstrap: Promise<Router> | null = null;
  * @returns The router, shared across invocations.
  */
 async function getRouter(): Promise<Router> {
+  // Never cache a failure — see the note in `OracleDataStore.init`. A cold start
+  // that loses a race with a rate-limiting gateway must not brick this container
+  // for the rest of its life.
   bootstrap ??= (async (): Promise<Router> => {
     const config = loadConfig(process.env);
     const store = new OracleDataStore({ source: config.parquetSource });
     await store.init();
     return createApp(createContext(config, store));
-  })();
+  })().catch((error: unknown) => {
+    bootstrap = null;
+    throw error;
+  });
   return bootstrap;
 }
 

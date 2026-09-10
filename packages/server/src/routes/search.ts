@@ -65,7 +65,14 @@ async function parcelHalf(
   try {
     const vocabulary = await parcelVocabulary(context);
     const interpreted = interpretParcelQuery(query, vocabulary);
-    if (!interpreted.answersAboutParcels) return null;
+    if (!interpreted.answersAboutParcels) {
+      // Say why, when there is a reason. A declined negation is a different
+      // answer from "this question is not about parcels", and a caller who is
+      // told nothing will assume the second.
+      return interpreted.declined === undefined
+        ? null
+        : { declined: interpreted.declined, interpretation: [], filters: {}, matched: 0, rows: [] };
+    }
 
     const options = searchOptionsSchema.parse({
       ...interpreted.filters,

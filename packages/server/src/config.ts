@@ -91,6 +91,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),
     anthropicApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
     chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-fable-5-1",
-    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "120000", 10),
+    // Under the Lambda's own 60 s timeout, deliberately. It defaulted to 120 s,
+    // so the abort could never fire: the platform killed the invocation first
+    // and the caller got a platform error instead of the agent's own timeout
+    // message. 45 s leaves room to return a real answer about what happened.
+    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "45000", 10),
   };
 }

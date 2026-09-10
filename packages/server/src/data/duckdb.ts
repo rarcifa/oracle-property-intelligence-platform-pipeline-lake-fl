@@ -161,7 +161,15 @@ export class OracleDataStore {
 
   /** Open the database and register the `properties` view. Idempotent. */
   async init(): Promise<void> {
-    this.#ready ??= this.#open();
+    // Never cache a failure. `??=` stores the promise, and a rejected promise is
+    // still a promise: one transient gateway failure at cold start left every
+    // later call on this instance awaiting the same stored rejection, and a warm
+    // Lambda container can serve that for minutes. Clearing the slot on
+    // rejection makes the next call a real attempt.
+    this.#ready ??= this.#open().catch((error: unknown) => {
+      this.#ready = null;
+      throw error;
+    });
     return this.#ready;
   }
 

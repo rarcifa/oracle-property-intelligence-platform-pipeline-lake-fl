@@ -36,3 +36,12 @@ describe("sanitizeProviderError", () => {
     expect(sanitizeProviderError("boom")).toMatch(/every other view|other surfaces|unaffected/i);
   });
 });
+
+describe("chat timeout budget", () => {
+  it("fits inside the Lambda timeout so the abort can actually fire", async () => {
+    const { loadConfig } = await import("../src/config.js");
+    // infra/lake-runtime-stack.ts sets Duration.seconds(60).
+    const LAMBDA_TIMEOUT_MS = 60_000;
+    expect(loadConfig({}).chatTimeoutMs).toBeLessThan(LAMBDA_TIMEOUT_MS);
+  });
+});

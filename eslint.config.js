@@ -7,18 +7,12 @@ export default tseslint.config(
     ignores: [
       "**/dist/**",
       "**/node_modules/**",
-      // The vendored kit stays out of the lint gate so it can remain
-      // byte-identical to upstream — but OUR additions under it do not. A bare
-      // `rootCid` shipped in publish-run.mjs and would have thrown
-      // ReferenceError on the next publish, precisely because nothing here
-      // looked at it. The negations below bring the county code we wrote back in.
+      // The vendored kit stays out of `eslint .` so it can remain byte-identical
+      // to upstream. Negations were tried here and silently did nothing: ESLint
+      // prunes an ignored directory before an un-ignore can fire, so the county
+      // code we wrote went on being unlinted while the config claimed otherwise.
+      // The `lint` script now runs a second, explicit pass over our own files.
       ".claude/**",
-      "!.claude/skills/use-oracle/runtime/scripts/lake/**",
-      "!.claude/skills/use-oracle/runtime/src/core/car.mjs",
-      "!.claude/skills/use-oracle/runtime/src/core/cid.mjs",
-      "!.claude/skills/use-oracle/runtime/src/core/artifact-manifest.mjs",
-      "!.claude/skills/use-oracle/runtime/src/core/gateway-verify.mjs",
-      "!.claude/skills/use-oracle/runtime/src/core/run-history.mjs",
       "artifacts/**",
       // Generated deployment output, not source: the Lambda bundle is
       // assembled from built packages and vendored dependencies by
@@ -48,6 +42,12 @@ export default tseslint.config(
         Buffer: "readonly",
         fetch: "readonly",
         URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        TextEncoder: "readonly",
+        TextDecoder: "readonly",
+        AbortSignal: "readonly",
+        AbortController: "readonly",
       },
     },
   },

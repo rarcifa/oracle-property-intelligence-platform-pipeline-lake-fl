@@ -25,8 +25,7 @@
  * @module scripts/lake/publish-run
  */
 
-import { createHash } from "node:crypto";
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -48,7 +47,6 @@ const REPO_ROOT = path.resolve(RUNTIME_ROOT, "..", "..", "..", "..");
 const PUBLISH_ROOT = path.join(RUNTIME_ROOT, "data", "artifacts", "publish", "lake");
 const ARTIFACTS_DIR = path.join(REPO_ROOT, "artifacts");
 const FILEBASE_ENDPOINT = "https://s3.filebase.com";
-const IPNS_NAME = "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un";
 /**
  * Artifacts at or below this size are byte-verified from every gateway on
  * every run. Above it, verification is expensive: the published run carries 22

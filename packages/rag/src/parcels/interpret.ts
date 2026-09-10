@@ -39,6 +39,8 @@ export interface InterpretedParcelQuery {
   readonly interpretation: InterpretedFilter[];
   /** True when at least one constraint resolved against the parcels. */
   readonly answersAboutParcels: boolean;
+  /** Why the parcel half was declined, when it was. */
+  readonly declined?: string;
 }
 
 /** Roof age a question means by "aged" or "old" with no number given. */
@@ -206,6 +208,40 @@ const NUMBER_WORDS: Record<string, number> = {
   fifty: 50,
 };
 
+/**
+ * Phrases that negate or exclude a constraint.
+ *
+ * `propertyFiltersSchema` has no NOT: every filter is an equality or a bound. So
+ * "aged roofs not in Clermont" resolved the city and produced `city: CLERMONT` —
+ * the exact complement of the question, answered with full confidence. There is
+ * no way to express the real intent in this contract, so the parcel half is
+ * declined instead. Returning nothing with a reason is recoverable; returning
+ * the opposite number to a lead-hunter is not.
+ *
+ * `no recorded sale` and `no permits` are excluded: those are documented flag
+ * names, not negations of a constraint.
+ */
+const NEGATION_PATTERN =
+  /\b(?:not\s+in|not\s+at|no[tn]'?t\s+in|other\s+than|outside(?:\s+of)?|excluding|except(?:\s+for)?|apart\s+from|besides|away\s+from|rather\s+than)\b/;
+
+/**
+ * True when the question negates a constraint the filter contract cannot express.
+ *
+ * Documented flag names are removed first, because several of them read like
+ * negations and are not: "outside the county" and "outside the state" ARE
+ * filters (`ownerOutOfCounty`, `ownerOutOfState`), and so are "no recorded sale"
+ * and "no permits". Only what survives that strip counts as a real negation.
+ */
+function negatesAConstraint(question: string): boolean {
+  const withoutFlags = question
+    .replace(/\boutside\s+(?:the\s+)?(?:county|state)\b/g, " ")
+    .replace(/\bout[\s-]of[\s-](?:county|state)\b/g, " ")
+    .replace(/\bno\s+(?:recorded\s+)?sale\b/g, " ")
+    .replace(/\bnever\s+sold\b/g, " ")
+    .replace(/\bno\s+permits?\b/g, " ");
+  return NEGATION_PATTERN.test(withoutFlags);
+}
+
 /** Lowercase, collapse whitespace, drop punctuation that is never meaningful. */
 function normalizeQuestion(text: string): string {
   return text
@@ -237,6 +273,19 @@ export function interpretParcelQuery(
   vocabulary: ParcelVocabulary,
 ): InterpretedParcelQuery {
   const original = normalizeQuestion(question);
+
+  // Decline before interpreting, not after: a negated question must not be
+  // answered with its own complement.
+  if (negatesAConstraint(original)) {
+    return {
+      filters: {},
+      interpretation: [],
+      answersAboutParcels: false,
+      declined:
+        "The question negates or excludes a constraint, and the published filter contract can only express equalities and bounds. Answering it would return the complement of what was asked, so the parcel results are withheld.",
+    };
+  }
+
   let text = original;
   const filters: Record<string, string | number | boolean> = {};
   const interpretation: InterpretedFilter[] = [];

@@ -133,6 +133,34 @@ describe("interpretParcelQuery", () => {
     expect(result.filters.q).toMatch(/nicolette/i);
   });
 
+  it("does not silently invert a negated constraint", () => {
+    // "not in Clermont" used to produce { city: "CLERMONT" } — the exact
+    // complement of what was asked, returned with full confidence. The filter
+    // contract has no NOT, so the honest move is to decline the parcel half
+    // rather than answer the opposite question.
+    const result = interpretParcelQuery("aged roofs not in Clermont", VOCAB);
+    expect(result.filters.city).toBeUndefined();
+    expect(result.answersAboutParcels).toBe(false);
+    expect(result.declined).toMatch(/negat/i);
+  });
+
+  it("declines rather than guessing when the question excludes a place", () => {
+    for (const q of [
+      "aged roofs outside Clermont",
+      "parcels other than Clermont",
+      "aged roofs excluding Clermont",
+      "roofs that are not in Mount Dora",
+    ]) {
+      expect(interpretParcelQuery(q, VOCAB).answersAboutParcels).toBe(false);
+    }
+  });
+
+  it("leaves ordinary questions untouched", () => {
+    expect(interpretParcelQuery("aged roofs in Clermont", VOCAB).answersAboutParcels).toBe(true);
+    // "no recorded sale" is a documented flag, not a negation of a constraint.
+    expect(filtersOf("parcels with no recorded sale")).toMatchObject({ noRecordedSale: true });
+  });
+
   it("returns no filters for a question about the data rather than the parcels", () => {
     const result = interpretParcelQuery("why is contractor_name empty", VOCAB);
     expect(result.interpretation).toHaveLength(0);
