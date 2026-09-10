@@ -29,6 +29,24 @@ describe.skipIf(!hasParquet)("REST API", () => {
     expect(["ipfs", "local"]).toContain(body.dataSourceKind);
   });
 
+  it("names the run it is actually serving, not the one bundled at deploy time", async () => {
+    // `latest.json` ships inside the Lambda bundle, so it names whichever run
+    // was current at deploy. The dataset resolves from IPNS and upgrades in
+    // place, so after a publish the two disagree — and this response feeds the
+    // run and root CID in the UI header.
+    const response = await request(await getRouterOnce(), "GET", "/api/meta/run");
+    const body = bodyJson<{
+      run: { runId: string | null; rootCid: string | null } | null;
+      dataSource: string;
+    }>(response);
+    const sql = await request(await getRouterOnce(), "POST", "/api/sql", {
+      sql: "SELECT 1 AS x",
+    });
+    const served = bodyJson<{ provenance: { runId: string | null; rootCid: string | null } }>(sql);
+    expect(body.run?.runId).toBe(served.provenance.runId);
+    expect(body.run?.rootCid).toBe(served.provenance.rootCid);
+  });
+
   it("serves the 62-column schema", async () => {
     const response = await request(await getRouterOnce(), "GET", "/api/meta/schema");
     const body = bodyJson<{ columnCount: number; alwaysNullColumns: Record<string, string> }>(

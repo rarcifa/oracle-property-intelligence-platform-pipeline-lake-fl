@@ -48,10 +48,15 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
     const { parcels } = await search("aged roofs with an open roofing permit in Clermont");
     expect(parcels).not.toBeNull();
     const half = parcels as ParcelHalf;
-    // 11 parcels county-wide carry an aged roof and an open roofing permit; 2
+    // 194 parcels county-wide carry an aged roof and an open roofing permit; 41
     // are in Clermont. Verified independently against /api/sql.
-    expect(half.matched).toBe(2);
-    expect(half.rows.length).toBe(2);
+    //
+    // These were 11 and 2 until roof age stopped being reset by a roofing
+    // permit that was issued and never closed. Those parcels always had aged
+    // roofs; they were being published as recently re-roofed, so the query that
+    // exists to find them skipped them.
+    expect(half.matched).toBe(41);
+    expect(half.rows.length).toBeGreaterThan(0);
     for (const row of half.rows) {
       expect(Number(row.roof_age_years)).toBeGreaterThanOrEqual(15);
       expect(Number(row.open_roofing_permit_count)).toBeGreaterThan(0);
@@ -60,12 +65,16 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
   }, 120_000);
 
   it("answers an unsatisfiable question with nothing, rather than the nearest parcel", async () => {
-    // None of those 2 Clermont parcels is owned out of state. BM25 over a
-    // per-parcel text profile answered this exact question with a confident,
-    // wrong parcel; the honest answer is zero rows, and the constraints are
-    // still shown so a reader can see why.
+    // BM25 over a per-parcel text profile answered a question like this with a
+    // confident, wrong parcel; the honest answer is zero rows, with the
+    // constraints still shown so a reader can see why.
+    //
+    // The city moved from Clermont to Astor: 5 Clermont parcels now satisfy
+    // this, because correcting roof age surfaced parcels the old data hid, so
+    // the question stopped being unsatisfiable. Astor has none, which keeps
+    // what this test is actually for.
     const { parcels } = await search(
-      "aged roofs with an open roofing permit in Clermont owned out of state",
+      "aged roofs with an open roofing permit in Astor owned out of state",
     );
     const half = parcels as ParcelHalf;
     expect(half.matched).toBe(0);
@@ -73,7 +82,7 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
     expect(half.filters).toMatchObject({
       minRoofAge: 15,
       hasOpenRoofingPermit: true,
-      city: "CLERMONT",
+      city: "ASTOR",
       ownerOutOfState: true,
     });
   }, 120_000);

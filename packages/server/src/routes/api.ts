@@ -71,11 +71,31 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
   });
 
   router.get("/api/meta/run", async () => {
-    const [provenance, coverage, run] = await Promise.all([
+    const [provenance, coverage, bundled] = await Promise.all([
       context.provenance(),
       readCoverage(context.config),
       readLatest(context.config),
     ]);
+    // `latest.json` is bundled at deploy time, so it names whichever run was
+    // current when the Lambda was built. The dataset itself is resolved from
+    // IPNS at runtime and upgrades in place, so after any publish the two
+    // disagree — and this endpoint feeds the run and root CID shown in the UI
+    // header, which would then describe a run the runtime is no longer serving.
+    //
+    // The served run wins. The bundled record supplies the fields provenance
+    // does not carry (manifest and CAR CIDs, publication time, verified
+    // gateways) only while it describes that same run; once it is behind, those
+    // fields are dropped rather than shown against the wrong run.
+    const servedRunId = provenance.runId ?? bundled?.runId ?? null;
+    const bundledDescribesServed = bundled !== null && bundled.runId === servedRunId;
+    const run =
+      bundled === null && provenance.runId === null
+        ? null
+        : {
+            ...(bundledDescribesServed ? bundled : {}),
+            runId: servedRunId,
+            rootCid: provenance.rootCid ?? bundled?.rootCid ?? null,
+          };
     const [verification, runHistory] = await Promise.all([
       readVerification(context.config, run?.runId ?? provenance.runId),
       readRunHistory(context.config),
