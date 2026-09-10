@@ -144,12 +144,34 @@ export interface DatasetStats {
   provenance: ResponseProvenance;
 }
 
+/**
+ * Keep the numeric columns of an aggregate row, and drop the rest.
+ *
+ * Non-numeric values used to be coerced with `Number(value ?? 0)` and floored to
+ * 0 when that produced NaN. `max(latest_permit_date)` is a date string, so the
+ * contractor view published `latest_permit_date: 0` — a number nothing measured,
+ * sitting beside real counts with no way to tell them apart. A design fixture
+ * had the 0 baked in as expected, so the suite passed because of the bug.
+ *
+ * Dropping is the honest failure: a caller reading a missing key knows it is
+ * missing, where a caller reading 0 does not.
+ */
 function toNumberRecord(row: QueryRow | null): Record<string, number> {
   const out: Record<string, number> = {};
   if (row === null) return out;
   for (const [key, value] of Object.entries(row)) {
-    const parsed = typeof value === "number" ? value : Number(value ?? 0);
-    out[key] = Number.isFinite(parsed) ? parsed : 0;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) out[key] = value;
+      continue;
+    }
+    if (typeof value === "bigint") {
+      out[key] = Number(value);
+      continue;
+    }
+    // A numeric string still counts; a date string does not.
+    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+      out[key] = Number(value);
+    }
   }
   return out;
 }

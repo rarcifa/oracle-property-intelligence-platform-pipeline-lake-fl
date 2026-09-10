@@ -243,6 +243,25 @@ describe("assertReadOnlySql: filesystem and engine access", () => {
     expect(() => assertReadOnlySql("SELECT * FROM duckdb_settings()")).toThrow(
       /duckdb_settings.*not allowed/i,
     );
+    // Quoting the identifier used to walk straight past the allowlist: the
+    // denylist matched `\bduckdb_settings\s*\(`, and `"duckdb_settings"(` has a
+    // quote between the name and the paren. The bare form above was the only
+    // shape tested, so this suite certified a boundary a trivial variation
+    // defeated, and the deployed endpoint disclosed extension_directory.
+    expect(() => assertReadOnlySql('SELECT * FROM "duckdb_settings"()')).toThrow(
+      /duckdb_settings.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql('SELECT * FROM "duckdb_functions"()')).toThrow(
+      /duckdb_functions.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql("SELECT * FROM \"read_text\"('/etc/passwd')")).toThrow(
+      /read_text.*not allowed/i,
+    );
+    expect(() => assertReadOnlySql("SELECT * FROM `read_csv_auto`('/etc/passwd')")).toThrow(
+      /read_csv_auto.*not allowed/i,
+    );
+    // A quoted identifier must not become a way to smuggle a mutating keyword.
+    expect(() => assertReadOnlySql('SELECT * FROM "properties" WHERE "x" = 1')).not.toThrow();
   });
 
   it("still allows an ordinary query against the published table", () => {

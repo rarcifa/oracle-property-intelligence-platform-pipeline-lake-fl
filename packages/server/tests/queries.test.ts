@@ -195,3 +195,16 @@ describe.skipIf(!hasParquet)("getCityCentre", () => {
     expect(result.parcelsWithCoordinates).toBe(0);
   }, 120_000);
 });
+
+describe.skipIf(!hasParquet)("contractor view totals", () => {
+  it("omits a date column rather than publishing it as 0", async () => {
+    const store = await getStore();
+    const view = await getContractorView(store, provenance);
+    // `max(latest_permit_date)` is a date string. It used to be coerced with
+    // Number(...) and floored to 0, so a number nothing measured sat beside the
+    // real counts. Absent is honest; 0 is not.
+    expect(view.posture.latest_permit_date).toBeUndefined();
+    expect(view.posture.contractor_names_present).toBe(0);
+    expect(view.posture.longest_open_permit_days).toBeGreaterThan(1825);
+  }, 120_000);
+});

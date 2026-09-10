@@ -439,6 +439,29 @@ const FILESYSTEM_FUNCTIONS = [
   "parquet_kv_metadata",
   "duckdb_settings",
   "duckdb_extensions",
+  // The rest of the `duckdb_*` introspection family. Only `duckdb_settings` and
+  // `duckdb_extensions` were listed, so `duckdb_functions()` answered on the
+  // deployed endpoint and enumerated the engine's surface. None of these read
+  // the published table, which is the only thing this endpoint exists to serve.
+  "duckdb_functions",
+  "duckdb_databases",
+  "duckdb_schemas",
+  "duckdb_tables",
+  "duckdb_views",
+  "duckdb_columns",
+  "duckdb_constraints",
+  "duckdb_indexes",
+  "duckdb_types",
+  "duckdb_secrets",
+  "duckdb_temporary_files",
+  "duckdb_memory",
+  "duckdb_keywords",
+  "duckdb_optimizers",
+  "duckdb_log",
+  "duckdb_logs",
+  "pragma_database_size",
+  "pragma_storage_info",
+  "pragma_metadata_info",
   "getenv",
 ];
 
@@ -475,12 +498,30 @@ const MUTATING_KEYWORDS = [
 
 /** Strip string literals and comments so keyword checks cannot be fooled. */
 function stripLiteralsAndComments(sql: string): string {
-  return sql
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/'(?:''|[^'])*'/g, " 'literal' ")
-    .replace(/"(?:""|[^"])*"/g, ' "ident" ')
-    .replace(/\$\$[\s\S]*?\$\$/g, " 'dollar' ");
+  return (
+    sql
+      .replace(/--[^\n]*/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/'(?:''|[^'])*'/g, " 'literal' ")
+      // A quoted IDENTIFIER is unwrapped, not erased. Replacing it with a
+      // placeholder destroyed the name before any denylist could see it, so
+      // `"duckdb_settings"()` passed a guard that stopped `duckdb_settings()` and
+      // the deployed endpoint disclosed extension_directory through it. Keeping
+      // the text means the checks below see the identifier the engine will see.
+      .replace(/"((?:""|[^"])*)"/g, (_match, name: string) => ` ${name.replace(/""/g, '"')} `)
+      .replace(/\$\$[\s\S]*?\$\$/g, " 'dollar' ")
+  );
+}
+
+/**
+ * Remove the remaining identifier quoting styles.
+ *
+ * DuckDB accepts `` `name` `` and `[name]` alongside `"name"`, which
+ * `stripLiteralsAndComments` already unwraps. Dropping these characters closes
+ * the same gap for the other two spellings.
+ */
+function unquoteIdentifiers(sql: string): string {
+  return sql.replace(/[`\][]/g, "");
 }
 
 /**
@@ -495,7 +536,13 @@ export function assertReadOnlySql(sql: string): string {
   if (trimmed.length === 0) throw new Error("Empty SQL");
   if (trimmed.length > 20_000) throw new Error("SQL too long");
 
-  const scrubbed = stripLiteralsAndComments(trimmed);
+  // Identifier quoting is removed before matching. The denylists below look for
+  // `\bname\s*\(`, and `"duckdb_settings"(` puts a quote between the name and
+  // the paren, so the quoted form walked straight past an allowlist the bare
+  // form could not — and the deployed `/api/sql` disclosed `extension_directory`
+  // through it. Only the quoting characters go: the identifier text itself is
+  // preserved, so nothing that was allowed before becomes rejected now.
+  const scrubbed = unquoteIdentifiers(stripLiteralsAndComments(trimmed));
   if (scrubbed.includes(";")) {
     throw new Error("Only a single statement is allowed");
   }
