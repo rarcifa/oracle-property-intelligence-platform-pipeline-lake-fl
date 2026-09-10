@@ -452,6 +452,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
   const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousHashes = await readPreviousRowHashes(historyPath);
+  const previousRun = await readPreviousRun(historyPath);
   const currentHashes = await readCurrentRowHashes(path.join(runDir, "query-table.parquet"));
   const deltas = computeTableDeltas(previousHashes, currentHashes);
 
@@ -480,16 +481,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
         recordCount: coverage.tables.permits.rows,
       },
     ],
-    tables: [
-      {
-        name: "properties",
-        rows: coverage.tables.properties.rows,
-        inserted: deltas.inserted,
-        updated: deltas.updated,
-        unchanged: deltas.unchanged,
-        removed: deltas.removed,
-      },
-    ],
+    tables: buildTableAccounting(coverage, deltas, previousRun),
     limitations: coverage.limitations,
     rootCid: dag.rootCid,
     manifestCid,
@@ -605,6 +597,68 @@ export async function readIpnsPointer(token, fetchImpl = fetch) {
   const entry = Array.isArray(names) ? names.find((name) => name.label === LAKE_IPNS_LABEL) : null;
   if (!entry) return null;
   return { networkKey: entry.network_key, cid: entry.cid, sequence: Number(entry.sequence) };
+}
+
+/**
+ * Read the most recently recorded run, for table-level movement.
+ *
+ * @param {string} historyPath - Run-history path.
+ * @returns {Promise<object | null>} The newest recorded run, or null.
+ */
+export async function readPreviousRun(historyPath) {
+  try {
+    const parsed = JSON.parse(await readFile(historyPath, "utf8"));
+    const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
+    if (runs.length === 0) return null;
+    return runs.reduce((newest, run) => (run.runId > newest.runId ? run : newest));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Account for every table this run publishes, not only the hashed one.
+ *
+ * `properties` is hashed per row, so it carries true insert/update/unchanged/
+ * removed counts. The rest have no per-row snapshot, so they carry their row
+ * total and its movement since the previous run, marked `row-count` — reporting
+ * four zeroes for them would claim nothing changed at a grain never measured.
+ *
+ * @param {object} coverage - The run's coverage snapshot.
+ * @param {{inserted: number, updated: number, unchanged: number, removed: number}} deltas - Property row deltas.
+ * @param {object | null} previousRun - The previously recorded run, if any.
+ * @returns {object[]} Table accounting records.
+ */
+export function buildTableAccounting(coverage, deltas, previousRun) {
+  const previousRows = new Map(
+    (previousRun?.tables ?? []).map((table) => [table.name, table.rows]),
+  );
+  const counted = (name, rows) => {
+    const before = previousRows.get(name);
+    return {
+      name,
+      rows,
+      basis: "row-count",
+      ...(typeof before === "number" ? { previousRows: before, rowsDelta: rows - before } : {}),
+    };
+  };
+  const tables = [
+    {
+      name: "properties",
+      rows: coverage.tables.properties.rows,
+      basis: "row-hash",
+      inserted: deltas.inserted,
+      updated: deltas.updated,
+      unchanged: deltas.unchanged,
+      removed: deltas.removed,
+    },
+    counted("permits", coverage.tables.permits.rows),
+    counted("coordinates", coverage.tables.coordinates.rows),
+  ];
+  const business = coverage.tables.businessAccounts;
+  // Published only since the coverage snapshot carried it; absent on older runs.
+  if (business) tables.push(counted("businessAccounts", business.matchedToParcel));
+  return tables;
 }
 
 /**

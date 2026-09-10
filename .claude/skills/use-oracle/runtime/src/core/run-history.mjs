@@ -45,17 +45,43 @@ export const runSourceSchema = z
   })
   .strict();
 
-/** Per-table row accounting, the evidence that ingestion is ongoing. */
+/**
+ * Per-table row accounting, the evidence that ingestion is ongoing.
+ *
+ * Two bases, because only one table is hashed per row. `row-hash` carries real
+ * insert/update/unchanged/removed counts derived from comparing every row's
+ * hash against the previous run. `row-count` carries only the row total and its
+ * movement since the previous run, because no per-row snapshot exists for that
+ * table — and it says so rather than reporting four zeroes that would read as
+ * "nothing changed" when the truth is "not measured at that grain".
+ *
+ * Tracking only the hashed table is what made a real permit movement
+ * (17,457 -> 17,671 source-side, all of it validUnlinked) invisible in a run
+ * that correctly reported no property row had changed.
+ */
 export const runTableSchema = z
   .object({
     name: z.string().trim().min(1),
     rows: counter,
-    inserted: counter,
-    updated: counter,
-    unchanged: counter,
-    removed: counter,
+    /** Older records predate this field and are all row-hash. */
+    basis: z.enum(["row-hash", "row-count"]).default("row-hash"),
+    inserted: counter.optional(),
+    updated: counter.optional(),
+    unchanged: counter.optional(),
+    removed: counter.optional(),
+    previousRows: counter.optional(),
+    rowsDelta: z.number().int().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (table) =>
+      table.basis === "row-hash"
+        ? [table.inserted, table.updated, table.unchanged, table.removed].every(
+            (value) => typeof value === "number",
+          )
+        : true,
+    { message: "a row-hash table must carry inserted/updated/unchanged/removed" },
+  );
 
 /** One immutable, already-published run. */
 export const runRecordSchema = z
