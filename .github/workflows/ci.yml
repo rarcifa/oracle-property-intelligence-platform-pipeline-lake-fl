@@ -23,9 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here on purpose. package.json already pins
+      # `packageManager: pnpm@10.20.0`, and specifying both makes the action
+      # fail outright with "Multiple versions of pnpm specified" — which is how
+      # this workflow failed the first time it ever ran.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
