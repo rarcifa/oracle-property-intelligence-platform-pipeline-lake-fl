@@ -232,6 +232,52 @@ jobs:
           pnpm --filter @oracle-lake/rag run build:index
           git --no-pager diff --stat -- packages/rag/index-data || true
 
+      # A scheduled ingestion run that fails is a terminal failure of a job
+      # nobody is watching: it runs at 07:20 UTC and its only other output is a
+      # workflow-run page. The engineering guidelines forbid leaving that to a
+      # log, so it pages on-call through the same Events API v2 path the
+      # runtime uses. Gated on the routing key being configured, and it says so
+      # when it is not rather than reporting a success it did not achieve.
+      - name: Page on-call for a failed ingestion run
+        if: ${{ failure() }}
+        working-directory: .
+        env:
+          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+        run: |
+          if [ -z "$PAGERDUTY_ROUTING_KEY" ]; then
+            echo "::error::This ingestion run failed and PAGERDUTY_ROUTING_KEY is not configured," \
+                 "so nobody was paged. Configure it as a repository secret."
+            exit 0
+          fi
+          # dedup_key is the workflow, not the run, so a run failing every
+          # morning keeps updating one incident instead of opening seven a week.
+          STATUS=$(curl -sS -o /tmp/pd.json -w '%{http_code}' \
+            -X POST https://events.pagerduty.com/v2/enqueue \
+            -H 'content-type: application/json' \
+            -d @- <<JSON
+          {
+            "routing_key": "$PAGERDUTY_ROUTING_KEY",
+            "event_action": "trigger",
+            "dedup_key": "lake-county-ingestion/${{ github.workflow }}",
+            "payload": {
+              "summary": "Lake County ingestion run failed (${{ steps.mode.outputs.mode }})",
+              "source": "github-actions/${{ github.repository }}",
+              "severity": "critical",
+              "component": "lake-county-ingestion",
+              "custom_details": {
+                "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "mode": "${{ steps.mode.outputs.mode }}",
+                "run_id": "${{ steps.build.outputs.run_id }}"
+              }
+            }
+          }
+          JSON
+          )
+          # Events API v2 accepts asynchronously: 202 means enqueued, anything
+          # else means on-call was not told.
+          test "$STATUS" = "202" || { echo "::error::PagerDuty returned HTTP $STATUS"; exit 1; }
+          echo "::notice::paged on-call, dedup_key $(jq -r .dedup_key /tmp/pd.json)"
+
       - name: Report that publishing was skipped
         if: ${{ env.S3_ACCESS_KEY_ID == '' }}
         run: |

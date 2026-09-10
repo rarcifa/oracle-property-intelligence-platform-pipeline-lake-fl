@@ -193,7 +193,7 @@ describe("resolveDataSource", () => {
       { ...base, parquetSource: "/tmp/query-table.parquet", ipnsName: NAME },
       resolve,
     );
-    expect(result).toEqual({ source: "/tmp/query-table.parquet", pointer: null });
+    expect(result).toEqual({ source: "/tmp/query-table.parquet", pointer: null, stale: false });
     expect(resolve).not.toHaveBeenCalled();
   });
 
@@ -204,10 +204,17 @@ describe("resolveDataSource", () => {
       runId: "20260910T135850Z",
       propertyCount: 215806,
       gateway: "https://ipfs.filebase.io",
+      origin: "ipns" as const,
     });
-    const result = await resolveDataSource({ ...base, parquetSource: "", ipnsName: NAME }, resolve);
+    const result = await resolveDataSource(
+      // No cached pointer to replay, so this is the genuinely-first-run path
+      // and resolution happens inline.
+      { ...base, parquetSource: "", ipnsName: NAME, latestPath: "/nonexistent/latest.json" },
+      resolve,
+    );
     expect(result.source).toContain(`/ipfs/${ROOT}/query-table.parquet`);
     expect(result.pointer?.runId).toBe("20260910T135850Z");
+    expect(result.stale).toBe(false);
   });
 
   it("says what is missing when nothing names a dataset at all", async () => {

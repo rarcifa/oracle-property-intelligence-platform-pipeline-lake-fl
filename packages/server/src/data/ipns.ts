@@ -52,6 +52,15 @@ export interface PublishedRunPointer {
   propertyCount: number | null;
   /** The gateway that answered. */
   gateway: string;
+  /**
+   * How this pointer was arrived at.
+   *
+   * `ipns` means a gateway resolved the name during this call. `last-known-good`
+   * means it is the pointer a previous resolution produced, replayed from disk
+   * so a cold start does not have to wait for the network — see
+   * `readLastKnownGood` in `./source.ts`.
+   */
+  origin: "ipns" | "last-known-good";
 }
 
 /**
@@ -130,7 +139,16 @@ async function askGateway(
     } catch {
       runId = null;
     }
-    return { pointer: { ipnsName, rootCid, runId, propertyCount, gateway: gateway.baseUrl } };
+    return {
+      pointer: {
+        ipnsName,
+        rootCid,
+        runId,
+        propertyCount,
+        gateway: gateway.baseUrl,
+        origin: "ipns",
+      },
+    };
   } catch (error) {
     return {
       failure: `${gateway.id}/${probePath}: ${error instanceof Error ? error.message : String(error)}`,

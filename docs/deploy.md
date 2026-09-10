@@ -82,12 +82,15 @@ Deploy without the agent by setting `ORACLE_ANTHROPIC_SECRET_NAME=""`.
 ## Pointing at a different published run
 
 The function is deployed with `ORACLE_IPNS_NAME`, the county's published IPNS name, and no
-CID. It resolves the name at cold start, gets back the immutable root the name currently
-points at, reads only that CID, and reports it as the run it is serving — so a republish
-reaches the runtime on its own and an answer still cites bytes anyone can re-fetch and check
-against the manifest. Resolution is cached for the container's lifetime, so it costs one
-round trip per cold start; a container that outlives a republish keeps serving the run it
-opened, which is the immutable snapshot its answers cite.
+CID. It opens on the pointer the last publication resolved — `artifacts/latest.json`'s
+`rootCid`, trusted only when `resolvedCid` matches it, which is the publisher's own IPNS
+readback — and checks the live name behind the first requests, moving to a newer run when it
+finds one. So a republish reaches the runtime on its own, no caller ever waits on a public
+gateway for a first byte, and a gateway outage is degraded freshness rather than an outage.
+An answer still cites bytes anyone can re-fetch and check against the manifest.
+
+Resolving inline on the critical path is the genuinely-first-run behaviour only, when there
+is no cached pointer to open on.
 
 An earlier version of this page said the function read `ORACLE_PARQUET_URL` and that
 republishing needed no redeploy. The variable was right and the conclusion was not: a CID
@@ -101,6 +104,30 @@ overrides the pointer:
 ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/<root-cid>/query-table.parquet" \
   pnpm --filter @oracle-lake/infra exec cdk deploy
 ```
+
+## Alerting
+
+Three failure paths page on-call: the runtime failing to open the dataset, the CloudWatch
+alarms (errors, throttles, a pointer refresh failing for 15 minutes), and a failed scheduled
+ingestion run. All of it is wired and none of it is configured, because there is no PagerDuty
+account behind this deployment. The stack output `AlertingConfigured` names the channels a
+deploy actually wired, and reports `none` when it wired nothing.
+
+```bash
+# Page on-call. The routing key is read from Secrets Manager at runtime and is never an
+# environment value; only the secret's name is deployed.
+aws secretsmanager create-secret --name oracle-lake/pagerduty-routing-key --secret-string "$KEY"
+
+ORACLE_ALERT_ENVIRONMENT=production \
+ORACLE_PAGERDUTY_SECRET_NAME=oracle-lake/pagerduty-routing-key \
+ORACLE_PAGERDUTY_CLOUDWATCH_URL="https://events.pagerduty.com/integration/<key>/enqueue" \
+ORACLE_ALERT_EMAIL=oncall@example.com \
+  just deploy
+```
+
+Paging is gated on `ORACLE_ALERT_ENVIRONMENT` being exactly `production`, so a non-prod
+deploy cannot wake anybody even with a key in place. For the scheduled ingestion workflow,
+set `PAGERDUTY_ROUTING_KEY` as a repository secret.
 
 ## What the first deploy taught
 

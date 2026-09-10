@@ -287,3 +287,85 @@ solving, and it is not the channel the skill names. Nothing has been ingested th
 this is written down before the fact so that taking that route later is a recorded decision
 rather than a silent one.
 
+
+## 14. A last-known-good pointer is not a pinned CID
+
+`deploy-open-data-mcp` lists `ORACLE_OPEN_DATA_INDEX_CID` as optional and says to
+leave it UNSET when using IPNS, "so IPNS is the single source of truth". That rule
+is about pinning a fixed CID **instead of** IPNS: a second, competing source that
+only a redeploy can move, which is exactly the failure this deployment already had
+once and fixed.
+
+The runtime now opens on the pointer that the last successful publication resolved
+— `artifacts/latest.json`'s `rootCid`, accepted only when `resolvedCid` equals it,
+which is the publisher's own IPNS readback — and checks the live name behind the
+first requests, upgrading when it finds a newer run. That is not a second source of
+truth:
+
+- Nothing is pinned. `ORACLE_OPEN_DATA_INDEX_CID` and `ORACLE_PARQUET_URL` are both
+  unset in the deployed environment; `ORACLE_IPNS_NAME` is the only dataset
+  configuration the function has.
+- The cached value is itself an IPNS resolution, not an alternative to one, and the
+  live pointer overrides it as soon as they disagree on a newer run.
+- A redeploy is not needed to move it. That is what makes it different from a
+  pinned CID; the pin's defining property is that only a deploy can change it.
+
+What it buys is that no caller waits on a public gateway to get a first byte, and
+that a gateway outage is degraded freshness rather than a runtime outage — for data
+that is immutable, already published, and already verified across five gateways.
+Resolving inline cost 1.3–2.0 s on the critical path and produced 12–13 s cold
+starts when a rate-limiting gateway was in the mix.
+
+The genuinely-first-run case — no cached pointer at all — still resolves inline,
+because there is nothing else to serve.
+
+## 15. The publish gate, without a Restate ingress
+
+`county-open-data-publish` and `durable-workflow-builder` pattern 10 put the human
+approval on a `Publish` virtual object: an unapproved `tick()` dry-runs and leaves
+`pending=true`, `approve()` is a human action, `pending` clears only after a
+successful approved publication, and an unapproved tick dry-runs once per content
+watermark rather than rebuilding the export on a loop.
+
+This deployment has no Restate ingress, so there is no virtual object to hold that
+state. The state machine is implemented instead in `src/core/publish-gate.mjs` and
+is evaluated inside `scripts/lake/publish-run.mjs`, between hashing the DAG and
+writing anything — the run's root CID is the content watermark, which is what makes
+the throttle exact rather than approximate.
+
+The deviation that mattered was not the missing ingress. `src/core/filebase.mjs`
+already carried an approval-manifest gate, and the Lake publisher never called it:
+it uploaded to Filebase directly. A gate the publish path does not go through is
+not a gate. It is now on the path — an unapproved run cannot reach an upload — and
+the state lives in `artifacts/publish-gate.json`, committed with the repository so
+the decision survives a scheduled runner being destroyed and stays reviewable in
+the same history as the data it released.
+
+## 16. Alerting is wired but unconfigured, and says so
+
+`apply-engineering-guidelines` makes paging on-call non-negotiable and forbids
+swallowing a critical failure with a log-only handler. Three failure paths now
+alert:
+
+| Path | Mechanism |
+|---|---|
+| The runtime cannot open the published dataset | Direct Events API v2 trigger from the point it becomes terminal, plus a self-resolving alarm |
+| Lambda errors, throttles, a pointer refresh failing for 15 minutes | One self-resolving CloudWatch alarm each, fanned out to an SNS topic |
+| A scheduled ingestion run fails | Events API v2 trigger from the workflow's `failure()` step |
+
+Two things are honestly absent. There is no PagerDuty account behind this, so no
+routing key and no CloudWatch integration URL are configured: the stack output
+`AlertingConfigured` reports `none`, the workflow's failure step logs a GitHub
+error saying nobody was paged, and the runtime logs `paging: skipped`. Every one of
+those is a loud absence rather than a silent one, and setting
+`ORACLE_ALERT_EMAIL`, `ORACLE_PAGERDUTY_CLOUDWATCH_URL`,
+`ORACLE_PAGERDUTY_SECRET_NAME`, `ORACLE_ALERT_ENVIRONMENT=production` and the
+`PAGERDUTY_ROUTING_KEY` repository secret turns them all on with no code change.
+
+The guidelines' non-negotiable 6 — every metric registered in Lexicon and shown on
+the Main Dashboard — cannot be met from here at all: both are private
+Spring-Oaks-Capital repositories this project has no access to. The metrics
+(`RequestsServed`, `RequestsFailed`, `RequestDuration`, `ColdStart`,
+`DatasetOpenMs`, `PointerResolveMs`, `DatasetUpgraded`, `PointerRefreshFailed`,
+`DatasetUnavailable`) are emitted under the `OracleLake` namespace and are ready to
+register; the registration itself is not something this repository can do.

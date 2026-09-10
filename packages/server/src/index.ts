@@ -10,8 +10,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
-import { OracleDataStore } from "./data/duckdb.js";
-import { resolveDataSource } from "./data/source.js";
+import { REFRESH_INTERVAL_MS, RuntimeDataset } from "./data/source.js";
 import type { HttpResponse } from "./http/router.js";
 import type { Router } from "./http/router.js";
 
@@ -82,10 +81,11 @@ export function createRequestListener(router: Router) {
 export async function main(): Promise<void> {
   const config = loadConfig();
   const startedAt = Date.now();
-  let source: string;
-  let pointer: Awaited<ReturnType<typeof resolveDataSource>>["pointer"];
+  let dataset: RuntimeDataset;
+  let opened: Awaited<ReturnType<typeof RuntimeDataset.open>>;
   try {
-    ({ source, pointer } = await resolveDataSource(config));
+    opened = await RuntimeDataset.open(config);
+    dataset = opened.dataset;
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -97,11 +97,10 @@ export async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const store = new OracleDataStore({ source });
-  await store.init();
+  const store = dataset.store;
   const propertyCount = Number(await store.queryScalar("SELECT count(*) FROM properties"));
 
-  const context = createContext(config, store, pointer);
+  const context = createContext(config, dataset);
   const router = createApp(context);
   const server = createServer(createRequestListener(router));
 
@@ -113,8 +112,11 @@ export async function main(): Promise<void> {
         url: `http://localhost:${config.port}`,
         dataSource: store.source,
         dataSourceKind: store.sourceKind,
-        ipnsName: pointer?.ipnsName ?? null,
-        rootCid: pointer?.rootCid ?? null,
+        ipnsName: dataset.pointer?.ipnsName ?? null,
+        rootCid: dataset.pointer?.rootCid ?? null,
+        pointerOrigin: dataset.pointer?.origin ?? "configured",
+        resolveMs: opened.resolveMs,
+        openMs: opened.openMs,
         propertyCount,
         chatEnabled: config.anthropicApiKey !== null,
         bootMs: Date.now() - startedAt,
@@ -122,9 +124,27 @@ export async function main(): Promise<void> {
     );
   });
 
+  // A long-lived local process follows the pointer too, on the same terms as
+  // the deployed one: never on the request path, and never fatal.
+  const refresh = setInterval(() => {
+    void dataset.refresh().then((outcome) => {
+      if (outcome.status === "upgraded") {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            msg: "dataset_upgraded",
+            rootCid: outcome.pointer.rootCid,
+          }),
+        );
+      }
+    });
+  }, REFRESH_INTERVAL_MS);
+  refresh.unref();
+
   const shutdown = (): void => {
+    clearInterval(refresh);
     server.close(() => {
-      store.close();
+      dataset.close();
       process.exit(0);
     });
   };

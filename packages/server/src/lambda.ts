@@ -20,8 +20,8 @@ import { Tracer } from "@aws-lambda-powertools/tracer";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
-import { OracleDataStore } from "./data/duckdb.js";
-import { resolveDataSource } from "./data/source.js";
+import { RuntimeDataset } from "./data/source.js";
+import { triggerPagerDutyAlert } from "./observability/pagerduty.js";
 import type { Router } from "./http/router.js";
 
 /** A Lambda Function URL request, in its v2.0 payload shape. */
@@ -56,6 +56,7 @@ const tracer = new Tracer({ serviceName: "oracle-lake-runtime" });
 const metrics = new Metrics({ namespace: "OracleLake", serviceName: "runtime" });
 
 let bootstrap: Promise<Router> | null = null;
+let dataset: RuntimeDataset | null = null;
 let coldStart = true;
 
 /**
@@ -96,26 +97,63 @@ async function getRouter(): Promise<Router> {
     const config = loadConfig(process.env);
     // The dataset is named by an IPNS pointer, not by a CID in this function's
     // environment, so a scheduled publish reaches the runtime without a deploy.
-    // Resolution costs one round trip per cold start and is reused for the
-    // container's lifetime; a container that outlives a republish keeps serving
-    // the run it opened, which is the immutable snapshot its answers cite.
-    const { source, pointer } = await resolveDataSource(config);
-    if (pointer !== null) {
-      logger.info("dataset_resolved", {
-        ipnsName: pointer.ipnsName,
-        rootCid: pointer.rootCid,
-        runId: pointer.runId,
-        gateway: pointer.gateway,
-      });
-    }
-    const store = new OracleDataStore({ source });
-    await store.init();
-    return createApp(createContext(config, store, pointer));
+    // The pointer's last verified value opens the store immediately and the
+    // live name is checked behind the first requests, so no caller ever waits
+    // on a public gateway and a gateway outage is not a runtime outage.
+    const opened = await RuntimeDataset.open(config);
+    dataset = opened.dataset;
+    const pointer = opened.dataset.pointer;
+    logger.info("dataset_opened", {
+      resolveMs: opened.resolveMs,
+      openMs: opened.openMs,
+      pointerOrigin: pointer?.origin ?? "configured",
+      rootCid: pointer?.rootCid ?? null,
+      runId: pointer?.runId ?? null,
+      refreshPending: opened.stale,
+    });
+    metrics.addMetric("DatasetOpenMs", MetricUnit.Milliseconds, opened.openMs);
+    metrics.addMetric("PointerResolveMs", MetricUnit.Milliseconds, opened.resolveMs);
+    return createApp(createContext(config, opened.dataset));
   })().catch((error: unknown) => {
     bootstrap = null;
     throw error;
   });
   return bootstrap;
+}
+
+/**
+ * Bring the published pointer up to date without making a caller wait for it.
+ *
+ * Started after a response is built, never awaited. Lambda freezes a container
+ * between invocations, so this may only finish on a later one — which is fine,
+ * because the run it is checking for moves at most daily. Everything is caught:
+ * a failed refresh must leave the container serving what it was already
+ * serving, not take it down.
+ */
+function refreshPointerInBackground(): void {
+  const current = dataset;
+  if (current === null) return;
+  void current
+    .refresh()
+    .then((outcome) => {
+      if (outcome.status === "upgraded") {
+        logger.info("dataset_upgraded", {
+          from: outcome.from,
+          to: outcome.pointer.rootCid,
+          runId: outcome.pointer.runId,
+        });
+        metrics.addMetric("DatasetUpgraded", MetricUnit.Count, 1);
+      } else if (outcome.status === "failed") {
+        // Not paged: the process is still serving a verified published run, so
+        // this is degraded freshness, not a failure a human must act on now.
+        // The alarm on this metric is what pages, once it persists.
+        logger.warn("pointer_refresh_failed", { error: outcome.error.message });
+        metrics.addMetric("PointerRefreshFailed", MetricUnit.Count, 1);
+      }
+    })
+    .catch((error: unknown) => {
+      logger.warn("pointer_refresh_failed", { error: String(error) });
+    });
 }
 
 /**
@@ -167,6 +205,8 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
 
     metrics.addMetric("RequestsServed", MetricUnit.Count, 1);
     metrics.addMetric("RequestDuration", MetricUnit.Milliseconds, Date.now() - started);
+    // After the response is built, so it costs the caller nothing.
+    refreshPointerInBackground();
     if (response.status >= 500) metrics.addMetric("RequestsFailed", MetricUnit.Count, 1);
     logger.info("request", { method, path, status: response.status, ms: Date.now() - started });
 
@@ -185,6 +225,23 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
     metrics.addMetric("RequestsFailed", MetricUnit.Count, 1);
     tracer.addErrorAsMetadata(error as Error);
     logger.error("request_failed", { method, path, error: String(error) });
+    // Terminal for this request, and for every request this container will
+    // serve until a bootstrap succeeds: it could not open the published
+    // dataset at all. The guidelines forbid leaving that to a log line, so
+    // on-call is paged from the point where it becomes terminal. One dedup key
+    // per function, so a container retrying every few seconds keeps updating a
+    // single incident rather than opening hundreds.
+    const paged = await triggerPagerDutyAlert({
+      summary: `Lake County runtime cannot open the published dataset: ${String(error)}`,
+      source: process.env.AWS_LAMBDA_FUNCTION_NAME ?? "oracle-lake-runtime",
+      severity: "critical",
+      dedupKey: `oracle-lake-runtime/dataset-unavailable/${process.env.AWS_LAMBDA_FUNCTION_NAME ?? "local"}`,
+      customDetails: { method, path, error: String(error) },
+    });
+    // Whether anybody was actually told is itself evidence, so it is logged
+    // rather than assumed.
+    logger.error("dataset_unavailable", { paging: paged.status });
+    metrics.addMetric("DatasetUnavailable", MetricUnit.Count, 1);
     return {
       statusCode: 503,
       headers: { "content-type": "application/json; charset=utf-8" },

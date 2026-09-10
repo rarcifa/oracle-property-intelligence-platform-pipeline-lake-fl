@@ -60,6 +60,24 @@ node --max-old-space-size=6144 scripts/lake/publish-run.mjs --run-id "$RUNID" --
 Add `--dry-run` to step 5 to compute the root CID, write the CAR and the manifest, and
 upload nothing. `--skip-upload` reuses an upload already on Filebase and only re-verifies.
 
+## The publish gate
+
+Step 5 goes through a human approval gate, and cannot upload without passing it. Bulk
+property data reaching public IPFS is human-gated: an unapproved run builds and validates
+the snapshot, uploads nothing, and leaves the county pending. Only a human opens it.
+
+```bash
+node scripts/lake/publish-approve.mjs --county lake --status
+node scripts/lake/publish-approve.mjs --county lake \
+  --by "<name>" --note "<what is being released>"
+node scripts/lake/publish-approve.mjs --county lake --revoke
+```
+
+The state is `artifacts/publish-gate.json`, committed, so an approval survives a scheduled
+runner and stays reviewable. `pending` clears only after a successful approved publication,
+and an unapproved run proves a given root CID once rather than rebuilding a 332 MB CAR every
+time it is invoked.
+
 ## An incremental run
 
 The permit layer is the only source that moves daily. Window it on `Permit_LastModDate`:

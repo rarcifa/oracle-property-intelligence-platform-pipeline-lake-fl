@@ -35,6 +35,13 @@ import { buildArtifactManifest, writeArtifactManifest } from "../../src/core/art
 import { verifyArtifactAcrossGateways } from "../../src/core/gateway-verify.mjs";
 import { appendRun, computeTableDeltas } from "../../src/core/run-history.mjs";
 import {
+  evaluatePublishGate,
+  readCountyGate,
+  recordDryRun,
+  recordPublication,
+  requestPublish,
+} from "../../src/core/publish-gate.mjs";
+import {
   loadEnvFile,
   fillDerivedFilebaseToken,
   upsertFilebaseName,
@@ -47,6 +54,8 @@ const REPO_ROOT = path.resolve(RUNTIME_ROOT, "..", "..", "..", "..");
 const PUBLISH_ROOT = path.join(RUNTIME_ROOT, "data", "artifacts", "publish", "lake");
 const ARTIFACTS_DIR = path.join(REPO_ROOT, "artifacts");
 const FILEBASE_ENDPOINT = "https://s3.filebase.com";
+/** The county this publisher releases. Also the publish gate's key. */
+const COUNTY = "lake";
 /**
  * Artifacts at or below this size are byte-verified from every gateway on
  * every run. Above it, verification is expensive: the published run carries 22
@@ -248,6 +257,40 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   const dag = await buildRunDag(runDir);
   log("dag_built", { rootCid: dag.rootCid, blocks: dag.blocks.length, artifacts: dag.entries.length });
 
+  // The human approval gate, ON the publish path rather than beside it.
+  //
+  // Bulk property data reaching public IPFS is human-gated: an unapproved run
+  // dry-runs and leaves the county pending, and `pending` clears only after an
+  // approved publication. The gate is evaluated here, after the DAG is hashed
+  // and before anything is written or uploaded, because the run's root CID IS
+  // the content watermark the state machine throttles on — an unapproved run
+  // proves the same content once and then stops, instead of rebuilding a
+  // 332 MB CAR on every invocation while it waits for a human.
+  const gatePath = path.join(ARTIFACTS_DIR, "publish-gate.json");
+  const gateState = await readCountyGate(gatePath, COUNTY);
+  const gate = evaluatePublishGate(gateState, dag.rootCid);
+  log("publish_gate", {
+    county: COUNTY,
+    action: gate.action,
+    reason: gate.reason,
+    approvedBy: gateState.approvedBy,
+    pending: gateState.pending,
+  });
+  // Requesting a publication is what makes a county pending, so it happens
+  // only when there is something to release. Marking a county pending for
+  // content it has already published would leave it permanently pending with
+  // nothing able to clear it.
+  if (gate.action !== "published") await requestPublish(gatePath, COUNTY);
+  if (gate.action === "skip" || gate.action === "published") {
+    // Nothing to do: either this exact content was already dry-run and is still
+    // waiting for a human, or it is already released. Either way, stop before
+    // framing a 332 MB CAR that nobody is going to read.
+    return { runId, rootCid: dag.rootCid, gate: gate.action, reason: gate.reason };
+  }
+  // An unapproved run is a dry run whatever the caller asked for. `--dry-run`
+  // may only ever tighten this, never loosen it.
+  const gatedDryRun = dryRun || gate.action !== "publish";
+
   const carPath = path.join(carDir, `${runId}.car`);
   const car = await writeCarFile({ roots: [dag.rootCid], blocks: dag.blocks, outputPath: carPath });
   log("car_written", { path: car.path, bytes: car.bytes, rootCid: car.rootCid });
@@ -292,9 +335,9 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   log("manifest_written", { manifestCid, bytes: manifestWrite.bytes });
 
   /** @type {Record<string, unknown>} */
-  const publishResult = { dryRun, rootCid: dag.rootCid, manifestCid, carCid: car.rootCid };
+  const publishResult = { dryRun: gatedDryRun, rootCid: dag.rootCid, manifestCid, carCid: car.rootCid };
 
-  if (!dryRun) {
+  if (!gatedDryRun) {
     await loadEnvFile(path.join(REPO_ROOT, ".env"), process.env);
     fillDerivedFilebaseToken(process.env);
     if (!process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY) {
@@ -340,7 +383,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   // it actually resolves to. A pointer is a claim until it is read back.
   /** @type {{ networkKey: string, cid: string, sequence: number } | null} */
   let ipnsState = null;
-  if (!dryRun && !skipIpns) {
+  if (!gatedDryRun && !skipIpns) {
     await loadEnvFile(path.join(REPO_ROOT, ".env"), process.env);
     fillDerivedFilebaseToken(process.env);
     ipnsState = await readIpnsPointer(process.env.FILEBASE_API_TOKEN);
@@ -357,7 +400,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   /** @type {any[]} */
   let verifications = [];
   const evidencePath = path.join(ARTIFACTS_DIR, `verification-${runId}.json`);
-  if (!dryRun && reuseVerification) {
+  if (!gatedDryRun && reuseVerification) {
     // Reuse evidence already recorded for this exact run rather than re-fetching
     // hundreds of megabytes. The evidence is only accepted if it names the same
     // root CID, so it can never be silently carried across runs.
@@ -369,7 +412,7 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
     }
     verifications = prior.verifications;
     log("verification_reused", { evidencePath, artifacts: verifications.length });
-  } else if (!dryRun) {
+  } else if (!gatedDryRun) {
     const fileEntries = manifest.artifacts.filter((entry) => entry.codec === "file");
     const toVerify = verifyAll
       ? fileEntries
@@ -454,9 +497,9 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
     ipnsName: ipnsState?.networkKey ?? null,
     resolvedCid: ipnsState?.cid ?? null,
     verifiedGateways,
-    status: runStatus(dryRun, verifications),
+    status: runStatus(gatedDryRun, verifications),
   };
-  if (!dryRun) {
+  if (!gatedDryRun) {
     // History first, then the row-hash baseline. If this is written before the
     // append, an interrupted run leaves a baseline with no matching history
     // entry, and the retry then diffs the run against itself and reports every
@@ -492,8 +535,30 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
       "utf8",
     );
     await writeArtifactManifest(manifest, path.join(ARTIFACTS_DIR, `manifest-${runId}.json`));
+    // The only thing that clears `pending`: an approved publication that
+    // actually released this content.
+    const released = await recordPublication(gatePath, COUNTY, {
+      watermark: dag.rootCid,
+      runId,
+    });
+    log("publish_gate_released", {
+      county: COUNTY,
+      pending: released.pending,
+      watermark: released.lastPublishedWatermark,
+    });
+  } else if (gate.action !== "publish") {
+    // Unapproved: this content has now been built and validated once. The
+    // county stays pending, and the next run at the same watermark stops
+    // before rebuilding it.
+    const waiting = await recordDryRun(gatePath, COUNTY, dag.rootCid);
+    log("publish_gate_awaiting_approval", {
+      county: COUNTY,
+      pending: waiting.pending,
+      watermark: waiting.lastDryRunWatermark,
+      approve: `node scripts/lake/publish-approve.mjs --county ${COUNTY} --by "<name>" --note "<what was approved>"`,
+    });
   }
-  log("publish_complete", { ...publishResult, status: runRecord.status, verifiedGateways });
+  log("publish_complete", { ...publishResult, gate: gate.action, status: runRecord.status, verifiedGateways });
   return runRecord;
 }
 

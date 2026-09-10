@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "elephant.publish-gate.v1",
+  "counties": {
+    "lake": {
+      "pending": false,
+      "approved": true,
+      "approvedBy": "rarcifa",
+      "approvedAt": "2026-09-10T17:20:29.000Z",
+      "approvalNote": "Owner authorised republishing the Lake County 2026 roll to public IPFS via Filebase and re-pointing the oracle-open-data-lake IPNS name (task 6, 2026-09-10).",
+      "lastDryRunWatermark": null,
+      "lastPublishedWatermark": "bafybeibshsx6h6xtbqb65at6oycndtpp3ufdou5i5unahulvtn46n4fr4m",
+      "lastPublishedRunId": "20260910T153418Z",
+      "lastPublishedAt": "2026-09-10T15:39:44.000Z"
+    }
+  }
+}

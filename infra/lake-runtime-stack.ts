@@ -18,7 +18,11 @@ import {
   Runtime,
   Tracing,
 } from "aws-cdk-lib/aws-lambda";
-import { Alarm, ComparisonOperator, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import { Alarm, ComparisonOperator, Metric, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
+import { Topic } from "aws-cdk-lib/aws-sns";
+import { EmailSubscription, UrlSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
+import { SubscriptionProtocol } from "aws-cdk-lib/aws-sns";
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
@@ -53,6 +57,27 @@ function anthropicKeyEnvironment(): Record<string, string> {
   // secret itself at cold start instead, so the key is never in the config.
   return { ORACLE_ANTHROPIC_SECRET_ID: ANTHROPIC_SECRET_NAME };
 }
+
+/**
+ * Alerting configuration.
+ *
+ * The engineering guidelines make paging on-call non-negotiable for critical
+ * failures, and they are specific about the shape: rate signals come from one
+ * self-resolving CloudWatch alarm per failure mode, fanned out to an SNS topic
+ * that every channel subscribes to — email, chat, and PagerDuty's CloudWatch
+ * integration URL, which maps `ALARM -> trigger` and `OK -> resolve` so an
+ * incident closes itself when the condition clears.
+ *
+ * Every value is supplied by the deploying environment. No routing key, no
+ * integration URL and no address is committed, and the PagerDuty subscription
+ * is added only when the deploy is declared production — a non-prod deploy must
+ * never wake on-call. What is absent is absent loudly: `AlertingConfigured` is
+ * a stack output naming exactly which channels this deploy wired.
+ */
+const ALERT_EMAIL = process.env.ORACLE_ALERT_EMAIL ?? "";
+const PAGERDUTY_CLOUDWATCH_URL = process.env.ORACLE_PAGERDUTY_CLOUDWATCH_URL ?? "";
+const PAGERDUTY_SECRET_NAME = process.env.ORACLE_PAGERDUTY_SECRET_NAME ?? "";
+const ALERT_ENVIRONMENT = process.env.ORACLE_ALERT_ENVIRONMENT ?? "";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /**
@@ -137,6 +162,14 @@ export class LakeRuntimeStack extends Stack {
         // `LOAD httpfs` with "Can't find the home directory at ''". The bundle
         // ships the extension; this points DuckDB at it.
         ORACLE_DUCKDB_EXTENSION_DIR: "/var/task/duckdb-extensions",
+        // Paging is gated on this being exactly "production", so a non-prod
+        // deploy cannot wake on-call even with a routing key in place. The
+        // routing key itself is never an environment value — only the id of
+        // the secret holding it, which the function reads at runtime.
+        ...(ALERT_ENVIRONMENT.length > 0 ? { ORACLE_ALERT_ENVIRONMENT: ALERT_ENVIRONMENT } : {}),
+        ...(PAGERDUTY_SECRET_NAME.length > 0
+          ? { ORACLE_PAGERDUTY_SECRET_ID: PAGERDUTY_SECRET_NAME }
+          : {}),
         ...anthropicKeyEnvironment(),
       },
       // The Function URL is public and unauthenticated on purpose, so an
@@ -159,34 +192,132 @@ export class LakeRuntimeStack extends Stack {
       Secret.fromSecretNameV2(this, "AnthropicKey", ANTHROPIC_SECRET_NAME).grantRead(runtime);
     }
 
-    // One alarm per failure mode, self-resolving. The guidelines forbid
-    // per-item alerts, so these watch rates and clear themselves when the rate
-    // returns to zero.
-    new Alarm(this, "RuntimeErrors", {
-      alarmName: "OracleLake-runtime-errors",
-      alarmDescription:
-        "The Lake County runtime returned errors. Self-resolves when the error rate returns to zero.",
-      metric: runtime.metricErrors({ period: Duration.minutes(5), statistic: "Sum" }),
-      threshold: 1,
-      evaluationPeriods: 2,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
-    });
+    // The routing key the function pages with. Least privilege: read that one
+    // secret, nothing else.
+    if (PAGERDUTY_SECRET_NAME.length > 0) {
+      Secret.fromSecretNameV2(this, "PagerDutyRoutingKey", PAGERDUTY_SECRET_NAME).grantRead(
+        runtime,
+      );
+    }
 
-    new Alarm(this, "RuntimeThrottles", {
-      alarmName: "OracleLake-runtime-throttles",
-      alarmDescription:
-        "The runtime is being throttled against its reserved concurrency of 25, so callers are being turned away.",
-      metric: runtime.metricThrottles({ period: Duration.minutes(5), statistic: "Sum" }),
-      threshold: 1,
-      evaluationPeriods: 1,
-      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-      treatMissingData: TreatMissingData.NOT_BREACHING,
+    // One topic, every channel. The alarms below drive it on both transitions,
+    // so PagerDuty triggers on ALARM and resolves on OK without anyone
+    // clearing an incident by hand.
+    const alerts = new Topic(this, "Alerts", {
+      topicName: "OracleLake-runtime-alerts",
+      displayName: "Lake County runtime alerts",
     });
+    const channels: string[] = [];
+    if (ALERT_EMAIL.length > 0) {
+      alerts.addSubscription(new EmailSubscription(ALERT_EMAIL));
+      channels.push("email");
+    }
+    if (PAGERDUTY_CLOUDWATCH_URL.length > 0 && ALERT_ENVIRONMENT === "production") {
+      // PagerDuty's CloudWatch integration endpoint maps ALARM -> trigger and
+      // OK -> resolve, so it is one subscriber to the alarm's lifecycle rather
+      // than a second mechanism with its own state.
+      alerts.addSubscription(
+        new UrlSubscription(PAGERDUTY_CLOUDWATCH_URL, { protocol: SubscriptionProtocol.HTTPS }),
+      );
+      channels.push("pagerduty");
+    }
+
+    /**
+     * One self-resolving alarm per failure mode, fanned out to every channel.
+     * The guidelines forbid per-item alerts, so these watch rates: a burst of
+     * failures is one incident, and it closes itself when the rate returns to
+     * zero.
+     */
+    const paging = (alarm: Alarm): Alarm => {
+      alarm.addAlarmAction(new SnsAction(alerts));
+      alarm.addOkAction(new SnsAction(alerts));
+      return alarm;
+    };
+
+    paging(
+      new Alarm(this, "RuntimeErrors", {
+        alarmName: "OracleLake-runtime-errors",
+        alarmDescription:
+          "The Lake County runtime returned errors. Self-resolves when the error rate returns to zero.",
+        metric: runtime.metricErrors({ period: Duration.minutes(5), statistic: "Sum" }),
+        threshold: 1,
+        evaluationPeriods: 2,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      }),
+    );
+
+    paging(
+      new Alarm(this, "RuntimeThrottles", {
+        alarmName: "OracleLake-runtime-throttles",
+        alarmDescription:
+          "The runtime is being throttled against its reserved concurrency of 25, so callers are being turned away.",
+        metric: runtime.metricThrottles({ period: Duration.minutes(5), statistic: "Sum" }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      }),
+    );
+
+    /** A business metric the function emits, for alarming on. */
+    const runtimeMetric = (metricName: string): Metric =>
+      new Metric({
+        namespace: "OracleLake",
+        metricName,
+        dimensionsMap: { service: "runtime" },
+        period: Duration.minutes(5),
+        statistic: "Sum",
+      });
+
+    // Terminal: the function could not open the published dataset at all, so
+    // every route is failing. The function also pages directly from that path,
+    // because a caller is being turned away right now; this alarm is what
+    // resolves the condition when it clears.
+    paging(
+      new Alarm(this, "DatasetUnavailable", {
+        alarmName: "OracleLake-dataset-unavailable",
+        alarmDescription:
+          "The runtime could not open the published dataset. Every route is failing. Self-resolves once a boot succeeds.",
+        metric: runtimeMetric("DatasetUnavailable"),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      }),
+    );
+
+    // Degraded, not terminal: the published pointer could not be re-resolved,
+    // so the runtime is serving a verified but possibly superseded run. One
+    // failure is expected — public gateways rate-limit datacenter egress — so
+    // this only fires when it persists across three windows.
+    paging(
+      new Alarm(this, "PointerRefreshFailing", {
+        alarmName: "OracleLake-pointer-refresh-failing",
+        alarmDescription:
+          "The published IPNS pointer has not resolved for 15 minutes, so the runtime may be serving a superseded run. Self-resolves on the next successful resolution.",
+        metric: runtimeMetric("PointerRefreshFailed"),
+        threshold: 1,
+        evaluationPeriods: 3,
+        datapointsToAlarm: 3,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      }),
+    );
 
     // There is no queue and therefore no DLQ: this is a synchronous read-only
     // HTTP surface. The guidelines' DLQ alarm rule is recorded as not
-    // applicable rather than silently skipped.
+    // applicable rather than silently skipped. The pattern it mandates — one
+    // stateful alarm per failure mode, fanned out to channels including
+    // PagerDuty, self-resolving on recovery — is what every alarm above uses.
+
+    new CfnOutput(this, "AlertingConfigured", {
+      // Absent channels are named, not implied. A deploy with no PagerDuty
+      // subscription is a deploy that cannot page, and that must be visible.
+      value: channels.length > 0 ? channels.join(",") : "none",
+      description:
+        "Alert channels this deploy wired. Set ORACLE_ALERT_EMAIL, ORACLE_PAGERDUTY_CLOUDWATCH_URL, ORACLE_PAGERDUTY_SECRET_NAME and ORACLE_ALERT_ENVIRONMENT=production to page on-call.",
+    });
 
     // Public and unauthenticated on purpose: this serves a published open-data
     // set. The SQL surface is locked down in two layers, in the shared SQL

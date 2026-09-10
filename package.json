@@ -22,7 +22,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:county": "eslint --no-ignore --no-warn-ignored .claude/skills/use-oracle/runtime/scripts/lake .claude/skills/use-oracle/runtime/src/counties/lake .claude/skills/use-oracle/runtime/src/core/car.mjs .claude/skills/use-oracle/runtime/src/core/cid.mjs .claude/skills/use-oracle/runtime/src/core/artifact-manifest.mjs .claude/skills/use-oracle/runtime/src/core/gateway-verify.mjs .claude/skills/use-oracle/runtime/src/core/run-history.mjs"
+    "lint:county": "eslint --no-ignore --no-warn-ignored .claude/skills/use-oracle/runtime/scripts/lake .claude/skills/use-oracle/runtime/src/counties/lake .claude/skills/use-oracle/runtime/src/core/car.mjs .claude/skills/use-oracle/runtime/src/core/cid.mjs .claude/skills/use-oracle/runtime/src/core/artifact-manifest.mjs .claude/skills/use-oracle/runtime/src/core/gateway-verify.mjs .claude/skills/use-oracle/runtime/src/core/run-history.mjs .claude/skills/use-oracle/runtime/src/core/publish-gate.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
