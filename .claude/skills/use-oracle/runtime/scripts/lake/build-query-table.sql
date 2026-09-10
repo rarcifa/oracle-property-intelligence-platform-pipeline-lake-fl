@@ -132,7 +132,15 @@ COPY (
     nullif(trim(n.OWN_CITY), '')                                            AS owner_mailing_city,
     nullif(trim(n.OWN_STATE), '')                                           AS owner_mailing_state,
     nullif(trim(n.OWN_ZIPCD), '')                                           AS owner_mailing_zip,
+    -- A city name alone does not place an owner in this county: Leesburg is in
+    -- Virginia, Georgia and Illinois too, Grand Island is in New York, and
+    -- Altoona is in Pennsylvania. Matching on the name alone recorded 29 owners
+    -- as simultaneously out of state and in county, and quietly moved every one
+    -- of them out of the out-of-area lead list they belong in. The state is
+    -- checked first, so out-of-state now implies out-of-county by construction.
     CASE WHEN trim(coalesce(n.OWN_CITY,'')) = '' THEN NULL
+         WHEN trim(coalesce(n.OWN_STATE,'')) <> ''
+              AND upper(trim(n.OWN_STATE)) <> 'FL' THEN true
          ELSE upper(trim(n.OWN_CITY)) NOT IN (SELECT city FROM in_county_city) END
                                                                             AS owner_out_of_county,
     CASE WHEN trim(coalesce(n.OWN_STATE,'')) = '' THEN NULL

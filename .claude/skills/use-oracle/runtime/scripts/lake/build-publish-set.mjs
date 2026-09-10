@@ -135,6 +135,15 @@ export async function buildPublishSet({ runId, parquetPath }) {
   // the number of accounts actually matched. Both were documented in prose and
   // in the UI but were absent from the published coverage snapshot, which is
   // the machine-readable record a consumer actually reads.
+  // The denominator must come from the source, not from the table being
+  // measured. Counting published rows and calling the result "county_total"
+  // made completeness 100% by construction: a run that silently dropped half
+  // the roll would still have reported full coverage against itself.
+  const [sourceRoll] = await query(`
+    SELECT count(*) AS parcels
+    FROM read_csv_auto('${nalCsv}', header=true, all_varchar=true)
+  `);
+
   const tppCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "NAP45P202601.csv");
   const [business] = await query(`
     WITH tpp AS (SELECT * FROM read_csv_auto('${tppCsv}', header=true, all_varchar=true)),
@@ -273,9 +282,14 @@ export async function buildPublishSet({ runId, parquetPath }) {
     runId,
     exportedAt: new Date().toISOString(),
     denominator: {
-      basis: "county_total",
+      basis: "source_roll_row_count",
       source: "Florida DOR 2026 preliminary NAL",
-      assessedParcelCount: Number(totals.properties),
+      assessedParcelCount: Number(sourceRoll.parcels),
+      publishedParcelCount: Number(totals.properties),
+      publishedFraction:
+        Number(sourceRoll.parcels) > 0
+          ? Number((Number(totals.properties) / Number(sourceRoll.parcels)).toFixed(6))
+          : null,
     },
     tables: {
       properties: { rows: Number(totals.properties), source: "FL DOR NAL 2026P" },

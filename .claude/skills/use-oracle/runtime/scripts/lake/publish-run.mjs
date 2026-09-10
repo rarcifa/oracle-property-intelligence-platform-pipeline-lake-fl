@@ -33,6 +33,7 @@ import { buildUnixfsDirectory, computeRawCid, computeUnixfsFileCid, sha256Hex } 
 import { writeCarFile } from "../../src/core/car.mjs";
 import { buildArtifactManifest, writeArtifactManifest } from "../../src/core/artifact-manifest.mjs";
 import { verifyArtifactAcrossGateways } from "../../src/core/gateway-verify.mjs";
+import { assertQueryTableGate } from "../../src/counties/lake/adapter.mjs";
 import { appendRun, computeTableDeltas } from "../../src/core/run-history.mjs";
 import {
   evaluatePublishGate,
@@ -261,6 +262,13 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
   const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousRun = await readPreviousRun(historyPath);
   assertTablesPlausible(coverageTableRows(coverage), previousRun);
+
+  // The kit's one-row-per-property invariant: no null folio, and exactly as many
+  // rows as distinct folios. It was written, exported, and never called — a gate
+  // beside the path rather than on it, which is the same defect the approval gate
+  // had. A table that silently duplicated or dropped parcels would have published.
+  const gateCounts = await assertQueryTableGate(path.join(runDir, "query-table.parquet"));
+  log("query_table_gate", gateCounts);
 
   const dag = await buildRunDag(runDir);
   log("dag_built", { rootCid: dag.rootCid, blocks: dag.blocks.length, artifacts: dag.entries.length });

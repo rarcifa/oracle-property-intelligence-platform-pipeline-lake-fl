@@ -1,14 +1,15 @@
 {
-  "runId": "20260910T210850Z",
-  "rootCid": "bafybeidtc5bhhp5abcn5xx75uu6fs6ttna7el2fmenb2cmrirh5vpxg7cm",
-  "manifestCid": "bafkreievuim7a2vsyqwhkmhcm3fz35tijlayv7ar5z4o7pzseqlckedljy",
-  "carCid": "bafybeidtc5bhhp5abcn5xx75uu6fs6ttna7el2fmenb2cmrirh5vpxg7cm",
+  "runId": "20260910T214904Z",
+  "rootCid": "bafybeidslvwzrmoczzrxek2fxydtbqvvvzgld4e3p3t2bkschep22ky4hq",
+  "manifestCid": "bafkreigbiggimzy5rghm2bdhnnvwewu3sa3mdibbxmvb2a2tgdr4uik2ri",
+  "carCid": "bafybeidslvwzrmoczzrxek2fxydtbqvvvzgld4e3p3t2bkschep22ky4hq",
   "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
-  "resolvedCid": "bafybeidtc5bhhp5abcn5xx75uu6fs6ttna7el2fmenb2cmrirh5vpxg7cm",
+  "resolvedCid": "bafybeidslvwzrmoczzrxek2fxydtbqvvvzgld4e3p3t2bkschep22ky4hq",
   "verifiedGateways": [
     "https://ipfs.filebase.io",
-    "https://gw.ipfs-lens.dev"
+    "https://gw.ipfs-lens.dev",
+    "https://ipfs.io"
   ],
   "propertyCount": 215806,
-  "publishedAt": "2026-09-10T21:11:34.704Z"
+  "publishedAt": "2026-09-10T21:55:03.633Z"
 }
