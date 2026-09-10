@@ -190,8 +190,11 @@ function compareNames(left, right) {
  *
  * @param {Array<{ name: string, cid: string, size: number, blocks?: Array<{ cid: string, bytes: Uint8Array }> }>} entries
  *   directory entries; `size` is the cumulative DAG size of the entry
- * @returns {{ cid: string, size: number, blocks: Array<{ cid: string, bytes: Uint8Array }> }}
- *   the directory CID, its cumulative DAG size, and every block of the subtree
+ * @returns {{ cid: string, size: number, bytes: Uint8Array, blocks: Array<{ cid: string, bytes: Uint8Array }> }}
+ *   the directory CID, its cumulative DAG size, the encoded dag-pb node bytes
+ *   the CID addresses, and every block of the subtree. `bytes` is returned
+ *   because a directory has no content of its own beyond that node: it is the
+ *   only thing a caller can honestly digest for a directory entry.
  */
 export function buildUnixfsDirectory(entries) {
   if (!Array.isArray(entries)) {
@@ -249,6 +252,7 @@ export function buildUnixfsDirectory(entries) {
   return {
     cid,
     size: bytes.length + sorted.reduce((total, entry) => total + entry.size, 0),
+    bytes,
     blocks,
   };
 }

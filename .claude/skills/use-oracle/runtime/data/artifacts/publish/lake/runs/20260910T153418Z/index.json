@@ -1,0 +1,169 @@
+{
+  "schemaVersion": "elephant.property-index.v1",
+  "county": "lake",
+  "countyName": "Lake",
+  "stateCode": "FL",
+  "countyFips": "12069",
+  "runId": "20260910T153418Z",
+  "propertyCount": 215806,
+  "shardSize": 10000,
+  "shardCount": 22,
+  "shards": [
+    {
+      "name": "shards/shard-0000.json",
+      "shard": 0,
+      "properties": 10000,
+      "firstParcel": "01-17-27-0001-000-00100",
+      "lastParcel": "02-19-25-0040-00C-00000"
+    },
+    {
+      "name": "shards/shard-0001.json",
+      "shard": 1,
+      "properties": 10000,
+      "firstParcel": "02-19-25-0040-00D-00000",
+      "lastParcel": "04-23-26-0010-000-02400"
+    },
+    {
+      "name": "shards/shard-0002.json",
+      "shard": 2,
+      "properties": 10000,
+      "firstParcel": "04-23-26-0010-000-02500",
+      "lastParcel": "06-18-24-0396-000-47950"
+    },
+    {
+      "name": "shards/shard-0003.json",
+      "shard": 3,
+      "properties": 10000,
+      "firstParcel": "06-18-24-0396-000-47960",
+      "lastParcel": "07-18-24-1000-000-06800"
+    },
+    {
+      "name": "shards/shard-0004.json",
+      "shard": 4,
+      "properties": 10000,
+      "firstParcel": "07-18-24-1000-000-06900",
+      "lastParcel": "08-23-26-0500-000-09800"
+    },
+    {
+      "name": "shards/shard-0005.json",
+      "shard": 5,
+      "properties": 10000,
+      "firstParcel": "08-23-26-0500-000-09900",
+      "lastParcel": "10-23-26-1901-000-24000"
+    },
+    {
+      "name": "shards/shard-0006.json",
+      "shard": 6,
+      "properties": 10000,
+      "firstParcel": "10-23-26-1901-000-24100",
+      "lastParcel": "12-19-26-1250-000-02700"
+    },
+    {
+      "name": "shards/shard-0007.json",
+      "shard": 7,
+      "properties": 10000,
+      "firstParcel": "12-19-26-1250-000-02900",
+      "lastParcel": "13-20-24-0106-000-35000"
+    },
+    {
+      "name": "shards/shard-0008.json",
+      "shard": 8,
+      "properties": 10000,
+      "firstParcel": "13-20-24-0106-000-35100",
+      "lastParcel": "14-19-26-2700-000-01600"
+    },
+    {
+      "name": "shards/shard-0009.json",
+      "shard": 9,
+      "properties": 10000,
+      "firstParcel": "14-19-26-2700-000-01700",
+      "lastParcel": "15-22-26-0261-000-30800"
+    },
+    {
+      "name": "shards/shard-0010.json",
+      "shard": 10,
+      "properties": 10000,
+      "firstParcel": "15-22-26-0261-000-30900",
+      "lastParcel": "18-19-28-0001-000-01000"
+    },
+    {
+      "name": "shards/shard-0011.json",
+      "shard": 11,
+      "properties": 10000,
+      "firstParcel": "18-19-28-0001-000-01100",
+      "lastParcel": "20-19-27-1520-00A-02100"
+    },
+    {
+      "name": "shards/shard-0012.json",
+      "shard": 12,
+      "properties": 10000,
+      "firstParcel": "20-19-27-1520-00A-02200",
+      "lastParcel": "22-19-26-0305-000-00900"
+    },
+    {
+      "name": "shards/shard-0013.json",
+      "shard": 13,
+      "properties": 10000,
+      "firstParcel": "22-19-26-0305-000-01400",
+      "lastParcel": "23-24-26-0250-000-12500"
+    },
+    {
+      "name": "shards/shard-0014.json",
+      "shard": 14,
+      "properties": 10000,
+      "firstParcel": "23-24-26-0250-000-12600",
+      "lastParcel": "25-18-28-0004-000-01900"
+    },
+    {
+      "name": "shards/shard-0015.json",
+      "shard": 15,
+      "properties": 10000,
+      "firstParcel": "25-18-28-0004-000-01901",
+      "lastParcel": "26-19-24-1600-001-00100"
+    },
+    {
+      "name": "shards/shard-0016.json",
+      "shard": 16,
+      "properties": 10000,
+      "firstParcel": "26-19-24-1600-001-00200",
+      "lastParcel": "27-19-27-0012-00K-00000"
+    },
+    {
+      "name": "shards/shard-0017.json",
+      "shard": 17,
+      "properties": 10000,
+      "firstParcel": "27-19-27-0012-00L-00000",
+      "lastParcel": "29-18-26-0004-000-031D1"
+    },
+    {
+      "name": "shards/shard-0018.json",
+      "shard": 18,
+      "properties": 10000,
+      "firstParcel": "29-18-26-0004-000-031E1",
+      "lastParcel": "30-22-26-0010-000-00900"
+    },
+    {
+      "name": "shards/shard-0019.json",
+      "shard": 19,
+      "properties": 10000,
+      "firstParcel": "30-22-26-0010-000-01000",
+      "lastParcel": "32-21-26-0025-000-88500"
+    },
+    {
+      "name": "shards/shard-0020.json",
+      "shard": 20,
+      "properties": 10000,
+      "firstParcel": "32-21-26-0025-000-88600",
+      "lastParcel": "35-19-26-1000-000-01800"
+    },
+    {
+      "name": "shards/shard-0021.json",
+      "shard": 21,
+      "properties": 5806,
+      "firstParcel": "35-19-26-1000-000-01900",
+      "lastParcel": "40-16-27-0100-000-00100"
+    }
+  ],
+  "queryTable": "query-table.parquet",
+  "coverage": "coverage.json"
+}

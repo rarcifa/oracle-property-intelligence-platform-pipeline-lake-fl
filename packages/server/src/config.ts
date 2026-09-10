@@ -28,6 +28,15 @@ export interface ServerConfig {
   /** Parquet the DuckDB layer opens: a local path or an https gateway URL. */
   parquetSource: string;
   parquetSourceKind: "ipfs" | "local";
+  /**
+   * IPNS name the published dataset lives behind, when one is configured.
+   *
+   * Used only when no explicit Parquet and no locally published run is present,
+   * which is the deployed case. The name is stable across runs; the CID it
+   * points at is not, which is exactly why the runtime resolves the name rather
+   * than being handed a CID at deploy time.
+   */
+  ipnsName: string | null;
   /** Directory holding coverage.json / index.json / schema.json for the run. */
   runDir: string | null;
   /** `artifacts/latest.json`, written by the publish step. */
@@ -79,6 +88,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const parquetSource = explicitParquet ?? localParquet ?? "";
   const parquetSourceKind: "ipfs" | "local" = /^https?:\/\//.test(parquetSource) ? "ipfs" : "local";
 
+  // Precedence: an explicit override, then a run published on this machine,
+  // then the IPNS pointer. A developer who has just published locally wants
+  // that run; a deployed process has neither of the first two and follows the
+  // pointer. There is no baked CID anywhere in the chain.
+  const ipnsName = env.ORACLE_IPNS_NAME?.trim();
+
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
 
   return {
@@ -86,6 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     host: env.HOST ?? "0.0.0.0",
     parquetSource,
     parquetSourceKind,
+    ipnsName: ipnsName && ipnsName.length > 0 ? ipnsName : null,
     runDir,
     latestPath: env.ORACLE_LATEST_PATH ?? resolve(REPO_ROOT, "artifacts/latest.json"),
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),

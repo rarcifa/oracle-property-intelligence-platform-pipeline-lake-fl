@@ -21,6 +21,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
 import { OracleDataStore } from "./data/duckdb.js";
+import { resolveDataSource } from "./data/source.js";
 import type { Router } from "./http/router.js";
 
 /** A Lambda Function URL request, in its v2.0 payload shape. */
@@ -93,9 +94,23 @@ async function getRouter(): Promise<Router> {
   bootstrap ??= (async (): Promise<Router> => {
     await resolveModelKey();
     const config = loadConfig(process.env);
-    const store = new OracleDataStore({ source: config.parquetSource });
+    // The dataset is named by an IPNS pointer, not by a CID in this function's
+    // environment, so a scheduled publish reaches the runtime without a deploy.
+    // Resolution costs one round trip per cold start and is reused for the
+    // container's lifetime; a container that outlives a republish keeps serving
+    // the run it opened, which is the immutable snapshot its answers cite.
+    const { source, pointer } = await resolveDataSource(config);
+    if (pointer !== null) {
+      logger.info("dataset_resolved", {
+        ipnsName: pointer.ipnsName,
+        rootCid: pointer.rootCid,
+        runId: pointer.runId,
+        gateway: pointer.gateway,
+      });
+    }
+    const store = new OracleDataStore({ source });
     await store.init();
-    return createApp(createContext(config, store));
+    return createApp(createContext(config, store, pointer));
   })().catch((error: unknown) => {
     bootstrap = null;
     throw error;

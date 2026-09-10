@@ -254,6 +254,61 @@ describe.skipIf(!hasParquet)("MCP tool handlers", () => {
   });
 });
 
+/**
+ * An argument this server does not implement must be an error, never a silent
+ * no-op. Every tool advertises `additionalProperties: false`, but the schemas
+ * behind them stripped unknown keys instead of refusing them, so a misspelled
+ * filter returned the whole unfiltered result set and read as a valid answer —
+ * which is exactly how `findOpenRoofPermits` came to be reported as ignoring
+ * its filter. It does not; `minOpenPermitDays` narrows correctly, and both
+ * halves are asserted here.
+ */
+describe.skipIf(!hasParquet)("MCP argument validation", () => {
+  let context: AppContext | null = null;
+  const ctx = async (): Promise<AppContext> => {
+    context ??= await getContext();
+    return context;
+  };
+
+  afterAll(() => {
+    closeStore();
+  });
+
+  const misspelled: [string, Record<string, unknown>][] = [
+    ["findOpenRoofPermits", { minOpenDays: 365 }],
+    ["findAgedRoofs", { minRoofAgeYears: 30 }],
+    ["findPropertiesInRadius", { lat: 28.5, lon: -81.7, radiusMiles: 1, minRoofAgeYears: 30 }],
+    ["listOracleProperties", { cityName: "CLERMONT" }],
+    ["getOracleProperty", { parcelId: "05-18-25-0004-000-00400", verbose: true }],
+    ["queryProperties", { sql: "SELECT 1 AS n", maxRows: 5 }],
+    ["getPropertyQuerySchema", { county: "lake" }],
+    ["getOracleDatasetInfo", { includeCoverage: true }],
+  ];
+
+  it.each(misspelled)("%s rejects an argument it does not implement", async (tool, args) => {
+    const result = await callTool(await ctx(), tool, args);
+    expect(result.isError).toBe(true);
+    expect((result.payload as { error: string }).error).toBe("invalid_arguments");
+    expect((result.payload as { detail: string }).detail).toMatch(/[Uu]nrecognized key/);
+  });
+
+  it("minOpenPermitDays narrows the result set rather than being ignored", async () => {
+    const matched = async (minOpenPermitDays: number): Promise<number> => {
+      const result = await callTool(await ctx(), "findOpenRoofPermits", {
+        minOpenPermitDays,
+        limit: 1,
+      });
+      expect(result.isError).toBeFalsy();
+      return (result.payload as { matched: number }).matched;
+    };
+    const [all, aYear, eightYears] = await Promise.all([matched(0), matched(365), matched(3000)]);
+    expect(all).toBeGreaterThan(0);
+    expect(aYear).toBeLessThan(all);
+    expect(eightYears).toBeLessThan(aYear);
+    expect(eightYears).toBeGreaterThan(0);
+  });
+});
+
 describe.skipIf(!hasParquet)("/mcp HTTP endpoint", () => {
   afterAll(() => {
     closeStore();

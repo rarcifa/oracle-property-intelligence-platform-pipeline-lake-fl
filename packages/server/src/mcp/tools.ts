@@ -14,6 +14,7 @@ import {
   COUNTY,
   DEFAULT_ROOF_AGE_THRESHOLD_YEARS,
   parcelIdSchema,
+  QUERY_TABLE_COLUMN_COUNT,
   QUERY_TABLE_COLUMNS,
   radiusSchema,
   readOnlySqlSchema,
@@ -97,8 +98,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
   {
     name: "getPropertyQuerySchema",
     title: "Get property query schema",
-    description:
-      "Return the 59-column schema of the published Lake County query table, including each column's type, label, upstream source, and which columns are permanently null because their source is gated. Call this before writing SQL for queryProperties.",
+    description: `Return the ${QUERY_TABLE_COLUMN_COUNT}-column schema of the published Lake County query table, including each column's type, label, upstream source, and which columns are permanently null because their source is gated. Call this before writing SQL for queryProperties.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -223,26 +223,57 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
   },
 ]);
 
-const agedRoofsSchema = z.object({
-  minRoofAge: z.coerce.number().min(0).max(500).default(DEFAULT_ROOF_AGE_THRESHOLD_YEARS),
-  city: z.string().trim().min(1).max(80).optional(),
-  propertyType: z.string().trim().min(1).max(60).optional(),
-  roofAgeBasis: z
-    .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built"])
-    .optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(50),
-});
+/**
+ * Every tool's arguments are parsed against a strict schema, so an argument
+ * this server does not implement is an error rather than a silent no-op.
+ *
+ * Each tool advertises `additionalProperties: false`, but the Zod schemas
+ * behind them were not strict, so Zod stripped anything unrecognised and the
+ * tool ran with the arguments it did understand — usually none. A reviewer
+ * calling `findOpenRoofPermits` with `minOpenDays` instead of `minOpenPermitDays`
+ * got all 226 open-roofing-permit rows back and reasonably concluded the filter
+ * was ignored. It was not: the argument was.
+ *
+ * A wrong answer that looks right is worse than an error, and a caller that
+ * misspells an argument must be told, not quietly served the unfiltered table.
+ */
+const strictArgs = <Shape extends z.ZodRawShape>(
+  schema: z.ZodObject<Shape>,
+): z.ZodObject<Shape, "strict"> => schema.strict();
 
-const openRoofPermitsSchema = z.object({
-  minOpenPermitDays: z.coerce.number().min(0).max(100_000).optional(),
-  city: z.string().trim().min(1).max(80).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(50),
-});
+/** Tools that take no arguments at all still reject arguments they were sent. */
+const noArgsSchema = strictArgs(z.object({}));
 
-const radiusToolSchema = radiusSchema.extend({
-  minRoofAge: z.coerce.number().min(0).max(500).optional(),
-  hasOpenRoofingPermit: z.boolean().optional(),
-});
+const sqlToolSchema = strictArgs(readOnlySqlSchema);
+const listToolSchema = strictArgs(searchOptionsSchema);
+const propertyToolSchema = strictArgs(parcelIdSchema);
+
+const agedRoofsSchema = strictArgs(
+  z.object({
+    minRoofAge: z.coerce.number().min(0).max(500).default(DEFAULT_ROOF_AGE_THRESHOLD_YEARS),
+    city: z.string().trim().min(1).max(80).optional(),
+    propertyType: z.string().trim().min(1).max(60).optional(),
+    roofAgeBasis: z
+      .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built"])
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
+  }),
+);
+
+const openRoofPermitsSchema = strictArgs(
+  z.object({
+    minOpenPermitDays: z.coerce.number().min(0).max(100_000).optional(),
+    city: z.string().trim().min(1).max(80).optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
+  }),
+);
+
+const radiusToolSchema = strictArgs(
+  radiusSchema.extend({
+    minRoofAge: z.coerce.number().min(0).max(500).optional(),
+    hasOpenRoofingPermit: z.boolean().optional(),
+  }),
+);
 
 /** Every tool name this server advertises. */
 export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map((tool) => tool.name);
@@ -267,6 +298,8 @@ export async function callTool(
 
   switch (name) {
     case "getPropertyQuerySchema": {
+      const parsed = noArgsSchema.safeParse(args);
+      if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
       return {
         payload: {
           county: COUNTY,
@@ -282,6 +315,8 @@ export async function callTool(
     }
 
     case "getOracleDatasetInfo": {
+      const parsed = noArgsSchema.safeParse(args);
+      if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
       const [stats, coverage, latest] = await Promise.all([
         getDatasetStats(context.store, provenance),
         readCoverage(context.config),
@@ -306,7 +341,7 @@ export async function callTool(
     }
 
     case "queryProperties": {
-      const parsed = readOnlySqlSchema.safeParse(args);
+      const parsed = sqlToolSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
       let safeSql: string;
       try {
@@ -341,7 +376,7 @@ export async function callTool(
     }
 
     case "listOracleProperties": {
-      const parsed = searchOptionsSchema.safeParse(args);
+      const parsed = listToolSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
       try {
         return { payload: await searchProperties(context.store, provenance, parsed.data) };
@@ -351,7 +386,7 @@ export async function callTool(
     }
 
     case "getOracleProperty": {
-      const parsed = parcelIdSchema.safeParse(args);
+      const parsed = propertyToolSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
       const detail = await getProperty(context.store, provenance, parsed.data.parcelId);
       if (detail === null) {

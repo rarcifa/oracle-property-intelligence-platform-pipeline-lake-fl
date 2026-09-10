@@ -17,6 +17,7 @@ import {
   clampLimit,
   DEFAULT_ROOF_AGE_THRESHOLD_YEARS,
   propertyFiltersSchema,
+  QUERY_TABLE_COLUMN_COUNT,
   QUERY_TABLE_COLUMNS,
   TENURE_CAVEAT,
   type ChatCitation,
@@ -101,7 +102,7 @@ const COLUMN_SUMMARY = QUERY_TABLE_COLUMNS.map(
 
 const SYSTEM_PROMPT = `You are the Oracle property-intelligence analyst for Lake County, Florida.
 
-You answer only from the published query table, which is one row per parcel with these 59 columns:
+You answer only from the published query table, which is one row per parcel with these ${QUERY_TABLE_COLUMN_COUNT} columns:
 ${COLUMN_SUMMARY}
 
 Rules you must follow without exception:

@@ -11,6 +11,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
 import { OracleDataStore } from "./data/duckdb.js";
+import { resolveDataSource } from "./data/source.js";
 import type { HttpResponse } from "./http/router.js";
 import type { Router } from "./http/router.js";
 
@@ -80,24 +81,27 @@ export function createRequestListener(router: Router) {
 /** Open the data layer, wire the app, and start listening. */
 export async function main(): Promise<void> {
   const config = loadConfig();
-  if (config.parquetSource.length === 0) {
+  const startedAt = Date.now();
+  let source: string;
+  let pointer: Awaited<ReturnType<typeof resolveDataSource>>["pointer"];
+  try {
+    ({ source, pointer } = await resolveDataSource(config));
+  } catch (error) {
     console.error(
       JSON.stringify({
         level: "error",
         msg: "no_parquet_source",
-        detail:
-          "No published query-table.parquet was found. Set ORACLE_PARQUET_PATH to a local file or ORACLE_PARQUET_URL to an IPFS gateway URL.",
+        detail: error instanceof Error ? error.message : String(error),
       }),
     );
     process.exit(1);
   }
 
-  const store = new OracleDataStore({ source: config.parquetSource });
-  const startedAt = Date.now();
+  const store = new OracleDataStore({ source });
   await store.init();
   const propertyCount = Number(await store.queryScalar("SELECT count(*) FROM properties"));
 
-  const context = createContext(config, store);
+  const context = createContext(config, store, pointer);
   const router = createApp(context);
   const server = createServer(createRequestListener(router));
 
@@ -107,8 +111,10 @@ export async function main(): Promise<void> {
         level: "info",
         msg: "listening",
         url: `http://localhost:${config.port}`,
-        dataSource: config.parquetSource,
-        dataSourceKind: config.parquetSourceKind,
+        dataSource: store.source,
+        dataSourceKind: store.sourceKind,
+        ipnsName: pointer?.ipnsName ?? null,
+        rootCid: pointer?.rootCid ?? null,
         propertyCount,
         chatEnabled: config.anthropicApiKey !== null,
         bootMs: Date.now() - startedAt,

@@ -46,10 +46,9 @@ function entries(overrides = []) {
     {
       cid: root.cid,
       name: ".",
-      size: root.size,
+      size: root.bytes.length,
       codec: "directory",
-      sha256: `sha256:${sha256Hex(new Uint8Array(0))}`,
-      origins: [],
+      sha256: `sha256:${sha256Hex(root.bytes)}`,
     },
     {
       cid: properties.cid,
@@ -57,7 +56,6 @@ function entries(overrides = []) {
       size: propertiesBody.length,
       codec: "file",
       sha256: `sha256:${sha256Hex(propertiesBody)}`,
-      origins: ["https://gateway.pinata.cloud"],
     },
     {
       cid: coverage.cid,
@@ -109,12 +107,30 @@ describe("buildArtifactManifest", () => {
     ]);
   });
 
-  it("defaults origins to an empty list", () => {
+  it("writes no origins field rather than an empty one", () => {
+    // The manifest is built and hashed before anything is uploaded, so no
+    // provider has been observed yet and the field could only ever be empty.
+    // An always-empty `origins` implies provenance the document does not have.
+    for (const artifact of manifest().artifacts) {
+      expect(Object.keys(artifact)).not.toContain("origins");
+    }
+  });
+
+  it("still validates a manifest published with the retired origins field", () => {
+    const legacy = manifest();
+    legacy.artifacts[0].origins = ["https://ipfs.filebase.io"];
+    expect(() => validateArtifactManifest(legacy)).not.toThrow();
+  });
+
+  it("publishes no local filesystem path beside the root", () => {
     const built = manifest();
-    const coverageEntry = built.artifacts.find(
-      (artifact) => artifact.name === "dataset-coverage.json",
-    );
-    expect(coverageEntry.origins).toEqual([]);
+    expect(Object.keys(built.root)).toEqual(["cid", "car"]);
+    expect(() =>
+      validateArtifactManifest({
+        ...built,
+        root: { ...built.root, carBuildPath: "data/artifacts/cars/run.car" },
+      }),
+    ).toThrow(/carBuildPath/);
   });
 
   it("records size, codec and digest for every artifact", () => {
@@ -128,7 +144,6 @@ describe("buildArtifactManifest", () => {
       size: propertiesBody.length,
       codec: "file",
       sha256: `sha256:${sha256Hex(propertiesBody)}`,
-      origins: ["https://gateway.pinata.cloud"],
     });
   });
 });

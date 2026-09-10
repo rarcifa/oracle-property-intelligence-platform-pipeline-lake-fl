@@ -68,30 +68,42 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const BUNDLE_DIR = path.join(REPO_ROOT, "infra", "bundle");
 
 /**
- * Published run the function reads, resolved from `artifacts/latest.json`.
+ * The IPNS name the published dataset lives behind, from `artifacts/latest.json`.
  *
- * It was a hardcoded CID, beside a comment claiming a republish needed no
- * redeploy. Both halves were wrong: a pinned CID is exactly what a republish
- * does not reach, and the constant would silently keep serving an older run
- * every time the pointer moved without someone remembering to edit this line.
+ * The *name*, not the CID. This deployed a CID, read from the same file, and
+ * documented the tradeoff as verifiability bought at the price of needing a
+ * redeploy after every publish. In a pipeline whose whole point is scheduled
+ * ongoing ingestion, that price is continuity: the daily job re-points IPNS,
+ * the function keeps serving the run it was deployed with, and nothing fails —
+ * the data just silently stops being current. The kit's `deploy-open-data-mcp`
+ * says as much: leave the CID variable unset when an IPNS name exists, so the
+ * name is the single source of truth.
  *
- * Reading the pointer means a deploy always serves the newest published run and
- * cannot drift from it. It stays a CID rather than the IPNS path on purpose: a
- * CID is immutable and independently verifiable against the manifest, which is
- * the property the whole publication story rests on. A republish therefore still
- * needs a `cdk deploy` — set ORACLE_PARQUET_URL to the IPNS path to trade that
- * verifiability for following the pointer automatically.
+ * Verifiability is not given up. The function resolves the name at cold start,
+ * gets back an immutable CID, reads only that CID, and reports it as the run it
+ * is serving — so an answer still cites bytes anyone can re-fetch and check
+ * against the manifest. What changes is when the CID is learned: at boot from
+ * the pointer, not at synth time from a file.
+ *
+ * `ORACLE_PARQUET_URL` still overrides everything, for pinning one run
+ * deliberately.
  */
-function publishedParquetUrl(): string {
-  const override = process.env.ORACLE_PARQUET_URL;
-  if (override) return override;
+function publishedIpnsName(): string {
   const pointerPath = path.join(REPO_ROOT, "artifacts", "latest.json");
   const pointer: unknown = JSON.parse(readFileSync(pointerPath, "utf8"));
-  const rootCid = (pointer as { rootCid?: unknown }).rootCid;
-  if (typeof rootCid !== "string" || rootCid.length === 0) {
-    throw new Error(`${pointerPath} has no rootCid; the function has no dataset to read`);
+  const ipnsName = (pointer as { ipnsName?: unknown }).ipnsName;
+  if (typeof ipnsName !== "string" || ipnsName.length === 0) {
+    throw new Error(
+      `${pointerPath} has no ipnsName; the function has no pointer to resolve its dataset from`,
+    );
   }
-  return `https://ipfs.filebase.io/ipfs/${rootCid}/query-table.parquet`;
+  return ipnsName;
+}
+
+/** An explicitly pinned Parquet URL, when the operator set one. */
+function parquetOverride(): Record<string, string> {
+  const override = process.env.ORACLE_PARQUET_URL;
+  return override ? { ORACLE_PARQUET_URL: override } : {};
 }
 
 export class LakeRuntimeStack extends Stack {
@@ -110,10 +122,11 @@ export class LakeRuntimeStack extends Stack {
       timeout: Duration.seconds(60),
       environment: {
         NODE_OPTIONS: "--enable-source-maps",
-        // Read the published dataset from IPFS by CID rather than baking it into
-        // the bundle, so the 20 MB table is never shipped and is verifiable
-        // against the manifest.
-        ORACLE_PARQUET_URL: publishedParquetUrl(),
+        // The pointer, resolved at cold start, rather than a CID fixed at deploy
+        // time. The 20 MB table is never shipped in the bundle either way; what
+        // this buys is that a scheduled publish reaches the runtime on its own.
+        ORACLE_IPNS_NAME: publishedIpnsName(),
+        ...parquetOverride(),
         ORACLE_UI_DIST: "/var/task/public",
         ORACLE_LATEST_PATH: "/var/task/artifacts/latest.json",
         // The coverage snapshot and published schema the evidence panels read.

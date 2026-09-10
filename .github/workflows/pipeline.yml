@@ -126,6 +126,33 @@ jobs:
           restore-keys: |
             lake-row-hashes-
 
+      # `artifacts/run-history.json` is committed, and a scheduled run appends to
+      # the checked-out copy and then throws it away with the runner. Nothing
+      # carried it forward, so the next scheduled run started from the committed
+      # file again and every publish made between commits was absent from the
+      # record — a history that documents itself as append-only while silently
+      # losing entries. Carried between runs and merged below, it accumulates.
+      - name: Restore the run history published by earlier scheduled runs
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/carried-run-history.json
+          key: lake-run-history-${{ github.run_id }}
+          restore-keys: |
+            lake-run-history-
+
+      # A union, not an overwrite: the carried copy and the committed copy can
+      # each hold runs the other does not, and a run recorded in both must be
+      # identical in both or the merge fails. No published run is ever edited.
+      - name: Merge the carried run history into the repository's copy
+        working-directory: .
+        run: |
+          if [ -f /tmp/carried-run-history.json ]; then
+            node .claude/skills/use-oracle/runtime/scripts/lake/merge-run-history.mjs \
+              artifacts/run-history.json /tmp/carried-run-history.json
+          else
+            echo "::notice::no carried run history yet — this run starts from the committed copy"
+          fi
+
       # The incremental mode fetches a 2-day permit window. Consolidate reads
       # permits.csv wholesale, so without a base to merge into, a scheduled run
       # would publish a table containing two days of permits and report the rest
@@ -194,8 +221,9 @@ jobs:
       # The retrieval corpus is built from the run's own coverage, schema, index
       # and sample extracts, so a new run leaves the committed index describing
       # the previous one. Rebuilding here keeps the uploaded artifacts internally
-      # consistent; the deployed function picks the new index up on its next
-      # `cdk deploy`, which a republish needs anyway to move to the new CID.
+      # consistent. The published table itself needs no deploy — the function
+      # resolves the IPNS pointer at cold start — but the corpus is shipped in
+      # the bundle, so it reaches the runtime on the next `cdk deploy`.
       - name: Rebuild the retrieval index for the new run
         if: ${{ env.S3_ACCESS_KEY_ID != '' }}
         working-directory: .
@@ -229,10 +257,27 @@ jobs:
           path: artifacts/row-hashes.json
           key: lake-row-hashes-${{ github.run_id }}
 
+      # The history this run just appended to, carried to the next scheduled
+      # run. Saved on the same terms as the row hashes: only when the run could
+      # publish, and always rather than only on success, because a run that
+      # published and then failed later has still moved the record forward.
+      - name: Save the run history for the next run
+        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
+        run: cp artifacts/run-history.json /tmp/carried-run-history.json
+        working-directory: .
+
+      - name: Cache the run history for the next run
+        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/carried-run-history.json
+          key: lake-run-history-${{ github.run_id }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: lake-run-${{ steps.build.outputs.run_id }}
           path: |
+            artifacts/run-history.json
             .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/coverage.json
             .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/index.json
             .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/query-table.parquet

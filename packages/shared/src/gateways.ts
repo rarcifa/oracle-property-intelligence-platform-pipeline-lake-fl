@@ -34,6 +34,16 @@ export interface IpfsGateway {
   readonly range: boolean;
   /** Rate-limits datacenter egress, so it is a poor first choice server-side. */
   readonly datacenter429?: boolean;
+  /**
+   * Resolves `/ipns/<name>` as well as `/ipfs/<cid>`.
+   *
+   * Measured on 2026-09-10 against this project's own IPNS name: filebase
+   * answers 200 with `x-ipfs-roots`; `gateway.pinata.cloud` and
+   * `gw.ipfs-lens.dev` answer 403 to any `/ipns/` path — they serve CIDs only.
+   * Recorded per gateway rather than assumed, because the runtime now resolves
+   * the pointer live and a gateway that cannot is not a candidate.
+   */
+  readonly ipns: boolean;
   readonly note: string;
 }
 
@@ -44,6 +54,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     baseUrl: "https://ipfs.filebase.io",
     cors: true,
     range: true,
+    ipns: true,
     note: "CORS + HTTP Range verified. Required for browser-side DuckDB-WASM range reads.",
   }),
   Object.freeze({
@@ -51,6 +62,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     baseUrl: "https://gateway.pinata.cloud",
     cors: true,
     range: true,
+    ipns: false,
     note: "HTTP 206 + CORS measured on the published Parquet. Reachable from datacenter egress.",
   }),
   Object.freeze({
@@ -58,6 +70,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     baseUrl: "https://gw.ipfs-lens.dev",
     cors: true,
     range: true,
+    ipns: false,
     note: "HTTP 206 + CORS measured on the published Parquet. Reachable from datacenter egress.",
   }),
   Object.freeze({
@@ -66,6 +79,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     cors: true,
     range: true,
     datacenter429: true,
+    ipns: true,
     note: "HTTP 206 + CORS measured, but rate-limits datacenter egress, so it is ordered last.",
   }),
   Object.freeze({
@@ -74,6 +88,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     cors: true,
     range: true,
     datacenter429: true,
+    ipns: true,
     note: "301 to a subdomain gateway, then 206 + CORS. Rate-limits datacenter egress.",
   }),
   Object.freeze({
@@ -82,6 +97,7 @@ export const IPFS_GATEWAYS: readonly IpfsGateway[] = Object.freeze([
     cors: true,
     range: true,
     datacenter429: true,
+    ipns: true,
     note: "301 to a subdomain gateway, then 206 + CORS. Rate-limits datacenter egress.",
   }),
 ]);
@@ -108,6 +124,20 @@ export const RANGE_READ_GATEWAYS: readonly IpfsGateway[] = Object.freeze(
 
 /** The first-choice gateway for Parquet range reads. */
 export const RANGE_READ_GATEWAY: IpfsGateway = RANGE_READ_GATEWAYS[0]!;
+
+/**
+ * Every gateway that can resolve an IPNS name, most preferred first.
+ *
+ * The published dataset moves: each run pins a new immutable root and re-points
+ * one IPNS name at it. A consumer that wants the newest run has to resolve the
+ * name, and only some gateways will. Ordered like the range-read list, so a
+ * gateway that rate-limits datacenter egress is asked last.
+ */
+export const IPNS_GATEWAYS: readonly IpfsGateway[] = Object.freeze(
+  IPFS_GATEWAYS.filter((gateway) => gateway.ipns).sort(
+    (a, b) => Number(a.datacenter429 ?? false) - Number(b.datacenter429 ?? false),
+  ),
+);
 
 /** Build a gateway URL for `<cid>/<path>`. `path` may be empty for a bare CID. */
 export function gatewayUrl(gateway: IpfsGateway | string, cid: string, path = ""): string {
@@ -142,6 +172,13 @@ export function parquetCandidates(rootCid: string, preferred?: string | null): s
   );
   const ordered = preferred ? [preferred, ...candidates] : candidates;
   return [...new Set(ordered)];
+}
+
+/** Build a gateway URL for `/ipns/<name>/<path>`. */
+export function ipnsUrl(gateway: IpfsGateway | string, name: string, path = ""): string {
+  const base = (typeof gateway === "string" ? gateway : gateway.baseUrl).replace(/\/+$/, "");
+  const trimmedPath = path.replace(/^\/+/, "");
+  return trimmedPath.length > 0 ? `${base}/ipns/${name}/${trimmedPath}` : `${base}/ipns/${name}`;
 }
 
 /** The registered gateway serving a URL, or null when it is from none of them. */

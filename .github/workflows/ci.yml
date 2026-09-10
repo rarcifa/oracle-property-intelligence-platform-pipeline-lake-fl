@@ -44,7 +44,7 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @oracle-lake/ui exec playwright install --with-deps chromium
 
-      # 50 of the 271 application tests exercise the query layer against a real
+      # 69 of the 317 application tests exercise the query layer against a real
       # 215,806-row table rather than a fixture, and skip when none is reachable.
       # Skipped tests read as a pass, so CI was green without ever touching the
       # query layer, the REST routes or the MCP tools. Point them at the newest

@@ -300,7 +300,7 @@ describe("verifyManifestAcrossGateways", () => {
         name: ".",
         size: root.size,
         codec: "directory",
-        sha256: `sha256:${sha256Hex(new Uint8Array(0))}`,
+        sha256: `sha256:${sha256Hex(root.bytes)}`,
       },
       {
         cid: file.cid,

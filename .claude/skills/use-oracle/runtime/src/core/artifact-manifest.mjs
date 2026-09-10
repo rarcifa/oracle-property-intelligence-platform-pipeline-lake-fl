@@ -5,11 +5,25 @@
  * somebody who was not there, exactly what it published. The manifest is that
  * record: for every object it pins the CIDv1, the logical name inside the
  * snapshot, the byte length, whether the CID addresses a file or a directory,
- * and the sha2-256 of the raw bytes, plus the providers that were observed
- * serving it. Size and digest are what make the CID checkable — a gateway can
- * return any bytes it likes, and only the recorded digest catches it. The
- * manifest also names the CAR file for the root, so the whole snapshot can be
- * re-imported rather than re-crawled.
+ * and the sha2-256 of those bytes. Size and digest are what make the CID
+ * checkable — a gateway can return any bytes it likes, and only the recorded
+ * digest catches it. The manifest also names the CAR file for the root, so the
+ * whole snapshot can be re-imported rather than re-crawled.
+ *
+ * `size` and `sha256` describe the bytes stored under the entry's CID, and what
+ * those bytes are depends on the codec. For a `file` they are the file's own
+ * content, which is what a gateway returns for the CID. A `directory` has no
+ * content beyond the dag-pb node listing its children, so its entry describes
+ * that node: fetch the block itself (`?format=raw`) to check it, not the
+ * gateway's HTML rendering of the listing. This used to record
+ * `sha256(cid_string)` for directories — a digest of the identifier rather than
+ * of anything the identifier addresses, which verified nothing at all.
+ *
+ * Nothing here records which providers served an object. The manifest is built
+ * and hashed before a single byte is uploaded, so at that moment no provider
+ * has been observed and any such field could only be empty. What actually
+ * served the bytes back is measured after publication and recorded in
+ * `artifacts/verification-<run>.json`.
  *
  * @module core/artifact-manifest
  */
@@ -47,7 +61,10 @@ export const artifactEntrySchema = z
     sha256: z
       .string()
       .regex(SHA256_PATTERN, "must be a lowercase sha256:<64-hex> digest"),
-    origins: z.array(z.string().trim().min(1)),
+    // Legacy only, and never written by this runtime. Manifests published
+    // before the field was retired carry it, and they must stay validatable —
+    // being able to re-check an old publication is the point of the document.
+    origins: z.array(z.string().trim().min(1)).optional(),
   })
   .strict();
 
@@ -63,8 +80,11 @@ export const artifactManifestSchema = z
     root: z
       .object({
         cid: cidSchema,
+        // `car` only. The build machine's path to the CAR was published here
+        // too, which leaked a local filesystem layout into an immutable public
+        // artifact and resolved for nobody but the machine that wrote it. The
+        // pipeline keeps that path in local run state instead.
         car: z.string().trim().min(1),
-        carBuildPath: z.string().trim().min(1).optional(),
       })
       .strict(),
     artifacts: z.array(artifactEntrySchema).min(1),
@@ -126,8 +146,7 @@ export function validateArtifactManifest(value) {
  * Build a validated artifact manifest for one run.
  *
  * Entries are sorted by name so two runs over the same content produce the
- * same document, and `origins` defaults to an empty list because an unverified
- * artifact must never claim a provider it was not seen on.
+ * same document.
  *
  * @param {{
  *   runId: string,
@@ -135,8 +154,7 @@ export function validateArtifactManifest(value) {
  *   generatedAt: string,
  *   rootCid: string,
  *   rootCarPath: string,
- *   rootCarLocalPath?: string,
- *   entries: Array<{ cid: string, name: string, size: number, codec: "file" | "directory", sha256: string, origins?: string[] }>
+ *   entries: Array<{ cid: string, name: string, size: number, codec: "file" | "directory", sha256: string }>
  * }} options run identity, snapshot root, CAR path, and every published object,
  *   including the root directory entry itself
  * @returns {import("zod").infer<typeof artifactManifestSchema>} the validated manifest
@@ -147,7 +165,6 @@ export function buildArtifactManifest({
   generatedAt,
   rootCid,
   rootCarPath,
-  rootCarLocalPath,
   entries,
 }) {
   if (!Array.isArray(entries)) {
@@ -160,10 +177,9 @@ export function buildArtifactManifest({
     generatedAt,
     root: {
       cid: rootCid,
-      // `car` is a content-addressed locator so the DAG is reachable from the
-      // manifest alone; `carBuildPath` is where the build happened to write it.
+      // A content-addressed locator, so the DAG is reachable from the manifest
+      // alone by anyone holding it.
       car: rootCarPath,
-      ...(rootCarLocalPath ? { carBuildPath: rootCarLocalPath } : {}),
     },
     artifacts: [...entries]
       .sort((left, right) =>
@@ -175,7 +191,6 @@ export function buildArtifactManifest({
         size: entry?.size,
         codec: entry?.codec,
         sha256: entry?.sha256,
-        origins: entry?.origins ?? [],
       })),
   });
 }

@@ -88,7 +88,7 @@ the kit's own conventions — `.mjs` with JSDoc, Zod `.strict()` schemas, Vitest
 |---|---|
 | `src/core/cid.mjs` | CIDv1 base32, raw leaves, UnixFS files and directories |
 | `src/core/car.mjs` | CARv1 write and read-back |
-| `src/core/artifact-manifest.mjs` | `elephant.artifact-manifest.v1` with cid, name, size, codec, sha256, origins |
+| `src/core/artifact-manifest.mjs` | `elephant.artifact-manifest.v1` with cid, name, size, codec, sha256 |
 | `src/core/gateway-verify.mjs` | Byte and digest agreement across independent public gateways |
 | `src/core/run-history.mjs` | `elephant.run-history.v1`, immutable prior runs, record deltas |
 
@@ -192,11 +192,21 @@ unchanged blocks are already pinned and a CAR carrying only the new blocks plus 
 path would be enough. That optimisation is identified but not implemented; the current
 behaviour is correct, just wasteful of upload time.
 
-**IPNS resolution is not universal across gateways.** `ipfs.filebase.io` resolves
-`/ipns/<name>/…` and returns the published files. `gateway.pinata.cloud` answers 403 for
-IPNS paths while serving `/ipfs/<cid>` paths normally. This is the reason the assignment's
-framing is right: the IPNS name is a convenience pointer and the CID is the identity. Every
-run records both, and all retrieval evidence is gathered against CIDs.
+**IPNS resolution is not universal across gateways.** `ipfs.filebase.io`, `ipfs.io`,
+`dweb.link` and `w3s.link` resolve `/ipns/<name>/…` and return the published files.
+`gateway.pinata.cloud` and `gw.ipfs-lens.dev` answer 403 for IPNS paths while serving
+`/ipfs/<cid>` paths normally. The hosted runtime therefore resolves the name against the
+narrower list and reads the resolved CID from the wider one; both lists are properties of
+each gateway in `packages/shared/src/gateways.ts`, measured rather than assumed.
+
+Resolution is also only as fresh as the resolving gateway's own IPNS cache —
+`ipfs.filebase.io` sends `cache-control: max-age=300` and was measured serving the previous
+record for several minutes after run `20260910T153418Z` re-pointed the name, while `ipfs.io`
+had already moved. The consequence is bounded and benign: a cold start inside that window
+opens the previously published immutable run, which is a real snapshot with a real manifest,
+not stale or invalid data, and the next cold start moves on. The CID is still the identity;
+the name is still a convenience pointer. Every run records both, and all retrieval evidence
+is gathered against CIDs.
 
 ## 12. Two skills credited in the README but departed from
 

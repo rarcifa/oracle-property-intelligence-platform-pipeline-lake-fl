@@ -64,9 +64,12 @@ The agent returns a clear 503 without a key rather than failing at boot.
 
 Do **not** set `ANTHROPIC_API_KEY` on the function directly. That was tried, worked, and was
 silently wrong: the stack declares `environment` in full, so the next `cdk deploy` drops the
-key and the agent goes dark with nothing failing loudly. The key lives in Secrets Manager
-and CloudFormation resolves it at deploy time, so it survives every redeploy and neither the
-repository nor the synthesised template ever holds the value.
+key and the agent goes dark with nothing failing loudly. The key lives in Secrets Manager,
+and the stack deploys only the secret's **name** plus an IAM grant to read it — the function
+fetches the value itself at cold start. Resolving it in CloudFormation instead would write
+the plaintext into the function's own configuration, where anyone holding
+`lambda:GetFunctionConfiguration` can read it; an earlier version of this page described
+that arrangement, and it is no longer what the stack does.
 
 ```bash
 printf '%s' "$ANTHROPIC_API_KEY" > /tmp/key && \
@@ -78,9 +81,26 @@ Deploy without the agent by setting `ORACLE_ANTHROPIC_SECRET_NAME=""`.
 
 ## Pointing at a different published run
 
-The function reads `ORACLE_PARQUET_URL`, which defaults to the newest published run root.
-Republishing does not require a redeploy; repoint that variable, or leave it on the IPNS
-path so it follows the pointer.
+The function is deployed with `ORACLE_IPNS_NAME`, the county's published IPNS name, and no
+CID. It resolves the name at cold start, gets back the immutable root the name currently
+points at, reads only that CID, and reports it as the run it is serving — so a republish
+reaches the runtime on its own and an answer still cites bytes anyone can re-fetch and check
+against the manifest. Resolution is cached for the container's lifetime, so it costs one
+round trip per cold start; a container that outlives a republish keeps serving the run it
+opened, which is the immutable snapshot its answers cite.
+
+An earlier version of this page said the function read `ORACLE_PARQUET_URL` and that
+republishing needed no redeploy. The variable was right and the conclusion was not: a CID
+was baked in at `cdk deploy` time, so a scheduled publish moved the pointer and the runtime
+went on serving the previous run, silently, until somebody redeployed.
+
+To pin one run deliberately, set `ORACLE_PARQUET_URL` in the deploying shell — it still
+overrides the pointer:
+
+```bash
+ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/<root-cid>/query-table.parquet" \
+  pnpm --filter @oracle-lake/infra exec cdk deploy
+```
 
 ## What the first deploy taught
 

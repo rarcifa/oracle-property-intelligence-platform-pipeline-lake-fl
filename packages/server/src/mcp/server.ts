@@ -8,6 +8,7 @@
  * per the specification, notifications get no response, and batches are handled.
  */
 
+import { QUERY_TABLE_COLUMN_COUNT } from "@oracle-lake/shared";
 import { callTool, MCP_TOOLS } from "./tools.js";
 import type { AppContext } from "../context.js";
 
@@ -102,8 +103,7 @@ export async function handleRpcMessage(
         protocolVersion: negotiateProtocolVersion(params.protocolVersion),
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
-        instructions:
-          "Query the published Lake County, Florida property query table (one row per parcel). Call getPropertyQuerySchema first to learn the 59 columns, then queryProperties for arbitrary read-only SQL against the view `properties`, or the purpose-built tools for aged roofs, open roofing permits and radius search. contractor_name and bbb_rating are real columns that are always null because their sources answer HTTP 403; never present them as absent data without that reason.",
+        instructions: `Query the published Lake County, Florida property query table (one row per parcel). Call getPropertyQuerySchema first to learn the ${QUERY_TABLE_COLUMN_COUNT} columns, then queryProperties for arbitrary read-only SQL against the view \`properties\`, or the purpose-built tools for aged roofs, open roofing permits and radius search. contractor_name and bbb_rating are real columns that are always null because their sources answer HTTP 403; never present them as absent data without that reason.`,
       });
     }
 

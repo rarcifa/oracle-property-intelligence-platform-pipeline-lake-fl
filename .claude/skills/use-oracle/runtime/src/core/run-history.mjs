@@ -241,6 +241,72 @@ export async function appendRun(historyPath, runRecord) {
 }
 
 /**
+ * Union two histories of the same county without altering either's records.
+ *
+ * A scheduled run publishes from a fresh checkout, appends its run to the
+ * repository's committed history, and then throws the file away with the
+ * runner — so the next scheduled run started from the committed file again and
+ * every publish between commits vanished from the record. Carrying the file
+ * between runs fixes that, but a carried copy and a committed copy can each
+ * hold runs the other does not, and neither may overwrite the other.
+ *
+ * This merges them: a runId in both must be byte-identical in both, a runId in
+ * either survives, and the result is ordered newest first. Run ids are compact
+ * UTC timestamps, so lexicographic order is chronological order. Nothing is
+ * edited, re-numbered or dropped, which is the same guarantee `appendRun`
+ * makes — a rewritten history is indistinguishable from a fabricated one.
+ *
+ * @param {unknown} base history to merge into
+ * @param {unknown} incoming history to merge from
+ * @returns {import("zod").infer<typeof runHistorySchema>} the merged history
+ */
+export function mergeRunHistories(base, incoming) {
+  const left = validateRunHistory(base);
+  const right = validateRunHistory(incoming);
+  /** @type {Map<string, import("zod").infer<typeof runRecordSchema>>} */
+  const byId = new Map();
+  for (const run of [...left.runs, ...right.runs]) {
+    const existing = byId.get(run.runId);
+    if (existing !== undefined) {
+      if (canonicalJson(existing) !== canonicalJson(run)) {
+        throw new Error(
+          `Refusing to merge run histories: run '${run.runId}' differs between them; a published run is immutable`,
+        );
+      }
+      continue;
+    }
+    byId.set(run.runId, run);
+  }
+  return validateRunHistory({
+    schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+    runs: [...byId.values()].sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0)),
+  });
+}
+
+/**
+ * Merge a history file on disk with another, writing the union back.
+ *
+ * A missing file on either side is an empty history, so the first scheduled run
+ * — which has no carried copy yet — is not a failure.
+ *
+ * @param {string} historyPath history file to write
+ * @param {string} otherPath history file to merge in
+ * @returns {Promise<import("zod").infer<typeof runHistorySchema>>} the written history
+ */
+export async function mergeRunHistoryFile(historyPath, otherPath) {
+  const merged = mergeRunHistories(
+    (await loadRunHistory(historyPath)).history,
+    (await loadRunHistory(otherPath)).history,
+  );
+  const body = Buffer.from(`${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  await mkdir(path.dirname(historyPath), { recursive: true });
+  const temporaryPath = `${historyPath}.${process.pid}.tmp`;
+  await writeFile(temporaryPath, body);
+  await rename(temporaryPath, historyPath);
+  return merged;
+}
+
+/**
  * Coerce a `key -> rowHash` input into a Map.
  *
  * @param {Map<string, string> | Record<string, string> | undefined | null} rows row hashes by key

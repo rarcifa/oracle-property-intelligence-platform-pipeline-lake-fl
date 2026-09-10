@@ -82,14 +82,14 @@ python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
   .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
 ```
 
-The application's own suite runs from the repo root. 50 of the 271 tests exercise the
+The application's own suite runs from the repo root. 69 of the 317 tests exercise the
 query layer against a real 215,806-row table rather than a fixture, so they skip unless one
 is reachable; point them at the published run to run everything:
 
 ```bash
 pnpm install && pnpm run build
 ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/$(jq -r .rootCid artifacts/latest.json)/query-table.parquet" \
-  pnpm run test:unit          # 271 passed
+  pnpm run test:unit          # 317 passed
 ```
 
 Full pipeline commands are in [`docs/runbook.md`](docs/runbook.md).
@@ -125,18 +125,18 @@ The `-L` matters, and a first pass here got it wrong without it: `dweb.link` and
 every real client sees 206. An earlier note in this repo claimed Filebase was the
 only gateway serving both CORS and Range; five others do.
 
-The published run is verified across all of them. Every one of the nine checked
-artifacts — including the 20 MB Parquet and a 14 MB shard — returned bytes
-matching the manifest's length and SHA-256 from **three independent gateways** —
-`ipfs.filebase.io`, `gw.ipfs-lens.dev` and `gateway.pinata.cloud`. All five in the
-registry are asked every time; `ipfs.io` and `dweb.link` rate-limit datacenter
-traffic and had not served the freshly published CIDs when this run was verified,
-so they are recorded as asked-and-not-matched rather than quietly dropped. The
-count in `latest.json` is whatever actually answered,
-recorded in `artifacts/verification-<run>.json`. The kit's verifier stops at two
-by design, which is why the record used to name only two; `scripts/reverify-across-gateways.mjs`
-sweeps the full list for the evidence record without changing the pass criterion
-or touching the vendored kit.
+The published run is verified across all of them. Every one of the ten checked
+artifacts of run `20260910T153418Z` — including the 20 MB Parquet and a 14 MB
+shard — returned bytes matching the manifest's length and SHA-256 from **all five
+gateways in the registry**: `ipfs.filebase.io`, `gw.ipfs-lens.dev`,
+`gateway.pinata.cloud`, `ipfs.io` and `dweb.link`. The run before it matched on
+three, because `ipfs.io` and `dweb.link` rate-limited datacenter traffic at the
+moment it was checked; a gateway that does not answer is recorded as
+asked-and-not-matched rather than quietly dropped, so the count in `latest.json`
+is whatever actually answered, evidenced in `artifacts/verification-<run>.json`.
+The kit's verifier stops at two by design, which is why a publish records only
+two; `scripts/reverify-across-gateways.mjs` sweeps the full list for the evidence
+record without changing the pass criterion or touching the vendored kit.
 
 ## Import the whole DAG as a CAR, from anyone's gateway
 
@@ -167,24 +167,31 @@ curl -s "$U/api/sql" -H 'content-type: application/json' \
 The last call is the one that matters: an open SQL endpoint over an engine with filesystem
 access is an arbitrary-file-read primitive, and this one was exactly that until it was fixed.
 
-## Two runs, two CIDs, prior data untouched
+## Four runs, four CIDs, prior data untouched
 
 | Run                | Mode        | Root CID            | Property deltas   | Gateways verified |
 | ------------------ | ----------- | ------------------- | ----------------- | ----------------- |
 | `20260909T182356Z` | full        | `bafybeigb3g…rltee` | 215,806 inserted  | 5                 |
 | `20260909T185056Z` | incremental | `bafybeiay65…z33q`  | 215,806 unchanged | 2                 |
+| `20260910T135850Z` | incremental | `bafybeif5vp…ok67q` | 215,806 unchanged | 2                 |
+| `20260910T153418Z` | incremental | `bafybeibshs…4fr4m` | 215,806 unchanged | 5                 |
 
 The IPNS name resolves to the newest run; every run's own root CID is permanent. Run one's
-root still resolves after run two republished, and the run before both of them, published
-earlier the same day, was independently re-checked from three gateways and returns a
+root still resolves after every later republish, and the run before all of them, published
+earlier on the 9th, was independently re-checked from three gateways and returns a
 byte-identical manifest — that evidence is in `artifacts/prior-publication.json`.
 
-The incremental run's deltas are genuinely zero, and that is reported rather than dressed
-up. It re-fetched the 304 permits whose `Permit_LastModDate` had moved in the preceding four
-days and merged them by permit number, which collapsed 244 duplicate feature rows but
-changed no property-level value. A delta appears when a permit changes status, a roof gets a
-new completion date, or the DOR publishes a new roll. The mechanism is exercised and the
-result is honest: nothing that this pipeline measures had changed yet.
+The later runs' deltas are genuinely zero, and that is reported rather than dressed up. The
+second run re-fetched the 304 permits whose `Permit_LastModDate` had moved in the preceding
+four days and merged them by permit number, which collapsed 244 duplicate feature rows but
+changed no property-level value. The third added three business columns to the query table.
+The fourth changed no data at all: it republished the same table with a corrected artifact
+manifest — directory digests over the dag-pb nodes rather than over the CID string, no
+always-empty `origins`, no build-machine path in the published root — and a coverage
+snapshot that now states the business-coverage limitation in machine-readable form. A
+property delta appears when a permit changes status, a roof gets a new completion date, or
+the DOR publishes a new roll. The mechanism is exercised and the result is honest: nothing
+this pipeline measures had changed between them.
 
 ## Known limitations, stated rather than hidden
 
@@ -220,6 +227,13 @@ These are in `coverage.json` inside every published run, and in the source catal
   figure, the 2.26% in the readiness exception, measures something else: the gap between
   the 210,935-row GIS release and the 215,806-row assessed roll. The two are easy to
   conflate and an earlier draft of this file did exactly that.
+- **214 of the 17,671 permits attach to no published property.** They name 119 parcel keys
+  absent from the assessed roll. They are valid records and are counted rather than
+  discarded, which is why the permit total and the linked total differ above.
+- **Business coverage is 6.2% of the TPP roll, and the published per-parcel total double
+  counts.** 32,738 of the 33,346 accounts carry a situs address and 2,060 match a parcel;
+  summing `business_account_count` across the 2,726 parcels that carry one yields 4,451,
+  because 90 address groups span more than one parcel. Detailed below.
 
 ### Found after this run was published
 
@@ -243,6 +257,14 @@ a matched address group is attributed to _every_ parcel sharing that address, so
 covering 180 accounts span 1,214 parcels. The UI labels that figure "TPP account–parcel
 matches" rather than a count of businesses, and the Business view says so in full.
 
+This one **was** prose-only for three runs, and that was the defect: the README said it
+plainly while `coverage.json` — the machine-readable record every API, MCP tool and agent
+reads — did not, so any consumer that was not a human reading this file had no way to learn
+it. Since run `20260910T153418Z` it is the eighth entry in the published `limitations[]`,
+and the snapshot carries a `tables.businessAccounts` block with the matched, attributed and
+shared-address counts. The figures are computed from the roll on every run rather than typed
+in, so a later roll cannot leave a stale number behind.
+
 `NAICS_CD` and the account name are now carried. Run `20260910T135850Z` republished the
 query table under a new root CID with three added columns — `business_naics_codes`,
 `business_names` and `roofing_business_count` — so the roll's 44 roofing contractors are
@@ -254,18 +276,20 @@ The shared-address double count is unchanged and still stated above: it is a pro
 street+zip join, not of the columns, and de-duplicating it would change what
 `business_account_count` means rather than correct it.
 
-## What is not proven yet
+## Gaps that were open, and how each one closed
 
-One thing is implemented and typechecks but has not been exercised, and it is listed here
-rather than counted as working.
+This section listed what was written but unproven. Nothing on it is open any more. It is
+kept rather than deleted, because a document that erases the record of its own gaps as they
+close stops being worth reading. Each entry names the evidence that closed it.
 
-- **The chat agent has never called a model.** No `ANTHROPIC_API_KEY` was available in this
-  environment. The Vercel AI SDK path with its five Zod-schema tools and its citation
-  collector is written, and only the "no key returns 503" branch is test-covered. Export a
-  key and run it once before relying on it.
-
-Two items that were listed here have since been exercised against the deployed runtime and
-are no longer open:
+- **The chat agent calls a model, on the deployed runtime.** The key lives in Secrets
+  Manager and the function fetches it at cold start. Asked on 2026-09-10 how complete the
+  business coverage is and where that is stated, the deployed `/api/chat` answered from the
+  coverage snapshot's own `businessAccounts` block — 2,060 of 33,346 accounts, 4,451
+  attributed across 2,726 parcels — citing `searchDocuments` and `getDatasetInfo` against run
+  `20260910T153418Z`. The Vercel AI SDK path with its five Zod-schema tools and its citation
+  collector is therefore exercised, not merely written. In the test suite only the "no key
+  returns 503" branch is covered, because the suite never reaches a model provider on purpose.
 
 - **DuckDB-WASM now runs in a real browser.** Chromium loads the deployed app, the mode pill
   reads "Browser DuckDB-WASM · range-reading IPFS", every view renders from the Parquet
@@ -288,7 +312,12 @@ deploy succeeded and every route answered 502, because DuckDB resolves extension
 it had never been shipped in the bundle at all and had only ever loaded from the developer's
 own home directory. The bundle now ships it and the stack points DuckDB at it.
 
-There is still no pull request and no demo video, because neither was authorised.
+Both the pull request and the demo video now exist. The work is proposed as
+[PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2)
+against the assignment repository — a **draft**, deliberately, until the owner marks it ready
+— and a 7 min 16 s screen recording of the deployed runtime, following the assignment's
+presenter script, is attached at the bottom of its description. An earlier version of this
+line said neither had been authorised, which was true when it was written and is not now.
 
 ## Team-kit usage
 

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildRunDag, listFiles, parseArgs, readIpnsPointer, runIdToIso, runStatus } from "../scripts/lake/publish-run.mjs";
-import { computeRawCid, isCidV1Base32 } from "../src/core/cid.mjs";
+import { computeRawCid, isCidV1Base32, sha256Hex } from "../src/core/cid.mjs";
+import { CID } from "multiformats/cid";
 
 describe("run identifiers", () => {
   it("derives a stable ISO timestamp so a run's manifest CID is reproducible", () => {
@@ -115,6 +116,27 @@ describe("run DAG", () => {
     const coverage = dag.entries.find((entry) => entry.name === "coverage.json");
     expect(coverage.size).toBe(Buffer.byteLength('{"county":"lake"}\n', "utf8"));
     expect(coverage.cid).toBe(computeRawCid(Buffer.from('{"county":"lake"}\n', "utf8")));
+  });
+
+  it("digests a directory's dag-pb node, not its CID string", async () => {
+    // The recorded digest was `sha256(cid_string)` for every directory, which
+    // is derived from the identifier and therefore agrees with it no matter
+    // what bytes a provider serves. A digest that cannot disagree verifies
+    // nothing. For a dag-pb node the multihash inside the CID is the sha2-256
+    // of exactly those bytes, so the entry must reproduce it.
+    const dag = await buildRunDag(runDir);
+    for (const entry of dag.entries.filter((candidate) => candidate.codec === "directory")) {
+      const embedded = Buffer.from(CID.parse(entry.cid).multihash.digest).toString("hex");
+      expect(entry.sha256).toBe(`sha256:${embedded}`);
+      expect(entry.sha256).not.toBe(`sha256:${sha256Hex(Buffer.from(entry.cid, "utf8"))}`);
+    }
+  });
+
+  it("claims no observed providers on an artifact nothing has served yet", async () => {
+    const dag = await buildRunDag(runDir);
+    for (const entry of dag.entries) {
+      expect(Object.keys(entry)).not.toContain("origins");
+    }
   });
 
   it("is deterministic: the same directory hashes to the same root", async () => {

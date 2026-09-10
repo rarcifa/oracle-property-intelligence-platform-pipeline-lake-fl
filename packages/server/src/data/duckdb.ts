@@ -129,7 +129,7 @@ export function normalizeRows(rows: readonly QueryRow[]): QueryRow[] {
 export interface DataStoreOptions {
   /** Parquet path or https URL. */
   source: string;
-  /** Skip the 59-column schema gate. Only used by fixture-backed tests. */
+  /** Skip the published-schema column gate. Only used by fixture-backed tests. */
   skipSchemaCheck?: boolean;
 }
 

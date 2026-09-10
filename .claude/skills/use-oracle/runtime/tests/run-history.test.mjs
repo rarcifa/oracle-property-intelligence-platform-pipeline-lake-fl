@@ -9,6 +9,8 @@ import {
   RUN_HISTORY_SCHEMA_VERSION,
   appendRun,
   computeTableDeltas,
+  mergeRunHistories,
+  mergeRunHistoryFile,
   readRunHistory,
   validateRunRecord,
 } from "../src/core/run-history.mjs";
@@ -104,6 +106,86 @@ describe("readRunHistory", () => {
     await expect(readRunHistory(historyPath)).rejects.toThrow(
       /Invalid run history/,
     );
+  });
+});
+
+describe("mergeRunHistories", () => {
+  /**
+   * @param {string[]} runIds run identifiers, in any order
+   * @returns {{ schemaVersion: string, runs: Record<string, unknown>[] }}
+   */
+  const history = (runIds) => ({
+    schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+    runs: runIds.map((runId) => runRecord(runId)),
+  });
+
+  it("keeps every run either side recorded, newest first", () => {
+    // A scheduled run appends to the checked-out copy and is then destroyed, so
+    // the carried copy and the committed copy each hold runs the other does not.
+    const merged = mergeRunHistories(
+      history(["20260910T120000Z", "20260908T120000Z"]),
+      history(["20260909T120000Z", "20260908T120000Z"]),
+    );
+    expect(merged.runs.map((run) => run.runId)).toEqual([
+      "20260910T120000Z",
+      "20260909T120000Z",
+      "20260908T120000Z",
+    ]);
+  });
+
+  it("refuses a run that differs between the two histories", () => {
+    // Two records claiming the same run id are two claims about one immutable
+    // publication. Silently picking one would be how a fabricated history looks.
+    const left = history(["20260909T120000Z"]);
+    const right = history(["20260909T120000Z"]);
+    right.runs[0].status = "partial";
+    expect(() => mergeRunHistories(left, right)).toThrow(
+      /differs between them; a published run is immutable/,
+    );
+  });
+
+  it("merges cleanly with an empty side", () => {
+    const empty = { schemaVersion: RUN_HISTORY_SCHEMA_VERSION, runs: [] };
+    expect(mergeRunHistories(empty, history(["20260909T120000Z"])).runs).toHaveLength(1);
+    expect(mergeRunHistories(history(["20260909T120000Z"]), empty).runs).toHaveLength(1);
+  });
+});
+
+describe("mergeRunHistoryFile", () => {
+  it("writes the union back and leaves a later append working", async () => {
+    const historyPath = await scratchHistoryPath();
+    const carriedPath = `${historyPath}.carried`;
+    await appendRun(historyPath, runRecord("20260908T120000Z"));
+    await writeFile(
+      carriedPath,
+      JSON.stringify({
+        schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+        runs: [runRecord("20260909T120000Z")],
+      }),
+      "utf8",
+    );
+
+    const merged = await mergeRunHistoryFile(historyPath, carriedPath);
+    expect(merged.runs.map((run) => run.runId)).toEqual([
+      "20260909T120000Z",
+      "20260908T120000Z",
+    ]);
+
+    // The point of merging before publishing: the run about to be appended lands
+    // on top of a history that already knows about the carried runs.
+    const after = await appendRun(historyPath, runRecord("20260910T120000Z"));
+    expect(after.runs.map((run) => run.runId)).toEqual([
+      "20260910T120000Z",
+      "20260909T120000Z",
+      "20260908T120000Z",
+    ]);
+  });
+
+  it("treats a missing carried file as an empty history", async () => {
+    const historyPath = await scratchHistoryPath();
+    await appendRun(historyPath, runRecord("20260908T120000Z"));
+    const merged = await mergeRunHistoryFile(historyPath, `${historyPath}.absent`);
+    expect(merged.runs).toHaveLength(1);
   });
 });
 

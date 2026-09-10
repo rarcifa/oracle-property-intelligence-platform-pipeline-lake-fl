@@ -53,6 +53,33 @@ function log(message, fields = {}) {
 }
 
 /**
+ * Every limitation of the published dataset, in the voice the coverage snapshot
+ * uses: what the source does not carry, measured rather than asserted.
+ *
+ * Extracted so the wording and the arithmetic can be tested without DuckDB and
+ * without a 115 MB roll on disk. Every figure is derived from the run's own
+ * measurements, so a later run cannot leave a stale number here.
+ *
+ * @param {Record<string, unknown>} linkage - Permit-to-parcel linkage counts.
+ * @param {Record<string, unknown>} business - TPP-to-parcel match counts.
+ * @returns {string[]} Limitations, one plain sentence group each.
+ */
+export function buildLimitations(linkage, business) {
+  const matched = Number(business.matched_accounts);
+  const accounts = Number(business.total_accounts);
+  return [
+    "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
+    "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
+    "Contractor of record is not published. It lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate. contractor_name is a real column that stays null.",
+    "BBB ratings are not published. bbb.org answers 403 to this egress and the kit requires BBB browser work on approved AWS remote compute, which this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null.",
+    "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
+    "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
+    `${Number(linkage.valid_unlinked_permits)} of ${Number(linkage.total_permits)} permits reference a parcel key absent from the assessed roll (${Number(linkage.unmatched_parcel_keys)} distinct keys). They are valid records, counted here and not discarded, but they attach to no published property row.`,
+    `Business coverage is a fraction of the TPP roll, and the published per-parcel total double counts. The roll carries no parcel key, so accounts are located by a normalized street+zip match against the roll's situs addresses: ${Number(business.accounts_with_situs)} of ${Number(business.total_accounts)} accounts carry a situs address and ${Number(business.matched_accounts)} match a parcel (${((matched / accounts) * 100).toFixed(1)}%), so the rest are not published. A matched address group is then attributed to every parcel sharing that address, so summing business_account_count across the ${Number(business.parcels_with_account)} parcels that carry one yields ${Number(business.attributed_accounts)} rather than ${Number(business.matched_accounts)}: ${Number(business.shared_address_groups)} address groups span more than one parcel. ${Number(business.matched_accounts)} is the distinct account match; ${Number(business.attributed_accounts)} counts account-parcel matches, not businesses.`,
+  ];
+}
+
+/**
  * Build the run directory.
  *
  * @param {object} options - Options.
@@ -98,6 +125,38 @@ export async function buildPublishSet({ runId, parquetPath }) {
     FROM read_csv_auto('${permitsCsv}', header=true, all_varchar=true) p
     LEFT JOIN read_csv_auto('${nalCsv}', header=true, all_varchar=true) n
       ON n.ALT_KEY = p.alternate_key;`);
+
+  // Business coverage is reported the same way permit linkage is, because it
+  // has the same two failure modes and neither is visible from the query table
+  // alone. The TPP roll carries no parcel key, so an account is located by a
+  // normalized street+zip match against the roll's situs addresses: most
+  // accounts match nothing, and a matched address group is attributed to every
+  // parcel sharing that address, so `business_account_count` sums to more than
+  // the number of accounts actually matched. Both were documented in prose and
+  // in the UI but were absent from the published coverage snapshot, which is
+  // the machine-readable record a consumer actually reads.
+  const tppCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "NAP45P202601.csv");
+  const [business] = await query(`
+    WITH tpp AS (SELECT * FROM read_csv_auto('${tppCsv}', header=true, all_varchar=true)),
+         nal AS (SELECT * FROM read_csv_auto('${nalCsv}', header=true, all_varchar=true)),
+         situs AS (
+           SELECT upper(trim(PHY_ADDR)) AS addr, trim(PHY_ZIPCD) AS zip, count(*) AS accounts
+           FROM tpp WHERE PHY_ADDR IS NOT NULL AND trim(PHY_ADDR) <> '' GROUP BY 1, 2
+         ),
+         parcel AS (
+           SELECT upper(trim(PHY_ADDR1)) AS addr, trim(PHY_ZIPCD) AS zip, count(*) AS parcels
+           FROM nal GROUP BY 1, 2
+         ),
+         matched AS (SELECT s.accounts, p.parcels FROM situs s JOIN parcel p USING (addr, zip))
+    SELECT (SELECT count(*) FROM tpp)                                            AS total_accounts,
+           (SELECT count(*) FROM tpp WHERE PHY_ADDR IS NOT NULL
+                                       AND trim(PHY_ADDR) <> '')                 AS accounts_with_situs,
+           (SELECT coalesce(sum(accounts), 0) FROM matched)                      AS matched_accounts,
+           (SELECT coalesce(sum(accounts * parcels), 0) FROM matched)            AS attributed_accounts,
+           (SELECT coalesce(sum(parcels), 0) FROM matched)                       AS parcels_with_account,
+           (SELECT count(*) FROM matched WHERE parcels > 1)                      AS shared_address_groups,
+           (SELECT coalesce(sum(accounts), 0) FROM matched WHERE parcels > 1)    AS accounts_at_shared_addresses,
+           (SELECT coalesce(sum(parcels), 0) FROM matched WHERE parcels > 1)     AS parcels_at_shared_addresses;`);
 
   const shardCount = Math.ceil(Number(totals.properties) / SHARD_SIZE);
   const shards = [];
@@ -229,6 +288,15 @@ export async function buildPublishSet({ runId, parquetPath }) {
         source: "Lake County CD Plus permit layer",
       },
       coordinates: { rows: Number(totals.with_coordinates), source: "FL GIO parcel centroids 2025" },
+      businessAccounts: {
+        rows: Number(business.total_accounts),
+        withSitusAddress: Number(business.accounts_with_situs),
+        matchedToParcel: Number(business.matched_accounts),
+        attributedAcrossParcels: Number(business.attributed_accounts),
+        propertiesWithAccount: Number(business.parcels_with_account),
+        sharedAddressGroups: Number(business.shared_address_groups),
+        source: "FL DOR TPP 2026P",
+      },
     },
     signals: {
       roofAgeKnown: Number(totals.roof_age_known),
@@ -243,15 +311,7 @@ export async function buildPublishSet({ runId, parquetPath }) {
       distinctOwners: Number(totals.distinct_owners),
       propertiesWithBusinessAccount: Number(totals.with_business_account),
     },
-    limitations: [
-      "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
-      "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
-      "Contractor of record is not published. It lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate. contractor_name is a real column that stays null.",
-      "BBB ratings are not published. bbb.org answers 403 to this egress and the kit requires BBB browser work on approved AWS remote compute, which this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null.",
-      "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
-      "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
-      `${Number(linkage.valid_unlinked_permits)} of ${Number(linkage.total_permits)} permits reference a parcel key absent from the assessed roll (${Number(linkage.unmatched_parcel_keys)} distinct keys). They are valid records, counted here and not discarded, but they attach to no published property row.`,
-    ],
+    limitations: buildLimitations(linkage, business),
   };
   await writeFile(path.join(runDir, "coverage.json"), `${JSON.stringify(coverage, null, 2)}\n`, "utf8");
 

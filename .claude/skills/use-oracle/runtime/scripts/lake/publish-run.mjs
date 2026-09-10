@@ -112,6 +112,31 @@ export async function listFiles(root, prefix = "") {
 }
 
 /**
+ * Manifest entry for one directory in the snapshot.
+ *
+ * A directory has no content of its own beyond the dag-pb node that lists its
+ * children, so that node is what the entry describes: its byte length and its
+ * digest. The digest used to be `sha256(cid_string)` — a hash of the identifier
+ * rather than of anything the identifier addresses, which proved nothing and
+ * could never disagree with the CID it was derived from. Hashing the node bytes
+ * makes the entry checkable the same way a file entry is: fetch the block
+ * (`?format=raw`) and compare.
+ *
+ * @param {string} name - Logical name inside the snapshot.
+ * @param {{ cid: string, bytes: Uint8Array }} node - Built directory node.
+ * @returns {{ cid: string, name: string, size: number, codec: "directory", sha256: string }} Manifest entry.
+ */
+export function directoryEntry(name, node) {
+  return {
+    cid: node.cid,
+    name,
+    size: node.bytes.length,
+    codec: "directory",
+    sha256: `sha256:${sha256Hex(node.bytes)}`,
+  };
+}
+
+/**
  * Hash every file in the run directory and assemble the UnixFS DAG, so the
  * root CID is known locally before any upload happens.
  *
@@ -141,7 +166,6 @@ export async function buildRunDag(runDir) {
       size: bytes.length,
       codec: "file",
       sha256: `sha256:${sha256Hex(bytes)}`,
-      origins: [],
     });
     log("artifact_hashed", { name: relative, cid: file.cid, bytes: bytes.length });
   }
@@ -156,26 +180,12 @@ export async function buildRunDag(runDir) {
     const base = dirPath.slice(dirPath.lastIndexOf("/") + 1);
     if (!directories.has(parent)) directories.set(parent, []);
     directories.get(parent).push({ name: base, cid: built.cid, size: built.size });
-    entries.push({
-      cid: built.cid,
-      name: `${dirPath}/`,
-      size: built.size,
-      codec: "directory",
-      sha256: `sha256:${sha256Hex(Buffer.from(built.cid, "utf8"))}`,
-      origins: [],
-    });
+    entries.push(directoryEntry(`${dirPath}/`, built));
   }
 
   const root = buildUnixfsDirectory(directories.get(""));
   allBlocks.push(...root.blocks);
-  entries.push({
-    cid: root.cid,
-    name: "/",
-    size: root.size,
-    codec: "directory",
-    sha256: `sha256:${sha256Hex(Buffer.from(root.cid, "utf8"))}`,
-    origins: [],
-  });
+  entries.push(directoryEntry("/", root));
 
   /** @type {Map<string, any>} */
   const unique = new Map();
@@ -255,14 +265,22 @@ export async function publishRun({ runId, mode, dryRun, skipIpns, skipUpload, ve
     // CAR as `.claude/skills/.../cars/<run>.car`, which a third party working
     // from the manifest alone cannot resolve — and the .car is build output that
     // is deliberately not committed. The CAR's DAG root IS the run root, so this
-    // locator is retrievable from any gateway with `?format=car`, and the local
-    // path is kept beside it only as a build detail.
+    // locator is retrievable from any gateway with `?format=car`.
     rootCarPath: `ipfs://${dag.rootCid}?format=car`,
-    rootCarLocalPath: path.relative(REPO_ROOT, carPath),
     entries: dag.entries,
   });
   const manifestPath = path.join(runDir, "..", "..", "manifests", `${runId}.json`);
   await mkdir(path.dirname(manifestPath), { recursive: true });
+  // Where this machine wrote the CAR. It used to ride along in the published
+  // manifest as `root.carBuildPath`, which put a local filesystem layout inside
+  // an immutable public artifact and resolved for nobody but this machine. It
+  // is genuinely useful to the operator re-importing a run, so it is kept — in
+  // local run state, beside the CAR, under the gitignored data directory.
+  await writeFile(
+    path.join(path.dirname(manifestPath), `${runId}.build.json`),
+    `${JSON.stringify({ runId, rootCid: dag.rootCid, carBuildPath: path.relative(REPO_ROOT, carPath) }, null, 2)}\n`,
+    "utf8",
+  );
   const manifestWrite = await writeArtifactManifest(manifest, manifestPath);
   const manifestBytes = await readFile(manifestPath);
   const manifestCid = computeRawCid(manifestBytes);
