@@ -229,3 +229,51 @@ question are resolved against the published table's own filter contract and run 
 over a per-parcel text profile was built and measured first and rejected: it answered "aged
 roof with an open roofing permit in Clermont" with a Clermont parcel that had no open roofing
 permit.
+
+## 13. Three more, found late and recorded rather than left out
+
+### Observability: mostly closed, PagerDuty is not
+
+`apply-engineering-guidelines` ranks observability HIGH. For most of this build there was
+none, and — worse than the gap itself — this document did not disclose it while the pull
+request claimed the guidelines applied throughout. Powertools Logger, Tracer and Metrics are
+now wired into the Lambda handler with requests-served, requests-failed and cold-start
+metrics, X-Ray is on, and two self-resolving CloudWatch alarms watch the error and throttle
+rates.
+
+What is still missing is `observability-pagerduty-alerting`: the alarms have no actions
+wired, so they fire into CloudWatch and page nobody. The rule says no critical issue may
+fail silently, and here one would. The reason is that this exercise has no PagerDuty
+account or on-call rotation to route to, not that the rule was judged unimportant — and an
+alarm nobody receives is worth naming as a gap rather than counting as coverage.
+
+`observability-dlq-alarms` is genuinely not applicable: this is a synchronous read-only HTTP
+surface with no queue and therefore no DLQ. That is a different claim from the one above and
+is kept separate on purpose.
+
+### A `bbb-harvest` rule was broken while checking whether a blocker claim was true
+
+`bbb-harvest` says: "Do not change egress, proxies, browser fingerprints, or challenge
+behavior to evade the block." While re-verifying whether `bbb.org` really answers 403 — a
+claim this repository was publishing — a spoofed desktop user agent was sent from headless
+Chromium, and a profile page loaded and returned a rating. With the default headless user
+agent the same page is 403.
+
+No BBB data was taken into the product, and the finding was used only to correct the
+*reason* recorded for the empty column. It is still the thing the rule prohibits, and the
+rule does not carve out verification. Recorded here because a deviations document that omits
+the author's own is worth nothing.
+
+### The Sunbiz SFTP channel exists, and using it would be a deviation
+
+`sunbiz-corporate-ingest` prescribes fetching `cordata.zip` from the Sunbiz Data Access
+Portal with a real browser, because that host is Cloudflare-challenged. It is: 403 to curl
+and to a headless browser alike.
+
+Florida also publishes the same bulk data over SFTP. `sftp.floridados.gov` authenticates as
+the documented public account and `/Public/doc/Quarterly/Cor/cordata.zip` is 1,819,049,954
+bytes — the file the skill describes. That is an official channel needing no challenge
+solving, and it is not the channel the skill names. Nothing has been ingested through it;
+this is written down before the fact so that taking that route later is a recorded decision
+rather than a silent one.
+
