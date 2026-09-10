@@ -64,6 +64,7 @@ export const artifactManifestSchema = z
       .object({
         cid: cidSchema,
         car: z.string().trim().min(1),
+        carBuildPath: z.string().trim().min(1).optional(),
       })
       .strict(),
     artifacts: z.array(artifactEntrySchema).min(1),
@@ -134,6 +135,7 @@ export function validateArtifactManifest(value) {
  *   generatedAt: string,
  *   rootCid: string,
  *   rootCarPath: string,
+ *   rootCarLocalPath?: string,
  *   entries: Array<{ cid: string, name: string, size: number, codec: "file" | "directory", sha256: string, origins?: string[] }>
  * }} options run identity, snapshot root, CAR path, and every published object,
  *   including the root directory entry itself
@@ -145,6 +147,7 @@ export function buildArtifactManifest({
   generatedAt,
   rootCid,
   rootCarPath,
+  rootCarLocalPath,
   entries,
 }) {
   if (!Array.isArray(entries)) {
@@ -155,7 +158,13 @@ export function buildArtifactManifest({
     runId,
     county,
     generatedAt,
-    root: { cid: rootCid, car: rootCarPath },
+    root: {
+      cid: rootCid,
+      // `car` is a content-addressed locator so the DAG is reachable from the
+      // manifest alone; `carBuildPath` is where the build happened to write it.
+      car: rootCarPath,
+      ...(rootCarLocalPath ? { carBuildPath: rootCarLocalPath } : {}),
+    },
     artifacts: [...entries]
       .sort((left, right) =>
         String(left?.name).localeCompare(String(right?.name)),

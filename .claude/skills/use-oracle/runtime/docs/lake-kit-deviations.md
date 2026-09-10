@@ -92,9 +92,32 @@ the kit's own conventions — `.mjs` with JSDoc, Zod `.strict()` schemas, Vitest
 | `src/core/gateway-verify.mjs` | Byte and digest agreement across independent public gateways |
 | `src/core/run-history.mjs` | `elephant.run-history.v1`, immutable prior runs, record deltas |
 
-The CID implementation was cross-checked against the canonical `ipfs-unixfs-importer` at
-sizes spanning 0 bytes to 50 MB, including nested directories, and matches on every case
-including Tsize.
+The CID implementation is cross-checked against the canonical `ipfs-unixfs-importer`. That
+package is deliberately NOT a dependency of this repository — a checker that shares code with
+the thing it checks proves nothing — so the check runs as a throwaway, and anyone can repeat
+it against the published data:
+
+```bash
+docker run --rm node:22-alpine sh -lc '
+  npm i --silent ipfs-unixfs-importer blockstore-core &&
+  node -e "
+import { importer } from \"ipfs-unixfs-importer\";
+import { MemoryBlockstore } from \"blockstore-core/memory\";
+const r = await fetch(\"https://gw.ipfs-lens.dev/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet\");
+const bytes = new Uint8Array(await r.arrayBuffer());
+let last; for await (const e of importer([{ path: \"query-table.parquet\", content: bytes }], new MemoryBlockstore(), { cidVersion: 1, rawLeaves: true })) last = e;
+console.log(last.cid.toString());
+"'
+```
+
+Run on 2026-09-10 against the published 20,039,488-byte Parquet — a multi-chunk file, so this
+exercises the DAG layout and Tsize accounting rather than a single raw leaf. It printed
+`bafybeihzvn35om3zs2fijssicpo6ius3z7aqzuv5u62c6r4bch23dzplkq`, which is byte-for-byte the CID
+recorded for that artifact in `artifacts/manifest-20260909T185056Z.json`.
+
+An earlier version of this paragraph claimed a sweep from 0 bytes to 50 MB including nested
+directories. That sweep is not recorded anywhere in this repository and could not be
+reproduced from it, so the claim is replaced by the one check that can be.
 
 ## 7. Publishing a CAR rather than plain objects
 

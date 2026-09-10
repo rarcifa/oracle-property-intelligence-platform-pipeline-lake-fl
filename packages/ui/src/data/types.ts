@@ -146,9 +146,29 @@ export interface VerificationReport {
 }
 
 /** `artifacts/run-history.json`, as served by `/api/meta/run`. */
+export interface RunHistoryEntry {
+  runId: string;
+  startedAt?: string;
+  finishedAt?: string;
+  mode?: string;
+  status?: string;
+  rootCid?: string;
+  manifestCid?: string;
+  /** Per-table row counts and deltas for the run, as run-history.json writes them. */
+  tables?: {
+    name: string;
+    rows?: number;
+    inserted?: number;
+    updated?: number;
+    unchanged?: number;
+    removed?: number;
+  }[];
+  verifiedGateways?: string[];
+}
+
 export interface RunHistory {
   schemaVersion: string;
-  runs: { runId: string; startedAt?: string; finishedAt?: string; mode?: string }[];
+  runs: RunHistoryEntry[];
 }
 
 /** `GET /api/meta/run`. */

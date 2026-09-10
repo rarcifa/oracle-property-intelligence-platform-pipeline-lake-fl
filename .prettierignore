@@ -10,3 +10,8 @@ infra/cdk.out/
 # and byte-compared against a rebuild in index-build.test.ts. Reformatting it
 # would make that comparison fail against a freshly built index.
 packages/rag/index-data/
+
+# The assignment brief, preserved byte-for-byte from the upstream repository's
+# README. Reformatting it would make it no longer verbatim, which is the only
+# reason it is in this repository.
+ASSIGNMENT.md

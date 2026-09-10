@@ -342,6 +342,25 @@ function buildTools(context: AppContext, collector: CitationCollector) {
 }
 
 /**
+ * A safe, useful message for an upstream model failure.
+ *
+ * `/api/chat` is public and unauthenticated, and it used to relay the provider's
+ * own error verbatim. When the account ran out of credit, anonymous callers were
+ * told "Your credit balance is too low… go to Plans & Billing" — an operator
+ * problem shown to the wrong audience, naming the provider and the account's
+ * state. A rate limit is worth distinguishing because it tells the caller to
+ * retry; nothing else about the upstream is the caller's business. The real
+ * error still reaches CloudWatch, where the operator can see it.
+ */
+export function sanitizeProviderError(raw: string): string {
+  const rateLimited = /\b429\b|rate.?limit|too many requests/i.test(raw);
+  const suffix = "Every other view queries the published data directly and is unaffected.";
+  return rateLimited
+    ? `The natural-language agent is rate limited right now. Try again shortly. ${suffix}`
+    : `The natural-language agent is temporarily unavailable. ${suffix}`;
+}
+
+/**
  * A turn's response, widened with the documents retrieval cited.
  *
  * `ChatResponse` lives in the shared package and carries SQL citations only;

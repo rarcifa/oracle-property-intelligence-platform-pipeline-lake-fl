@@ -84,14 +84,14 @@ python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
   .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
 ```
 
-The application's own suite runs from the repo root. 50 of the 212 tests exercise the
+The application's own suite runs from the repo root. 50 of the 271 tests exercise the
 query layer against a real 215,806-row table rather than a fixture, so they skip unless one
 is reachable; point them at the published run to run everything:
 
 ```bash
 pnpm install && pnpm run build
 ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/$(jq -r .rootCid artifacts/latest.json)/query-table.parquet" \
-  pnpm run test:unit          # 212 passed
+  pnpm run test:unit          # 271 passed
 ```
 
 Full pipeline commands are in [`docs/runbook.md`](docs/runbook.md).

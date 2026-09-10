@@ -100,6 +100,59 @@ export function OverviewView(): JSX.Element {
       </Panel>
 
       <Panel
+        title="Run history"
+        subtitle="Every publish, with its CIDs and the record deltas it produced. A run never overwrites the one before it."
+      >
+        {runHistory === null || runHistory.runs.length === 0 ? (
+          <p className="dim" style={{ margin: 0 }}>
+            No run history was found, so this app makes no claim about previous publishes.
+          </p>
+        ) : (
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Mode</th>
+                  <th>Finished</th>
+                  <th>Root CID</th>
+                  <th className="num">Rows</th>
+                  <th className="num">Inserted</th>
+                  <th className="num">Updated</th>
+                  <th className="num">Unchanged</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...runHistory.runs]
+                  .sort((a, b) => b.runId.localeCompare(a.runId))
+                  .map((entry) => {
+                    const properties = entry.tables?.find((table) => table.name === "properties");
+                    return (
+                      <tr key={entry.runId}>
+                        <td className="mono">{entry.runId}</td>
+                        <td>{entry.mode ?? "—"}</td>
+                        <td className="mono">
+                          {entry.finishedAt ? entry.finishedAt.replace("T", " ").slice(0, 19) : "—"}
+                        </td>
+                        <td className="mono" title={entry.rootCid ?? undefined}>
+                          {entry.rootCid
+                            ? `${entry.rootCid.slice(0, 10)}…${entry.rootCid.slice(-6)}`
+                            : "—"}
+                        </td>
+                        <td className="num">{formatCount(properties?.rows)}</td>
+                        <td className="num">{formatCount(properties?.inserted)}</td>
+                        <td className="num">{formatCount(properties?.updated)}</td>
+                        <td className="num">{formatCount(properties?.unchanged)}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
         title="Independent gateway verification"
         subtitle="Each published artifact was fetched from several independent IPFS gateways and hashed. Identical SHA-256 across gateways is what makes the CID checkable rather than claimed."
       >

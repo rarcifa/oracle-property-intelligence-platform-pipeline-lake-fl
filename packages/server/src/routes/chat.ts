@@ -8,7 +8,7 @@
 
 import { chatRequestSchema } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
-import { ChatUnavailableError, createChatAgent } from "../chat/agent.js";
+import { sanitizeProviderError, ChatUnavailableError, createChatAgent } from "../chat/agent.js";
 import { fail, json, type Router } from "../http/router.js";
 
 /** Register the chat route. */
@@ -37,8 +37,11 @@ export function registerChatRoutes(router: Router, context: AppContext): void {
       if (error instanceof ChatUnavailableError) {
         return fail(503, "chat_unavailable", error.detail);
       }
+      // Log the real error for the operator; tell the caller only what is
+      // theirs to know. This route is public and unauthenticated.
       const detail = error instanceof Error ? error.message : String(error);
-      return fail(502, "chat_failed", detail);
+      console.error(JSON.stringify({ event: "chat_failed", detail }));
+      return fail(502, "chat_failed", sanitizeProviderError(detail));
     }
   });
 }
