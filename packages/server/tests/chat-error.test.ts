@@ -8,6 +8,7 @@
  * provider is behind the endpoint and what state the account is in.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { sanitizeProviderError } from "../src/chat/agent.js";
 
 describe("sanitizeProviderError", () => {
@@ -40,8 +41,15 @@ describe("sanitizeProviderError", () => {
 describe("chat timeout budget", () => {
   it("fits inside the Lambda timeout so the abort can actually fire", async () => {
     const { loadConfig } = await import("../src/config.js");
-    // infra/lake-runtime-stack.ts sets Duration.seconds(60).
-    const LAMBDA_TIMEOUT_MS = 60_000;
-    expect(loadConfig({}).chatTimeoutMs).toBeLessThan(LAMBDA_TIMEOUT_MS);
+    // Read the real CDK source rather than copying the number: a hand-mirrored
+    // constant is how this invariant silently goes stale when the stack moves.
+    const stack = readFileSync(
+      new URL("../../../infra/lake-runtime-stack.ts", import.meta.url),
+      "utf8",
+    );
+    const declared = /timeout:\s*Duration\.seconds\((\d+)\)/.exec(stack);
+    expect(declared, "could not find the Lambda timeout in the CDK stack").not.toBeNull();
+    const lambdaTimeoutMs = Number(declared![1]) * 1000;
+    expect(loadConfig({}).chatTimeoutMs).toBeLessThan(lambdaTimeoutMs);
   });
 });

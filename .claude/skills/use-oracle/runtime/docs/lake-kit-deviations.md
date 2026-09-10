@@ -389,3 +389,45 @@ distinction reaches the run log rather than sitting only in the file.
 
 This does not make the gate unforgeable — nothing file-based can be. It makes it stop
 overstating itself, which is the property the honest-completeness rule actually asks for.
+
+## 18. The bundled elephant MCP launches from a pre-installed binary when one exists
+
+The kit's `.mcp.json` starts the elephant MCP with
+`npx -y --package=github:elephant-xyz/elephant-mcp#main mcp`. That resolves and rebuilds a
+GitHub dependency tree on **every** launch, which measured here as:
+
+| Launch method | Time to `initialize` |
+| --- | --- |
+| `npx` from `#main`, cold | 86 s |
+| `npx` from `#main`, warm | 38 s |
+| `npx` pinned to commit `aad2785`, cold | 190 s |
+| `npx` pinned to commit `aad2785`, warm | 119 s |
+| Pre-installed binary | **1–2 s** |
+
+Against a 30 s connect timeout the server therefore never came up, and the MCP was reported
+as failing to connect for this whole build. Pinning the ref to a commit was tried first on
+the theory that npm would reuse a cached resolution; it made things worse, not better, and
+the measurements above are recorded rather than the theory.
+
+`.mcp.json` now prefers a pre-installed binary and falls back to the kit's exact `npx` line
+when there isn't one:
+
+```sh
+BIN="${ELEPHANT_MCP_BIN:-$HOME/.elephant-mcp/node_modules/.bin/mcp}"
+if [ -x "$BIN" ]; then exec "$BIN"; fi
+exec npx -y --package=github:elephant-xyz/elephant-mcp#main mcp
+```
+
+A clone with no local install behaves exactly as the kit does today, so this costs a
+reviewer nothing. To take the fast path:
+
+```sh
+npm install --prefix ~/.elephant-mcp github:elephant-xyz/elephant-mcp#main
+```
+
+`.claude/settings.json` also sets `MCP_TIMEOUT=120000`, which only matters on the fallback
+path — the kit's own `use-elephant-mcp` notes warn that killing a half-finished cold install
+corrupts the `_npx` cache, and a 30 s default guarantees exactly that kill.
+
+This is a launch-path change only. No kit skill, agent, or the MCP server itself is modified,
+and the server that runs is the same `@elephant-xyz/mcp` v1.12.1 either way.

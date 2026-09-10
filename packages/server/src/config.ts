@@ -107,10 +107,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),
     anthropicApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
     chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-fable-5-1",
-    // Under the Lambda's own 60 s timeout, deliberately. It defaulted to 120 s,
-    // so the abort could never fire: the platform killed the invocation first
-    // and the caller got a platform error instead of the agent's own timeout
-    // message. 45 s leaves room to return a real answer about what happened.
-    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "45000", 10),
+    // Must stay under the Lambda timeout so this abort fires first and the
+    // caller gets the agent's own message rather than a platform error.
+    //
+    // This has now moved twice. It was 120 s against a 60 s Lambda, where the
+    // abort could never fire; that was corrected to 45 s. But 45 s was below
+    // what the work actually takes: the loop runs up to ten tool calls, which
+    // measured 15-27 s idle and exceeded 45 s under concurrent load, so every
+    // request aborted during an evaluation. The real fix was to raise the
+    // Lambda ceiling and keep a genuine margin under it, rather than to keep
+    // trimming the budget until the abort fit inside a limit that was too low.
+    chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "120000", 10),
   };
 }

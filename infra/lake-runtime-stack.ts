@@ -144,7 +144,13 @@ export class LakeRuntimeStack extends Stack {
       // the table rather than for concurrency. More memory also buys more CPU,
       // which shortens the cold start that fetches the Parquet by CID.
       memorySize: 3008,
-      timeout: Duration.seconds(60),
+      // Sized for the agent, not the data path. Every published-data surface
+      // answers in under a second; only /api/chat runs a multi-step tool loop,
+      // which measured 15-27 s idle and crossed 45 s under concurrent load.
+      // Lambda bills per millisecond actually used, so a high ceiling costs
+      // nothing while nobody is calling the agent, and it is the only reason
+      // this is not 60 s. ORACLE_CHAT_TIMEOUT_MS must stay below it.
+      timeout: Duration.seconds(150),
       environment: {
         NODE_OPTIONS: "--enable-source-maps",
         // The pointer, resolved at cold start, rather than a CID fixed at deploy
