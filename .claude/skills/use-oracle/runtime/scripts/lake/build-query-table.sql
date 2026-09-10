@@ -162,8 +162,12 @@ COPY (
     p.latest_permit_date                                                    AS latest_permit_date,
     CAST(NULL AS VARCHAR)                                                   AS contractor_name,
     CAST(NULL AS VARCHAR)                                                   AS bbb_rating,
-    false                                                                   AS has_bbb_contractor,
-    false                                                                   AS has_sunbiz_tenant,
+    -- Null, not false, for the same reason as the two columns above: BBB is
+    -- 403-gated and Sunbiz was never ingested, so `false` would assert an
+    -- absence nobody checked. A consumer reading `has_bbb_contractor = false`
+    -- would take it as an established negative.
+    CAST(NULL AS BOOLEAN)                                                   AS has_bbb_contractor,
+    CAST(NULL AS BOOLEAN)                                                   AS has_sunbiz_tenant,
     coalesce(t.business_account_count, 0) > 0                               AS has_business_account,
     CAST(coalesce(t.business_account_count, 0) AS INTEGER)                  AS business_account_count,
     t.business_naics_codes                                                 AS business_naics_codes,

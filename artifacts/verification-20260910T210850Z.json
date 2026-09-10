@@ -1,0 +1,286 @@
+{
+  "runId": "20260910T210850Z",
+  "rootCid": "bafybeidtc5bhhp5abcn5xx75uu6fs6ttna7el2fmenb2cmrirh5vpxg7cm",
+  "verifications": [
+    {
+      "name": "manifest.json",
+      "cid": "bafkreievuim7a2vsyqwhkmhcm3fz35tijlayv7ar5z4o7pzseqlckedljy",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 9041,
+          "sha256": "sha256:95a219f06ab2c42c7530e266cb9df6684ac18afc11ee78efbf32241625106b4e",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 9041,
+          "sha256": "sha256:95a219f06ab2c42c7530e266cb9df6684ac18afc11ee78efbf32241625106b4e",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "coverage.json",
+      "cid": "bafkreidhitiochu3rc6kqoqtl76spjbu6eabldqto7kvlqcippivd32afi",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 3758,
+          "sha256": "sha256:6744d0e11e9b88bca83a135ffd27a434f100158e1377d555c0487bd151ef402a",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 3758,
+          "sha256": "sha256:6744d0e11e9b88bca83a135ffd27a434f100158e1377d555c0487bd151ef402a",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "dataset-coverage.json",
+      "cid": "bafkreia662mzvy2jcflhfxv2lj2baunisp6n7ar5fhskyz76furk6ltczy",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 385,
+          "sha256": "sha256:1ef6999ae349115672deba5a741051a893fcdf823d29e4ac67fe2d22af2e62ce",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 385,
+          "sha256": "sha256:1ef6999ae349115672deba5a741051a893fcdf823d29e4ac67fe2d22af2e62ce",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "index.json",
+      "cid": "bafkreihayiktmcfedt4xspdthf3ir47lwckxgzh464pkhevmwdpu7p6qpy",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:e0c2153608a41cf9793c73397688f3ebb0957364fcf71ea392acb0df4fbfd07e",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 4565,
+          "sha256": "sha256:e0c2153608a41cf9793c73397688f3ebb0957364fcf71ea392acb0df4fbfd07e",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "query-table.parquet",
+      "cid": "bafybeibbiebajtladihah64ayforrg7e7347e6qfmcd6niur2yycjfwxnm",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 20069105,
+          "sha256": "sha256:71ec1e6ead4c30f919cc0c8f801cb7e099bfa132e1f9d683cedce6121df4f3d9",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 20069105,
+          "sha256": "sha256:71ec1e6ead4c30f919cc0c8f801cb7e099bfa132e1f9d683cedce6121df4f3d9",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/aged-roofs.json",
+      "cid": "bafkreielchnm6dwukdx5v3ekqf4ztsjpcelsppsegwdabtufpsh5o3v2hq",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 39517,
+          "sha256": "sha256:8b11dacf0ed450efdaec8a817999c92f111727be44358600ce857c8fd76eba3c",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/open-roofing-permits.json",
+      "cid": "bafkreihieuxdso3s55kozrysywkfw2q7lj73cmvbwcft3g5xfmtzockts4",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 55196,
+          "sha256": "sha256:e8252e393b72ef54ecc712c5945b6a1f5a7fb132a1b08b3d9bb72b2797095397",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 55196,
+          "sha256": "sha256:e8252e393b72ef54ecc712c5945b6a1f5a7fb132a1b08b3d9bb72b2797095397",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "samples/out-of-area-owners.json",
+      "cid": "bafkreiepbuwdm754uixttywqtbmweu2j3futv4uj6izycs3opzdgfrq3hi",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 37234,
+          "sha256": "sha256:8f0d2c367fbca22f39e2d09859625349d9693af289f233814b6e7e4662c61b3a",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "schema.json",
+      "cid": "bafkreidyhlbmt5tude4nbb3hsz4mbdgposqhxj7opterrflwm5qvpohju4",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 5871,
+          "sha256": "sha256:783ac2c9f6741938d087679678c08ccf74a07ba7ee7cc9189576676157b8e9a7",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 5871,
+          "sha256": "sha256:783ac2c9f6741938d087679678c08ccf74a07ba7ee7cc9189576676157b8e9a7",
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "shards/shard-0000.json",
+      "cid": "bafybeidypl3bilkcii6ystzbamhr273tkgtljhkmouyiocfoqr73xlv4pe",
+      "verified": true,
+      "matchedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gw.ipfs-lens.dev"
+      ],
+      "minimumIndependentGateways": 2,
+      "results": [
+        {
+          "gateway": "https://ipfs.filebase.io",
+          "ok": true,
+          "status": 200,
+          "bytes": 13782274,
+          "sha256": "sha256:8283791ec0049adb0640aff257a8b6af2e19707a5a7c9dbc5227e0015c2433c0",
+          "error": null
+        },
+        {
+          "gateway": "https://gw.ipfs-lens.dev",
+          "ok": true,
+          "status": 200,
+          "bytes": 13782274,
+          "sha256": "sha256:8283791ec0049adb0640aff257a8b6af2e19707a5a7c9dbc5227e0015c2433c0",
+          "error": null
+        }
+      ]
+    }
+  ]
+}
