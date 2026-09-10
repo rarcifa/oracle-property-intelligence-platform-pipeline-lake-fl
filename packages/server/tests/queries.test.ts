@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEFAULT_ROOF_AGE_THRESHOLD_YEARS, PROPERTIES_VIEW } from "@oracle-lake/shared";
 import {
+  getCityCentre,
   getBusinessView,
   getContractorView,
   getDatasetStats,
@@ -171,4 +172,26 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
       expect(notice.detail).toContain("403");
     }
   });
+});
+
+describe.skipIf(!hasParquet)("getCityCentre", () => {
+  it("returns the same centre on every call, which radius answers depend on", async () => {
+    const store = await getStore();
+    const context = provenance;
+    const first = await getCityCentre(store, context, "Clermont");
+    const second = await getCityCentre(store, context, "CLERMONT");
+    expect(first.lat).not.toBeNull();
+    expect(first.lat).toBe(second.lat);
+    expect(first.lon).toBe(second.lon);
+    expect(first.city).toBe("CLERMONT");
+    expect(first.parcelsWithCoordinates).toBeGreaterThan(1000);
+  }, 120_000);
+
+  it("reports a place the roll does not carry as having no centre", async () => {
+    const store = await getStore();
+    const context = provenance;
+    const result = await getCityCentre(store, context, "Orlando");
+    expect(result.lat).toBeNull();
+    expect(result.parcelsWithCoordinates).toBe(0);
+  }, 120_000);
 });

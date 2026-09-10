@@ -114,6 +114,9 @@ const GROUPS: readonly { title: string; columns: readonly string[] }[] = [
   { title: "Provenance", columns: ["enrichment_status", "source_systems"] },
 ];
 
+/** Years are printed bare: thousands separators make a year look like a count. */
+const YEAR_COLUMNS = new Set(["built_year", "effective_built_year"]);
+
 const CURRENCY_COLUMNS = new Set([
   "assessed_value",
   "market_value",
@@ -143,6 +146,8 @@ function renderValue(column: string, value: unknown): { text: string; isNull: bo
     if (column === "latitude" || column === "longitude") {
       return { text: value.toFixed(6), isNull: false };
     }
+    // A year is an identifier, not a quantity: grouping made 2021 read "2,021".
+    if (YEAR_COLUMNS.has(column)) return { text: String(value), isNull: false };
     if (Number.isInteger(value)) return { text: formatCount(value), isNull: false };
     return { text: formatNumber(value), isNull: false };
   }

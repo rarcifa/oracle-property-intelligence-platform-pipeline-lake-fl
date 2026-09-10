@@ -25,6 +25,7 @@ import {
 import type { AppContext } from "../context.js";
 import type { QueryRow } from "../data/duckdb.js";
 import {
+  getCityCentre,
   getContractorView,
   getDatasetStats,
   getProperty,
@@ -173,6 +174,35 @@ function buildTools(context: AppContext, collector: CitationCollector) {
           matched: result.matched,
           returned: result.rows.length,
           rows: result.rows,
+        };
+      },
+    }),
+
+    resolveCityCentre: tool({
+      description:
+        "The published centre of a city, as the mean of its parcel centroids. ALWAYS call this before a radius search for a named place, and pass the lat and lon it returns straight to searchProperties. Never supply a coordinate for a place name from your own knowledge: it varies between answers, and the same question then returns different totals.",
+      inputSchema: z.object({
+        city: z
+          .string()
+          .min(1)
+          .max(80)
+          .describe("City name as it appears on the roll, e.g. CLERMONT"),
+      }),
+      execute: async (input) => {
+        const provenance = await context.provenance();
+        const result = await getCityCentre(context.store, provenance, input.city);
+        collector.record(
+          "resolveCityCentre",
+          result.provenance.sql,
+          result.provenance.sourceSystems,
+          [],
+          result.parcelsWithCoordinates,
+        );
+        return {
+          city: result.city,
+          lat: result.lat,
+          lon: result.lon,
+          parcelsWithCoordinates: result.parcelsWithCoordinates,
         };
       },
     }),

@@ -22,14 +22,23 @@ import { useAsync } from "../hooks/useAsync.js";
 import { navigate, propertyPath } from "../hooks/useHashRoute.js";
 import { formatCount } from "../lib/format.js";
 
-const POSTURE_TILES: readonly { key: string; label: string; tone?: "accent" | "warn" }[] = [
+const POSTURE_TILES: readonly {
+  key: string;
+  label: string;
+  tone?: "accent" | "warn";
+  note?: string;
+}[] = [
   { key: "properties", label: "Parcels", tone: "accent" },
   { key: "distinct_owners", label: "Distinct owner names" },
   { key: "out_of_county", label: "Owner mails out of county" },
   { key: "out_of_state", label: "Owner mails out of state", tone: "warn" },
   { key: "no_recorded_sale", label: "No sale in DOR window" },
   { key: "sale_on_record", label: "Sale date on the roll" },
-  { key: "multi_owner", label: "More than one owner" },
+  {
+    key: "multi_owner",
+    label: "More than one owner",
+    note: "owner_count is 1 for every row in this roll",
+  },
 ];
 
 export function TenantView(): JSX.Element {
@@ -81,6 +90,7 @@ export function TenantView(): JSX.Element {
                   : "—"
               }
               tone={tile.tone ?? "neutral"}
+              note={tile.note}
             />
           ))}
         </div>

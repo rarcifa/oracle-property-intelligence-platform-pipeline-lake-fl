@@ -8,6 +8,7 @@
  */
 
 import {
+  buildCityCentroidSql,
   boundStatement,
   BUSINESS_VIEW_NOTE,
   buildBusinessByCitySql,
@@ -295,5 +296,37 @@ export async function runReadOnlySql(
     truncated: rows.length > capped.length,
     sql,
     provenance: provenance(context, sql, capped),
+  };
+}
+
+/**
+ * The published centre of a city, for radius search.
+ *
+ * Deterministic on purpose: the agent used to supply its own coordinate for a
+ * place name and produced a slightly different one per call, so the same radius
+ * question returned different totals. This derives the centre from the same
+ * table the answer is computed over.
+ */
+export async function getCityCentre(
+  store: OracleDataStore,
+  context: ProvenanceContext,
+  city: string,
+): Promise<{
+  city: string;
+  lat: number | null;
+  lon: number | null;
+  parcelsWithCoordinates: number;
+  provenance: ResponseProvenance;
+}> {
+  const sql = buildCityCentroidSql(PROPERTIES_VIEW, city);
+  const row = await store.queryOne(sql);
+  const lat = typeof row?.lat === "number" ? row.lat : null;
+  const lon = typeof row?.lon === "number" ? row.lon : null;
+  return {
+    city: String(row?.city ?? city.toUpperCase()),
+    lat,
+    lon,
+    parcelsWithCoordinates: Number(row?.parcels_with_coordinates ?? 0),
+    provenance: provenance(context, sql, []),
   };
 }

@@ -475,6 +475,17 @@ export function SearchView(): JSX.Element {
         </button>
 
         <Panel
+          title="Search is structured, not semantic"
+          subtitle="These filters compile to SQL against the published table, and every result is exact. For a question in plain English — over the parcels and over the documentation about them — use Ask, or POST /api/search, which returns both."
+        >
+          <p className="dim" style={{ margin: 0, fontSize: 12.5 }}>
+            The semantic corpus is not searched here. Naming it plainly because a reader told
+            &ldquo;semantic retrieval is under Search&rdquo; would look for it on this page and not
+            find it.
+          </p>
+        </Panel>
+
+        <Panel
           title="Map"
           subtitle="Click to set the radius centre. Dots are the parcels in the current result page that carry coordinates."
         >

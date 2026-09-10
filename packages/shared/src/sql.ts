@@ -535,3 +535,23 @@ export function boundStatement(sql: string, limit: number): string {
   const trimmed = sql.trim().replace(/;\s*$/, "");
   return `SELECT * FROM (\n${trimmed}\n) AS bounded_statement LIMIT ${Math.max(1, Math.floor(limit)) + 1}`;
 }
+
+/**
+ * The published centre of one city: the mean of its parcel centroids.
+ *
+ * Radius questions used to depend on whatever coordinate the agent produced for
+ * a place name, and it produced a slightly different one each time, so the same
+ * question answered 16,912 once and 17,085 the next. A centre derived from the
+ * published table is the same on every call and is itself checkable, which is
+ * the property this dataset is supposed to have.
+ */
+export function buildCityCentroidSql(source: string, city: string): string {
+  return `SELECT
+  ${quote(city.trim().toUpperCase())} AS city,
+  avg(latitude) AS lat,
+  avg(longitude) AS lon,
+  count(*) AS parcels_with_coordinates
+FROM ${tableRef(source)}
+WHERE upper(coalesce(address_city, '')) = ${quote(city.trim().toUpperCase())}
+  AND latitude IS NOT NULL AND longitude IS NOT NULL`;
+}
