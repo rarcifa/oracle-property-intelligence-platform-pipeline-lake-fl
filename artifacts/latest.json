@@ -1,17 +1,15 @@
 {
-  "runId": "20260909T185056Z",
-  "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
-  "manifestCid": "bafkreidgtpx6dbrbmlilwpyb5zj3vdowipsxquhzy4tr2pdzlr6l5xslaq",
-  "carCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "runId": "20260910T135850Z",
+  "rootCid": "bafybeif5vpiyp2v5foc7k3swsgoujzlvo7exaspntdsrmc4tp5vkuok67q",
+  "manifestCid": "bafkreib6hsmjlfi5hdk3be73bepgrdikmkpvgrbbghvgz6jbzsyptmqjcm",
+  "carCid": "bafybeif5vpiyp2v5foc7k3swsgoujzlvo7exaspntdsrmc4tp5vkuok67q",
   "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
-  "resolvedCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+  "resolvedCid": "bafybeif5vpiyp2v5foc7k3swsgoujzlvo7exaspntdsrmc4tp5vkuok67q",
   "verifiedGateways": [
     "https://ipfs.filebase.io",
     "https://gw.ipfs-lens.dev",
-    "https://gateway.pinata.cloud",
-    "https://ipfs.io",
-    "https://dweb.link"
+    "https://gateway.pinata.cloud"
   ],
   "propertyCount": 215806,
-  "publishedAt": "2026-09-09T19:06:09.736Z"
+  "publishedAt": "2026-09-10T14:03:18.405Z"
 }

@@ -41,7 +41,7 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     closeStore();
   });
 
-  it("opens a table with rows and passes the 59-column schema gate", () => {
+  it("opens a table with rows and passes the 62-column schema gate", () => {
     // init() already ran assertSchemaMatches; reaching here means it passed.
     expect(total).toBeGreaterThan(100_000);
   });

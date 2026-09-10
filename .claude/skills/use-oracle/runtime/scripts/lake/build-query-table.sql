@@ -60,7 +60,20 @@ FROM sdf GROUP BY 1;
 -- parcel key, so the join is on a normalized street+zip pair and is reported
 -- as an address match, never as a parcel-level assertion.
 CREATE OR REPLACE VIEW tpp_agg AS
-SELECT upper(trim(PHY_ADDR)) AS addr, trim(PHY_ZIPCD) AS zip, count(*) AS business_account_count
+SELECT
+  upper(trim(PHY_ADDR))                                                    AS addr,
+  trim(PHY_ZIPCD)                                                          AS zip,
+  count(*)                                                                 AS business_account_count,
+  -- The roll carries NAICS and the account name for every row, and neither was
+  -- published: the business view could say activity exists at an address but not
+  -- what kind or whose. Both are public record in the same file the counts come
+  -- from, so withholding them made the signal weaker for no reason.
+  string_agg(DISTINCT trim(NAICS_CD), ',' ORDER BY trim(NAICS_CD))         AS business_naics_codes,
+  string_agg(DISTINCT trim(OWN_NAM), ' | ' ORDER BY trim(OWN_NAM))         AS business_names,
+  -- NAICS 238160 is roofing contractors. The county's own permit pages hide
+  -- contractor of record behind a 403, so this is the only contractor-shaped
+  -- signal obtainable from a published source.
+  count(*) FILTER (WHERE trim(NAICS_CD) = '238160')                        AS roofing_business_count
 FROM tpp
 WHERE PHY_ADDR IS NOT NULL AND trim(PHY_ADDR) <> ''
 GROUP BY 1, 2;
@@ -141,6 +154,9 @@ COPY (
     false                                                                   AS has_sunbiz_tenant,
     coalesce(t.business_account_count, 0) > 0                               AS has_business_account,
     CAST(coalesce(t.business_account_count, 0) AS INTEGER)                  AS business_account_count,
+    t.business_naics_codes                                                 AS business_naics_codes,
+    t.business_names                                                       AS business_names,
+    CAST(coalesce(t.roofing_business_count, 0) AS INTEGER)                 AS roofing_business_count,
     CASE WHEN coalesce(p.permit_count,0) > 0
          THEN 'permits_loaded;contractor_gated_403;bbb_gated_403'
          ELSE 'no_permits_in_source;contractor_gated_403;bbb_gated_403' END AS enrichment_status,

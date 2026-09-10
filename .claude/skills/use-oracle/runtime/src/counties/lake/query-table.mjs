@@ -116,6 +116,9 @@ export const LAKE_QUERY_TABLE_SCHEMA_FIELDS = Object.freeze({
   has_sunbiz_tenant: { type: "BOOLEAN", optional: true },
   has_business_account: { type: "BOOLEAN", optional: true },
   business_account_count: { type: "INT32", optional: true },
+  business_naics_codes: { type: "UTF8", optional: true },
+  business_names: { type: "UTF8", optional: true },
+  roofing_business_count: { type: "INT32", optional: true },
   enrichment_status: { type: "UTF8", optional: true },
   source_systems: { type: "UTF8", optional: true },
 });
@@ -352,6 +355,9 @@ export function mapJoinedRecordToQueryTableRow(record) {
     has_sunbiz_tenant: false,
     has_business_account: businessAccounts > 0,
     business_account_count: businessAccounts,
+    business_naics_codes: record.businessNaicsCodes ?? null,
+    business_names: record.businessNames ?? null,
+    roofing_business_count: record.roofingBusinessCount ?? 0,
     enrichment_status: buildEnrichmentStatus(permits.length > 0),
     source_systems: buildSourceSystems(record),
   };

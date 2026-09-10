@@ -32,8 +32,10 @@ function readRuntimeColumns(): string[] {
 }
 
 describe("published schema", () => {
-  it("declares 59 columns", () => {
-    expect(QUERY_TABLE_COLUMN_COUNT).toBe(59);
+  it("declares 62 columns", () => {
+    // 59 until the TPP roll's NAICS codes, account names and roofing-business
+    // count were published; all three were in the source file all along.
+    expect(QUERY_TABLE_COLUMN_COUNT).toBe(62);
   });
 
   it("matches the ingestion runtime column list exactly, in order", () => {
@@ -60,7 +62,7 @@ describe("assertSchemaMatches", () => {
   });
 
   it("rejects a wrong column count", () => {
-    expect(() => assertSchemaMatches(["property_id"])).toThrow(/expected 59/);
+    expect(() => assertSchemaMatches(["property_id"])).toThrow(/expected 62/);
   });
 
   it("rejects a reordered column list", () => {

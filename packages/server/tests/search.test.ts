@@ -87,7 +87,7 @@ describe("GET /api/search", () => {
     expect(body.chunks).toBeGreaterThan(100);
     expect(body.documents).toBeGreaterThan(90);
     expect(body.embedding.model).toBe("lsa-tfidf-svd");
-    expect(body.chunksByDocType.column).toBe(59);
+    expect(body.chunksByDocType.column).toBe(62);
     expect(body.chunksByDocType.jurisdiction).toBe(16);
   });
 });

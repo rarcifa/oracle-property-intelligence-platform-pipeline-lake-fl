@@ -23,9 +23,11 @@ describe("BUSINESS_VIEW_NOTE", () => {
     expect(BUSINESS_VIEW_NOTE).toMatch(/account-to-parcel matches/i);
   });
 
-  it("records that NAICS is not carried, so the roofing contractors are absent", () => {
-    expect(BUSINESS_VIEW_NOTE).toMatch(/NAICS/);
+  it("records that NAICS and names are now carried, and how many match", () => {
+    expect(BUSINESS_VIEW_NOTE).toMatch(/business_naics_codes/);
+    expect(BUSINESS_VIEW_NOTE).toMatch(/business_names/);
     expect(BUSINESS_VIEW_NOTE).toContain("44 roofing contractors");
+    expect(BUSINESS_VIEW_NOTE).toMatch(/\b10\b/);
   });
 
   it("says why Sunbiz is absent without blaming the wrong endpoint", () => {

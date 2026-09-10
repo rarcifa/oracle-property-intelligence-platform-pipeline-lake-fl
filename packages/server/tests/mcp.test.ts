@@ -130,7 +130,7 @@ describe.skipIf(!hasParquet)("MCP over the data layer", () => {
     };
     expect(result.isError).toBe(false);
     expect(result.content[0]?.type).toBe("text");
-    expect(result.structuredContent.columnCount).toBe(59);
+    expect(result.structuredContent.columnCount).toBe(62);
   });
 
   it("rejects a call to an unadvertised tool", async () => {

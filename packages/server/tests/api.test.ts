@@ -29,12 +29,12 @@ describe.skipIf(!hasParquet)("REST API", () => {
     expect(["ipfs", "local"]).toContain(body.dataSourceKind);
   });
 
-  it("serves the 59-column schema", async () => {
+  it("serves the 62-column schema", async () => {
     const response = await request(await getRouterOnce(), "GET", "/api/meta/schema");
     const body = bodyJson<{ columnCount: number; alwaysNullColumns: Record<string, string> }>(
       response,
     );
-    expect(body.columnCount).toBe(59);
+    expect(body.columnCount).toBe(62);
     expect(body.alwaysNullColumns.contractor_name).toContain("403");
   });
 

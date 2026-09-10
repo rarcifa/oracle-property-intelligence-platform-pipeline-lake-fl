@@ -30,7 +30,7 @@ neighbour was extended in its own conventions. Every such decision is listed in
 
 | Table                                                                        | Rows                           | Source                                                                                |
 | ---------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| properties (one row per assessed parcel, 59 columns)                         | **215,806**                    | FL DOR NAL 2026P                                                                      |
+| properties (one row per assessed parcel, 62 columns)                         | **215,806**                    | FL DOR NAL 2026P                                                                      |
 | permits in the source layer (3,312 roofing · 3,753 open · 247 open roofing)  | **17,671**                     | Lake County CD Plus, windowed on `Permit_LastModDate`                                 |
 | permits linked to an assessed parcel · valid unlinked                        | 17,457 · **214**               | 119 permit parcel keys are absent from the roll; the records are counted, not dropped |
 | permits as counted in the published table (3,256 roofing · 226 open roofing) | **17,457**                     | the linked subset — the API and UI report against this denominator, not 17,671        |
@@ -63,7 +63,7 @@ bulk sources (no scraping fleet: every source is a download or a bounded Esri pa
         │
   seed  ├─ data/seeds/lake.csv, 215,806 rows, no PII, reconciliation enforced
         │
-  DuckDB├─ join → 59-column query table → gate: rows == distinct folio, 0 null folios
+  DuckDB├─ join → 62-column query table → gate: rows == distinct folio, 0 null folios
         │
 publish ├─ UnixFS DAG built and hashed LOCALLY → CIDv1 base32 → CAR
         ├─ CAR imported to Filebase with x-amz-meta-import: car, pinning the exact DAG
@@ -127,12 +127,12 @@ only gateway serving both CORS and Range; five others do.
 
 The published run is verified across all of them. Every one of the nine checked
 artifacts — including the 20 MB Parquet and a 14 MB shard — returned bytes
-matching the manifest's length and SHA-256 from **five independent gateways**
-_from this egress_. Two of those five, `ipfs.io` and `dweb.link`, rate-limit
-datacenter traffic, so a reviewer running from cloud infrastructure will
-typically reproduce three of the five rather than all of them — the bytes are
-identical either way, and saying "five" without that caveat sets up a
-reproduction that appears to fail,
+matching the manifest's length and SHA-256 from **three independent gateways** —
+`ipfs.filebase.io`, `gw.ipfs-lens.dev` and `gateway.pinata.cloud`. All five in the
+registry are asked every time; `ipfs.io` and `dweb.link` rate-limit datacenter
+traffic and had not served the freshly published CIDs when this run was verified,
+so they are recorded as asked-and-not-matched rather than quietly dropped. The
+count in `latest.json` is whatever actually answered,
 recorded in `artifacts/verification-<run>.json`. The kit's verifier stops at two
 by design, which is why the record used to name only two; `scripts/reverify-across-gateways.mjs`
 sweeps the full list for the evidence record without changing the pass criterion
@@ -243,12 +243,16 @@ a matched address group is attributed to _every_ parcel sharing that address, so
 covering 180 accounts span 1,214 parcels. The UI labels that figure "TPP account–parcel
 matches" rather than a count of businesses, and the Business view says so in full.
 
-`NAICS_CD` is present on every one of the 33,346 source rows but is not carried into the
-published table, so the roll's 44 roofing contractors (10 of which match a parcel) cannot
-be queried here. Carrying it, and de-duplicating the shared-address attribution, both
-require rebuilding and republishing the query table under a new root CID; neither was done
-in this run, and neither is recorded in the published `coverage.json`, whose six
-limitations predate this finding.
+`NAICS_CD` and the account name are now carried. Run `20260910T135850Z` republished the
+query table under a new root CID with three added columns — `business_naics_codes`,
+`business_names` and `roofing_business_count` — so the roll's 44 roofing contractors are
+queryable where their situs address matches a parcel, which is 10 of them. That is the only
+contractor-shaped signal obtainable from a published source, and it names businesses at an
+address rather than asserting who worked on a roof.
+
+The shared-address double count is unchanged and still stated above: it is a property of the
+street+zip join, not of the columns, and de-duplicating it would change what
+`business_account_count` means rather than correct it.
 
 ## What is not proven yet
 

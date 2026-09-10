@@ -106,6 +106,9 @@ export const QUERY_TABLE_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
   c("has_sunbiz_tenant", "BOOLEAN", true, "Has Sunbiz tenant", "not ingested for this run"),
   c("has_business_account", "BOOLEAN", true, "Has business account", TPP),
   c("business_account_count", "INT32", true, "Business accounts", TPP),
+  c("business_naics_codes", "UTF8", true, "Business NAICS codes at this address", TPP),
+  c("business_names", "UTF8", true, "TPP account names at this address", TPP),
+  c("roofing_business_count", "INT32", true, "Roofing businesses (NAICS 238160)", TPP),
   c("enrichment_status", "UTF8", true, "Enrichment status", DERIVED),
   c("source_systems", "UTF8", true, "Contributing sources", DERIVED),
 ]);
@@ -208,6 +211,9 @@ export interface PropertyRow {
   has_sunbiz_tenant: boolean | null;
   has_business_account: boolean | null;
   business_account_count: number | null;
+  business_naics_codes: string | null;
+  business_names: string | null;
+  roofing_business_count: number | null;
   enrichment_status: string | null;
   source_systems: string | null;
 }
