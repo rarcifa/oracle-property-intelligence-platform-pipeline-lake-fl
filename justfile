@@ -16,9 +16,16 @@ setup:
 format:
     npx prettier --check .
 
-# Run linting
+# Run linting.
+#
+# Two passes, because one cannot cover both. `eslint .` ignores `.claude/**` so
+# the vendored kit stays byte-identical to upstream, and ESLint prunes an ignored
+# directory before an un-ignore can fire — so a negation there silently lints
+# nothing. The second pass names the county files we wrote explicitly and forces
+# them in with `--no-ignore`. CI runs this recipe, so both passes gate a merge.
 lint:
     npx eslint .
+    pnpm run lint:county
 
 # Run type checking. Delegates to the per-package tsconfigs through turbo:
 # the base config has no JSX setting, so pointing tsc at it directly fails on
