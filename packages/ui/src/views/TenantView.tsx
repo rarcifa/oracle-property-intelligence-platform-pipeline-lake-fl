@@ -37,7 +37,7 @@ const POSTURE_TILES: readonly {
   {
     key: "multi_owner",
     label: "More than one owner",
-    note: "owner_count is 1 for every row in this roll",
+    note: "Co-owners share one name field on the roll, so this counts the names in it",
   },
 ];
 
