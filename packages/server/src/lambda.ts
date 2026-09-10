@@ -13,6 +13,9 @@
  * @module lambda
  */
 
+import { Logger } from "@aws-lambda-powertools/logger";
+import { MetricUnit, Metrics } from "@aws-lambda-powertools/metrics";
+import { Tracer } from "@aws-lambda-powertools/tracer";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
@@ -36,7 +39,22 @@ interface FunctionUrlResult {
   isBase64Encoded: boolean;
 }
 
+/**
+ * Powertools Logger, Tracer and Metrics, per the engineering guidelines.
+ *
+ * This deployment previously had none of the three, which the guidelines rank
+ * HIGH, and the gap was not recorded as a deviation either — so a failure in
+ * production was invisible unless someone read raw CloudWatch text. The
+ * business metrics below are the ones this service is actually judged on:
+ * requests served, requests failed, and cold starts, which are expensive here
+ * because a cold start materialises the whole published table.
+ */
+const logger = new Logger({ serviceName: "oracle-lake-runtime" });
+const tracer = new Tracer({ serviceName: "oracle-lake-runtime" });
+const metrics = new Metrics({ namespace: "OracleLake", serviceName: "runtime" });
+
 let bootstrap: Promise<Router> | null = null;
+let coldStart = true;
 
 /**
  * Open the data store and build the router, once per container.
@@ -86,22 +104,58 @@ function decodeBody(event: FunctionUrlEvent): unknown {
  * @returns The HTTP response, base64-encoded when the body is binary.
  */
 export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
-  const router = await getRouter();
-  const response = await router.handle({
-    method: event.requestContext?.http?.method ?? "GET",
-    path: event.rawPath ?? "/",
-    query: new URLSearchParams(event.rawQueryString ?? ""),
-    headers: event.headers ?? {},
-    body: decodeBody(event),
-  });
+  const method = event.requestContext?.http?.method ?? "GET";
+  const path = event.rawPath ?? "/";
+  const segment = tracer.getSegment();
+  const started = Date.now();
 
-  const binary = typeof response.body !== "string";
-  return {
-    statusCode: response.status,
-    headers: response.headers,
-    body: binary
-      ? Buffer.from(response.body as Uint8Array).toString("base64")
-      : (response.body as string),
-    isBase64Encoded: binary,
-  };
+  if (coldStart) {
+    metrics.addMetric("ColdStart", MetricUnit.Count, 1);
+    coldStart = false;
+  }
+
+  try {
+    const router = await getRouter();
+    const response = await router.handle({
+      method,
+      path,
+      query: new URLSearchParams(event.rawQueryString ?? ""),
+      headers: event.headers ?? {},
+      body: decodeBody(event),
+    });
+
+    metrics.addMetric("RequestsServed", MetricUnit.Count, 1);
+    metrics.addMetric("RequestDuration", MetricUnit.Milliseconds, Date.now() - started);
+    if (response.status >= 500) metrics.addMetric("RequestsFailed", MetricUnit.Count, 1);
+    logger.info("request", { method, path, status: response.status, ms: Date.now() - started });
+
+    const binary = typeof response.body !== "string";
+    return {
+      statusCode: response.status,
+      headers: response.headers,
+      body: binary
+        ? Buffer.from(response.body as Uint8Array).toString("base64")
+        : (response.body as string),
+      isBase64Encoded: binary,
+    };
+  } catch (error) {
+    // A throw here used to escape as a raw platform error. It is the one path
+    // where the caller learns nothing and the operator learns nothing either.
+    metrics.addMetric("RequestsFailed", MetricUnit.Count, 1);
+    tracer.addErrorAsMetadata(error as Error);
+    logger.error("request_failed", { method, path, error: String(error) });
+    return {
+      statusCode: 503,
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        error: "runtime_unavailable",
+        detail:
+          "The runtime could not open the published dataset for this request. It retries on the next call rather than staying down.",
+      }),
+      isBase64Encoded: false,
+    };
+  } finally {
+    metrics.publishStoredMetrics();
+    segment?.close();
+  }
 }

@@ -9,11 +9,14 @@
 import { chatRequestSchema } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
 import { sanitizeProviderError, ChatUnavailableError, createChatAgent } from "../chat/agent.js";
+import { createRateLimiter, DEFAULT_CHAT_RATE_LIMIT } from "../chat/rate-limit.js";
 import { fail, json, type Router } from "../http/router.js";
 
 /** Register the chat route. */
 export function registerChatRoutes(router: Router, context: AppContext): void {
   const agent = createChatAgent(context);
+  // The only endpoint here that spends money per call, on a public URL.
+  const limiter = createRateLimiter(DEFAULT_CHAT_RATE_LIMIT);
 
   router.post("/api/chat", async (request) => {
     if (!agent.enabled) {
@@ -23,6 +26,20 @@ export function registerChatRoutes(router: Router, context: AppContext): void {
         "ANTHROPIC_API_KEY is not set on the server, so the natural-language agent is disabled. Every other view queries the published data directly and is unaffected.",
       );
     }
+    // Identify the caller as well as a Function URL allows. `x-forwarded-for`
+    // is client-supplied and spoofable, so this bounds honest traffic and cost
+    // rather than defeating a determined attacker — worth saying plainly.
+    const forwarded = request.headers["x-forwarded-for"] ?? "";
+    const caller = forwarded.split(",")[0]?.trim() || "unknown";
+    const verdict = limiter.take(caller);
+    if (!verdict.allowed) {
+      return fail(
+        429,
+        "rate_limited",
+        `This endpoint calls a paid model, so it is rate limited per caller. Try again in ${verdict.retryAfterSeconds}s. Every other view queries the published data directly and is not limited.`,
+      );
+    }
+
     const parsed = chatRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return fail(

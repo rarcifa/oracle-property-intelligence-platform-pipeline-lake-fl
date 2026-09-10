@@ -16,7 +16,9 @@ import {
   HttpMethod,
   LoggingFormat,
   Runtime,
+  Tracing,
 } from "aws-cdk-lib/aws-lambda";
+import { Alarm, ComparisonOperator, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
@@ -126,9 +128,42 @@ export class LakeRuntimeStack extends Stack {
       // the blast radius and the bill; the surface is a read-only open-data API,
       // not something that needs to scale to the account limit.
       reservedConcurrentExecutions: 25,
+      // X-Ray, per the engineering guidelines' HIGH observability rules. This
+      // deployment had no tracing, no metrics and no alarms, and that gap was
+      // not recorded as a deviation either.
+      tracing: Tracing.ACTIVE,
       loggingFormat: LoggingFormat.JSON,
       logRetention: RetentionDays.ONE_MONTH,
     });
+
+    // One alarm per failure mode, self-resolving. The guidelines forbid
+    // per-item alerts, so these watch rates and clear themselves when the rate
+    // returns to zero.
+    new Alarm(this, "RuntimeErrors", {
+      alarmName: "OracleLake-runtime-errors",
+      alarmDescription:
+        "The Lake County runtime returned errors. Self-resolves when the error rate returns to zero.",
+      metric: runtime.metricErrors({ period: Duration.minutes(5), statistic: "Sum" }),
+      threshold: 1,
+      evaluationPeriods: 2,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+
+    new Alarm(this, "RuntimeThrottles", {
+      alarmName: "OracleLake-runtime-throttles",
+      alarmDescription:
+        "The runtime is being throttled against its reserved concurrency of 25, so callers are being turned away.",
+      metric: runtime.metricThrottles({ period: Duration.minutes(5), statistic: "Sum" }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+
+    // There is no queue and therefore no DLQ: this is a synchronous read-only
+    // HTTP surface. The guidelines' DLQ alarm rule is recorded as not
+    // applicable rather than silently skipped.
 
     // Public and unauthenticated on purpose: this serves a published open-data
     // set. The SQL surface is locked down in two layers, in the shared SQL
