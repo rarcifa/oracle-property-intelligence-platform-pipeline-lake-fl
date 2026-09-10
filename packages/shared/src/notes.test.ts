@@ -28,8 +28,12 @@ describe("BUSINESS_VIEW_NOTE", () => {
     expect(BUSINESS_VIEW_NOTE).toContain("44 roofing contractors");
   });
 
-  it("keeps the Sunbiz gating statement", () => {
-    expect(BUSINESS_VIEW_NOTE).toMatch(/403/);
+  it("says why Sunbiz is absent without blaming the wrong endpoint", () => {
+    // The note used to say "Sunbiz search answers HTTP 403". Measured with a
+    // real browser, that search is reachable — and it is not the ingest channel
+    // either. The bulk portal is the challenged one.
+    expect(BUSINESS_VIEW_NOTE).toMatch(/bulk data-download portal/i);
+    expect(BUSINESS_VIEW_NOTE).not.toMatch(/Sunbiz search answers HTTP 403/i);
   });
 });
 
@@ -37,5 +41,16 @@ describe("CONTRACTOR_VIEW_NOTE", () => {
   it("says the gated columns stay null rather than being guessed", () => {
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/403/);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/null/);
+  });
+
+  it("separates the technical block from the policy one", () => {
+    // Verified with a real browser: the county permit pages are 403 to every
+    // method tried, while a BBB profile loads. BBB is withheld because the
+    // kit's bbb-harvest skill forbids working around the block, not because it
+    // cannot be reached — and conflating the two overstates one and
+    // understates the other.
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/robots\.txt/i);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/official BBB API/i);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/permit detail pages/i);
   });
 });

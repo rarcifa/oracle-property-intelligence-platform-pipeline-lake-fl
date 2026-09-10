@@ -476,3 +476,16 @@ approved_exceptions:
       centroid publish with null coordinates rather than being dropped.
     approved_by: rarcifa
     approved_at: "2026-09-09T18:00:00Z"
+
+# 2026-09-10 re-verification of the access states above, plain curl and a real
+# headless browser, from this egress:
+#   c.lakecountyfl.gov (permit detail, contractor of record) .. 403 both methods
+#   www2.myfloridalicense.com (DBPR extracts) ................. 403 both methods
+#   dos.fl.gov Sunbiz data-download portal .................... 403 both methods
+#   search.sunbiz.org (name search) ........................... 200 in a browser
+#   www.bbb.org profile pages ................................. 200 in a browser
+# The last two were previously recorded as 403 and that was wrong. Sunbiz name
+# search is not the ingest channel — the bulk portal is, and it is still blocked.
+# BBB profiles are reachable but withheld on policy: robots.txt disallows the
+# query-string URLs and bbb-harvest requires approved API access rather than
+# working around the challenge.

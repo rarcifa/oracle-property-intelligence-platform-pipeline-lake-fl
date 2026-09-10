@@ -195,10 +195,19 @@ These are in `coverage.json` inside every published run, and in the source catal
   municipality runs its own system; 13 of 14 are blocked, unavailable or manual-only, and
   each has a named records-request recipient in the catalog. Exactly one, Clermont, has an
   open portal, and it is catalogued as discovered but not yet harvested.
-- **Contractor identity and BBB ratings are not published.** Contractor of record lives on
-  county permit detail pages behind a Cloudflare managed challenge covering the whole
-  `lakecountyfl.gov` estate; `bbb.org` answers 403. Both are real columns that stay null,
-  with the reason in `enrichment_status`. Nothing is invented.
+- **Contractor identity and BBB ratings are not published — for two different reasons.**
+  Contractor of record lives on county permit detail pages behind a Cloudflare managed
+  challenge covering the whole `lakecountyfl.gov` estate, and that one is a hard technical
+  block: re-verified on 2026-09-10 with plain `curl` **and** with a real headless browser,
+  both 403. BBB is a _policy_ boundary, not a technical one. `bbb.org` answers 403 to
+  `curl`, but a profile page does load in a browser — and harvesting it that way is
+  precisely what the kit's `bbb-harvest` skill forbids: BBB's `robots.txt` disallows
+  crawling its query-string URLs, and the skill requires that a 403 be treated as a stop
+  with access requested through the official BBB API, explicitly ruling out changing egress,
+  proxies or browser fingerprints to get around it. An earlier version of this file said
+  only "`bbb.org` answers 403", which understates the reason and overstates the block.
+  Both are real columns that stay null, with the reason in `enrichment_status`. Nothing is
+  invented.
 - **Ten-year ownership tenure cannot be proven.** Only the current DOR roll is published and
   it carries 2025-2026 sales; the historical DOR map-data files back to 2005 carry parcel
   geometry only, which was verified by downloading the 2010 file and reading its two-field
