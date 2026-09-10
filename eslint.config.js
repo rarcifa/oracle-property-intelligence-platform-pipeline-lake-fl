@@ -71,5 +71,22 @@ export default tseslint.config(
       "no-console": "off",
     },
   },
+  {
+    // The demo recorder is a Node script that also ships function bodies into a
+    // browser via page.evaluate, so it legitimately references both globals.
+    files: ["packages/ui/scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        document: "readonly",
+        window: "readonly",
+        performance: "readonly",
+        requestAnimationFrame: "readonly",
+      },
+    },
+    rules: { "no-console": "off" },
+  },
   prettier,
 );

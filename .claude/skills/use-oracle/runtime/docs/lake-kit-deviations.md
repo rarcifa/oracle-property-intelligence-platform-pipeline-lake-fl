@@ -369,3 +369,23 @@ Spring-Oaks-Capital repositories this project has no access to. The metrics
 `DatasetOpenMs`, `PointerResolveMs`, `DatasetUpgraded`, `PointerRefreshFailed`,
 `DatasetUnavailable`) are emitted under the `OracleLake` namespace and are ready to
 register; the registration itself is not something this repository can do.
+
+## 17. The publish gate records who wrote the approval, not only who gave it
+
+`county-open-data-publish` and `durable-workflow-builder` pattern 10 require an approval gate
+on the publish path, and `artifacts/publish-gate.json` implements it. What neither skill
+addresses is that a file-based gate cannot prove a human typed into it: anything able to run
+`publish-approve.mjs` can pass `--by "<a person's name>"`, and the resulting record looks
+identical either way.
+
+That is exactly what happened for run `20260910T153418Z`. The owner authorised the republish
+in conversation; an agent ran the CLI and recorded the approval under the owner's name. The
+fact was true, but the file claimed more provenance than it could support.
+
+The gate schema therefore carries `recordedBy` alongside `approvedBy`. Null means the approver
+ran it themselves. A non-null value names the process that wrote a record for an authorisation
+given elsewhere, and `evaluatePublishGate` surfaces it in the publish reason, so the
+distinction reaches the run log rather than sitting only in the file.
+
+This does not make the gate unforgeable — nothing file-based can be. It makes it stop
+overstating itself, which is the property the honest-completeness rule actually asks for.

@@ -179,3 +179,39 @@ describe("the gate document", () => {
     ).toThrow(/Invalid publish gate/);
   });
 });
+
+describe("approval provenance", () => {
+  it("records null when the approver ran the approval themselves", async () => {
+    const gatePath = await scratchGatePath();
+    const state = await approvePublish(gatePath, "lake", approval);
+    expect(state.recordedBy).toBeNull();
+    expect(evaluatePublishGate(state, NEXT_WATERMARK).reason).toBe(`approved by ${approval.approvedBy}`);
+  });
+
+  it("names the writer when something else recorded the approval, and says so in the reason", async () => {
+    const gatePath = await scratchGatePath();
+    const state = await approvePublish(gatePath, "lake", {
+      ...approval,
+      recordedBy: "an agent, on the owner's authority",
+    });
+    expect(state.approvedBy).toBe(approval.approvedBy);
+    expect(state.recordedBy).toBe("an agent, on the owner's authority");
+    expect(evaluatePublishGate(state, NEXT_WATERMARK).reason).toContain(
+      "recorded by an agent, on the owner's authority",
+    );
+  });
+
+  it("clears the writer on revoke, so a stale attribution cannot outlive its approval", async () => {
+    const gatePath = await scratchGatePath();
+    await approvePublish(gatePath, "lake", { ...approval, recordedBy: "an agent" });
+    const revoked = await revokePublishApproval(gatePath, "lake");
+    expect(revoked.recordedBy).toBeNull();
+    expect(revoked.approvedBy).toBeNull();
+  });
+
+  it("ignores a blank writer rather than recording an empty claim", async () => {
+    const gatePath = await scratchGatePath();
+    const state = await approvePublish(gatePath, "lake", { ...approval, recordedBy: "   " });
+    expect(state.recordedBy).toBeNull();
+  });
+});

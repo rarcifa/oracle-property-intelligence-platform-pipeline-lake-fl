@@ -52,6 +52,15 @@ export const countyGateSchema = z
     approvedAt: isoTimestamp.nullable(),
     /** What the approver was told they were approving. */
     approvalNote: z.string().trim().min(1).nullable(),
+    /**
+     * Who physically wrote this record, when that is not the approver.
+     *
+     * A file-based gate cannot prove a human typed into it: anything that can
+     * run the CLI can pass `--by`. When an automated process records an
+     * approval it was given out-of-band, it must say so here, so the file never
+     * claims more provenance than it has. Null means the approver ran it.
+     */
+    recordedBy: z.string().trim().min(1).nullable().default(null),
     /** Content watermark of the last unapproved dry run, so it happens once. */
     lastDryRunWatermark: z.string().trim().min(1).nullable(),
     /** Content watermark of the last approved publication. */
@@ -79,6 +88,7 @@ export const EMPTY_COUNTY_GATE = Object.freeze({
   approvedBy: null,
   approvedAt: null,
   approvalNote: null,
+  recordedBy: null,
   lastDryRunWatermark: null,
   lastPublishedWatermark: null,
   lastPublishedRunId: null,
@@ -182,7 +192,7 @@ export async function requestPublish(gatePath, county) {
  *
  * @param {string} gatePath path to the gate JSON file
  * @param {string} county normalized county key
- * @param {{ approvedBy: string, note: string, at?: string }} approval who approved, and what they were told
+ * @param {{ approvedBy: string, note: string, at?: string, recordedBy?: string }} approval who approved, what they were told, and who wrote the record if not them
  * @returns {Promise<import("zod").infer<typeof countyGateSchema>>}
  */
 export async function approvePublish(gatePath, county, approval) {
@@ -197,6 +207,10 @@ export async function approvePublish(gatePath, county, approval) {
     approvedBy: approval.approvedBy.trim(),
     approvedAt: approval.at ?? new Date().toISOString().replace(/\.\d{3}Z$/, ".000Z"),
     approvalNote: approval.note.trim(),
+    recordedBy:
+      typeof approval.recordedBy === "string" && approval.recordedBy.trim().length > 0
+        ? approval.recordedBy.trim()
+        : null,
     // A fresh approval re-arms the dry-run throttle, so the next run acts on it
     // rather than reporting the watermark as already handled.
     lastDryRunWatermark: null,
@@ -216,6 +230,7 @@ export async function revokePublishApproval(gatePath, county) {
     approvedBy: null,
     approvedAt: null,
     approvalNote: null,
+    recordedBy: null,
     lastDryRunWatermark: null,
   }));
 }
@@ -245,7 +260,12 @@ export function evaluatePublishGate(state, watermark) {
     };
   }
   if (state.approved) {
-    return { action: "publish", reason: `approved by ${state.approvedBy ?? "unknown"}` };
+    return {
+      action: "publish",
+      reason: state.recordedBy
+        ? `approved by ${state.approvedBy ?? "unknown"} (recorded by ${state.recordedBy})`
+        : `approved by ${state.approvedBy ?? "unknown"}`,
+    };
   }
   if (state.lastDryRunWatermark === watermark) {
     return {

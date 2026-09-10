@@ -1,99 +1,128 @@
 # Demo script — Lake County, FL
 
-Follows the assignment's demo transcript beat for beat. Every number below comes from a
-query against the published data; none are typed by hand.
+Follows the assignment's demo transcript beat for beat, against the **deployed runtime**.
+Every number comes from a query against the published run; none are typed by hand.
 
-## 1. The pipeline run summary
-
-Open the run panel in the UI, or:
+There is no local step anywhere in this script. If a beat renders, the hosted runtime served
+it — that is the point of running it this way rather than from a checkout.
 
 ```bash
-jq . artifacts/latest.json
-jq '.runs[0] | {runId, mode, sources, tables, status, verifiedGateways}' artifacts/run-history.json
+U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
+RUN=$(curl -s "$U/api/meta/run" | jq -r .run.runId)
+ROOT=$(curl -s "$U/api/meta/run" | jq -r .run.rootCid)
 ```
 
-Shows the run id, every source with its window and record count, the tables loaded with
-per-table deltas, and the documented source limitations.
+The recorded walkthrough is reproducible: `pnpm --filter @oracle-lake/ui exec node
+scripts/record-demo.mjs out/` drives these same beats in a real browser and writes the video.
 
-## 2. Uploaded records by source
+## 1. The published run
+
+Open `/#/tenant`. The header names the run and the immutable root CID the browser is reading
+from public IPFS — visible on every subsequent frame, so no beat can quietly change dataset.
 
 ```bash
-ROOT=$(jq -r .rootCid artifacts/latest.json)
-curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq '{tables, signals}'
+curl -s "$U/api/meta/run" | jq '.run | {runId, rootCid, ipnsName, resolvedCid, propertyCount}'
 ```
 
-Properties, permits and coordinates with their source systems, plus the roofing signals.
-Per-row provenance is in the `source_systems` column of the query table.
+The runtime holds no baked dataset CID. It resolves the IPNS name and serves whatever
+immutable root that name points at, so a scheduled publish lands without a redeploy.
 
-## 3. The DuckDB query layer
+## 2. Aged roofs, by radius — the assignment's first question
 
-No database server is involved. Point DuckDB at the published Parquet:
+In `/#/search`, type: `aged roofs with an open roofing permit in Clermont`.
+
+The phrase compiles into explicit filters — `city = CLERMONT`, `minRoofAge = 15`,
+`hasOpenRoofingPermit = true` — so the query stays inspectable rather than opaque. Results
+carry roof age, the basis that age was derived from, coordinates, and per-row source systems.
 
 ```bash
-curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/query-table.parquet" -o query-table.parquet
-duckdb -c "SELECT count(*) FROM 'query-table.parquet'"
-duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15"
+curl -s "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=5&minRoofAge=15&limit=5" \
+  | jq '{matched, first: .rows[0] | {parcel_identifier, roof_age_years, roof_age_basis}}'
 ```
 
-## 4. The artifact manifest
+County-wide, 117,605 parcels meet the 15-year threshold; 23,638 fall within five miles of
+Clermont, 1,403 within one mile — monotonic, because the radius is a real great-circle
+distance and not a bounding box.
+
+## 3. What the data cannot say
+
+Open `/#/contractor`. Contractor of record and BBB ratings are gated at source behind HTTP 403. They are real columns that stay null, each carrying its gating reason.
 
 ```bash
-jq '{schemaVersion, runId, root, count: (.artifacts|length), sample: .artifacts[0:3]}' \
-  artifacts/manifest-$(jq -r .runId artifacts/latest.json).json
+curl -s "$U/api/views/contractor" | jq '{gating, note}'
 ```
 
-Every artifact with its CID, logical name, byte size, codec and SHA-256. The IPNS name is
-shown next to the CID it resolved to, because a pointer is not a snapshot.
+Nothing here is invented to fill the gap. That is the whole claim.
 
-## 5. Retrieval from two independent public gateways
+## 4. Business coverage, including its own double count
+
+Open `/#/business`.
 
 ```bash
-COV=$(jq -r '.artifacts[] | select(.name=="coverage.json") | .cid' artifacts/manifest-*.json | head -1)
-curl -sL "https://gateway.pinata.cloud/ipfs/$COV" | sha256sum
-curl -sL "https://gw.ipfs-lens.dev/ipfs/$COV" | sha256sum
-jq -r '.artifacts[] | select(.name=="coverage.json") | .sha256' artifacts/manifest-*.json | head -1
+curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq '.tables.businessAccounts'
 ```
 
-The two digests must match each other and the manifest. `artifacts/verification-<run>.json`
-records which gateways answered for every artifact checked, with the bytes and digest each
-returned.
+33,346 accounts in the TPP roll; 32,738 carry a situs address; 2,060 match a parcel. Summing
+per-parcel counts gives 4,451 across 2,726 parcels, because 90 shared-address groups are
+attributed to every parcel at that address. Published, not hidden.
 
-## 6. A later run produces a new CID without mutating the old one
+## 5. Read-only SQL, in the browser
 
-```bash
-jq '[.runs[] | {runId, rootCid, mode, tables: .tables[0]}]' artifacts/run-history.json
-PRIOR=$(jq -r '.runs[1].rootCid' artifacts/run-history.json)
-curl -sI "https://ipfs.filebase.io/ipfs/$PRIOR/coverage.json" | head -1
+Open `/#/sql`. Run a real aggregate:
+
+```sql
+SELECT address_city, count(*) AS aged_roofs
+  FROM properties
+ WHERE roof_age_years >= 15
+ GROUP BY 1 ORDER BY 2 DESC LIMIT 10
 ```
 
-The prior CID still resolves, the new run has a distinct CID, the IPNS name now points at
-the new one, and both are in the history. The run history refuses to modify or drop a run
-already recorded.
-
-## 7. Aged roofs within a radius, in the UI
-
-Drop a pin, set the radius, set the roof-age threshold to 15. Results carry roof age, the
-basis that age was derived from, coordinates and per-row source systems.
-
-## 8. Open roofing permits, longest open first
-
-The same view sorted by open duration. Contractor and BBB columns are present and empty,
-with the reason shown from `enrichment_status` rather than left blank.
-
-## 9. The same questions through the agent
-
-> Which properties in Lake County within five miles of Clermont have roofs older than 15 years?
-
-> Which properties near that area have open roofing permits that have been open for many
-> years, and who is the listed contractor?
-
-The agent answers from the same data layer and cites its sources. On the second question it
-must say plainly that contractor identity is not available and why, rather than inventing a
-name.
-
-## 10. MCP readiness
+It executes client-side with DuckDB-WASM against the published Parquet — no backend query
+service in the path. Then press **Try a rejected statement**: `DROP TABLE properties` is
+refused before it reaches DuckDB, rather than sanitised.
 
 ```bash
-curl -s localhost:8787/mcp -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools[].name'
+curl -s "$U/api/sql" -H 'content-type: application/json' \
+  -d '{"sql":"SELECT * FROM read_text('"'"'/etc/passwd'"'"')"}' | jq .error   # sql_rejected
+```
+
+## 6. The agent, on the same data
+
+Open `/#/ask` and ask the question that has an unanswerable half:
+
+> Within five miles of Clermont, which properties have roofs older than 15 years and an open
+> roofing permit — and who is the contractor?
+
+It answers the answerable half with cited tool calls against the published run, then says
+plainly that contractor identity is gated at source. It does not produce a plausible name.
+
+## 7. Retrieval from public IPFS, and immutability
+
+```bash
+# The same bytes, from independent gateways
+for G in ipfs.filebase.io gateway.pinata.cloud gw.ipfs-lens.dev; do
+  echo -n "$G "; curl -sL "https://$G/ipfs/$ROOT/coverage.json" | sha256sum
+done
+
+# Prior roots still resolve — a new run never mutates an old one
+curl -s "$U/api/meta/run" | jq -r '.runHistory.runs[].rootCid'
+```
+
+`artifacts/verification-<run>.json` records which gateways answered for every artifact, with
+the digest each returned. Directory digests hash the dag-pb node bytes, so a verifier can
+refetch a block and check it independently.
+
+## 8. MCP readiness
+
+```bash
+curl -s "$U/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq -r '.result.tools[].name'
+
+# A misspelled argument is rejected, not silently ignored:
+curl -s "$U/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"findOpenRoofPermits","arguments":{"minOpenDays":3000}}}' \
+  | jq -r '.result.content[0].text' | jq .error        # invalid_arguments
+
+# The real filter narrows: 0 / 365 / 3000 → 226 / 9 / 1
 ```

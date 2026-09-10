@@ -14,6 +14,8 @@
  *
  * Usage:
  *   node scripts/lake/publish-approve.mjs --county lake --by "Name" --note "..."
+ *   node scripts/lake/publish-approve.mjs --county lake --by "Name" --note "..." \
+ *     --recorded-by "agent, on the owner's authority"
  *   node scripts/lake/publish-approve.mjs --county lake --revoke
  *   node scripts/lake/publish-approve.mjs --county lake --status
  *
@@ -73,13 +75,18 @@ async function main() {
   if (typeof flags.by !== "string" || typeof flags.note !== "string") {
     process.stderr.write(
       'usage: publish-approve.mjs --county <key> --by "<human>" --note "<what was approved>"\n' +
+        '       [--recorded-by "<who wrote the record, if not the approver>"]\n' +
         "       publish-approve.mjs --county <key> --revoke\n" +
         "       publish-approve.mjs --county <key> --status\n",
     );
     process.exit(2);
     return;
   }
-  const state = await approvePublish(GATE_PATH, county, { approvedBy: flags.by, note: flags.note });
+  const state = await approvePublish(GATE_PATH, county, {
+    approvedBy: flags.by,
+    note: flags.note,
+    recordedBy: typeof flags["recorded-by"] === "string" ? flags["recorded-by"] : undefined,
+  });
   process.stdout.write(`${JSON.stringify({ event: "publish_approved", county, ...state })}\n`);
 }
 
