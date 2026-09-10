@@ -475,7 +475,36 @@ export function SearchView(): JSX.Element {
             : `Show filters${activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}`}
         </button>
 
-        <SemanticSearchPanel />
+        <SemanticSearchPanel
+          onFilters={(filters) => {
+            // Drive the rail from the interpretation, so the grid and the panel
+            // answer the same question and every applied filter is visible and
+            // editable rather than hidden inside the panel.
+            setDraft((current) => ({
+              ...EMPTY_DRAFT,
+              q: typeof filters.q === "string" ? filters.q : "",
+              city: typeof filters.city === "string" ? filters.city : "",
+              propertyType: typeof filters.propertyType === "string" ? filters.propertyType : "",
+              useRoofAge: typeof filters.minRoofAge === "number",
+              minRoofAge:
+                typeof filters.minRoofAge === "number" ? filters.minRoofAge : current.minRoofAge,
+              hasPermits: filters.hasPermits === true,
+              hasOpenRoofingPermit: filters.hasOpenRoofingPermit === true,
+              ownerOutOfCounty: filters.ownerOutOfCounty === true,
+              ownerOutOfState: filters.ownerOutOfState === true,
+              noRecordedSale: filters.noRecordedSale === true,
+              hasBusinessAccount: filters.hasBusinessAccount === true,
+              minMarketValue:
+                typeof filters.minMarketValue === "number" ? String(filters.minMarketValue) : "",
+              maxMarketValue:
+                typeof filters.maxMarketValue === "number" ? String(filters.maxMarketValue) : "",
+              minBuiltYear:
+                typeof filters.minBuiltYear === "number" ? String(filters.minBuiltYear) : "",
+              maxBuiltYear:
+                typeof filters.maxBuiltYear === "number" ? String(filters.maxBuiltYear) : "",
+            }));
+          }}
+        />
 
         <Panel
           title="Map"

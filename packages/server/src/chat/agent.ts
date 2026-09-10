@@ -58,6 +58,9 @@ class CitationCollector {
 
   /** Documents retrieved this turn, cited alongside the SQL evidence. */
   readonly documents: DocumentCitation[] = [];
+  /** Identity of the published run every citation below was computed against. */
+  runId: string | null = null;
+  rootCid: string | null = null;
 
   record(
     toolName: string,
@@ -77,6 +80,8 @@ class CitationCollector {
       sourceSystems: [...sourceSystems],
       parcelIds,
       rowCount: rowCount ?? rows.length,
+      runId: this.runId,
+      rootCid: this.rootCid,
     });
   }
 
@@ -394,6 +399,11 @@ export function createChatAgent(context: AppContext): ChatAgent {
       }
 
       const collector = new CitationCollector();
+      // Stamp every citation with the run it was computed against, so a reader
+      // can re-run the SQL against the same immutable CID from any gateway.
+      const runProvenance = await context.provenance();
+      collector.runId = runProvenance.runId ?? null;
+      collector.rootCid = runProvenance.rootCid ?? null;
       const anthropic = createAnthropic({ apiKey: anthropicApiKey });
 
       const result = await generateText({

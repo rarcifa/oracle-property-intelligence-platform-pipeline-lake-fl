@@ -274,6 +274,17 @@ function Citation({ citation }: { citation: ChatCitation }): JSX.Element {
         <span className="dim" style={{ fontSize: 11.5 }}>
           {formatCount(citation.rowCount)} row(s)
         </span>
+        {citation.rootCid ? (
+          <a
+            className="parcel-chip"
+            href={`https://ipfs.filebase.io/ipfs/${citation.rootCid}/query-table.parquet`}
+            target="_blank"
+            rel="noreferrer"
+            title={`Run ${citation.runId ?? "?"} · ${citation.rootCid}`}
+          >
+            {`${citation.rootCid.slice(0, 10)}…`}
+          </a>
+        ) : null}
         {citation.sourceSystems.map((token) => (
           <Badge key={token} title={token}>
             {SOURCE_SYSTEM_LABELS[token] ?? token}

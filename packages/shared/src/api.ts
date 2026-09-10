@@ -123,6 +123,17 @@ export interface ChatCitation {
   parcelIds: string[];
   /** Row count the tool returned. */
   rowCount: number;
+  /** Published run the evidence came from. */
+  runId?: string | null;
+  /**
+   * Root CID of that run.
+   *
+   * Every claim the agent makes is a query against one immutable published
+   * table, and the citation named the SQL and the sources but never which
+   * bytes. With this a reader can re-run the same statement against the same
+   * CID from any gateway and get the same answer.
+   */
+  rootCid?: string | null;
 }
 
 /**

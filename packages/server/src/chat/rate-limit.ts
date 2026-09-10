@@ -100,3 +100,29 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
     },
   };
 }
+
+/**
+ * The caller, as well as a Function URL allows.
+ *
+ * `x-forwarded-for` is client-supplied and spoofable, so every limit built on it
+ * bounds honest traffic and cost rather than defeating a determined attacker.
+ * Saying so is part of the contract.
+ */
+export function callerOf(headers: Record<string, string | undefined>): string {
+  const forwarded = headers["x-forwarded-for"] ?? "";
+  return forwarded.split(",")[0]?.trim() || "unknown";
+}
+
+/**
+ * Budget for the compute surfaces.
+ *
+ * `/api/sql` and `/mcp` cost no money but they are unauthenticated compute over
+ * a 215,806-row table, and they had no limit of any kind. This is deliberately
+ * generous — the UI itself issues bursts while a page loads — and still bounds a
+ * scraper. Same per-container caveat as the chat bucket: with reserved
+ * concurrency of 25 the aggregate ceiling is 25x this.
+ */
+export const DEFAULT_QUERY_RATE_LIMIT: RateLimiterOptions = {
+  capacity: 120,
+  refillPerMinute: 120,
+};

@@ -10,6 +10,7 @@ import type { AppContext } from "./context.js";
 import { createStaticHandler } from "./http/static.js";
 import { fail, json, Router, type HttpResponse } from "./http/router.js";
 import { handleRpcPayload } from "./mcp/server.js";
+import { callerOf, createRateLimiter, DEFAULT_QUERY_RATE_LIMIT } from "./chat/rate-limit.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { registerChatRoutes } from "./routes/chat.js";
 
@@ -17,10 +18,24 @@ import { registerChatRoutes } from "./routes/chat.js";
 export function createApp(context: AppContext): Router {
   const router = new Router();
 
+  // Same reasoning as `/api/sql`: unauthenticated compute, previously unbounded.
+  const mcpLimiter = createRateLimiter(DEFAULT_QUERY_RATE_LIMIT);
+
   registerApiRoutes(router, context);
   registerChatRoutes(router, context);
 
   router.post("/mcp", async (request): Promise<HttpResponse> => {
+    const verdict = mcpLimiter.take(callerOf(request.headers));
+    if (!verdict.allowed) {
+      return json(429, {
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32000,
+          message: `Rate limited. Try again in ${verdict.retryAfterSeconds}s.`,
+        },
+      });
+    }
     if (request.body === undefined || request.body === null) {
       return json(400, {
         jsonrpc: "2.0",

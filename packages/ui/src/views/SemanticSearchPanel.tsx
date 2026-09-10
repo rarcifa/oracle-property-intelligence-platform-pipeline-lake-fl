@@ -52,7 +52,17 @@ const EXAMPLES = [
   "what does the permit window actually cover",
 ];
 
-export function SemanticSearchPanel(): JSX.Element {
+export function SemanticSearchPanel({
+  onFilters,
+}: {
+  /**
+   * Hand the resolved filters to the page so the grid below shows the same
+   * query. Without this the panel said "0 matching parcels" directly above a
+   * grid saying 215,806, and neither number was wrong — they were answering
+   * different questions, which is worse than either being wrong alone.
+   */
+  onFilters?: (filters: Record<string, unknown>) => void;
+}): JSX.Element {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,7 +75,11 @@ export function SemanticSearchPanel(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      setResult(await postJson<SearchResponse>("/api/search", { query: trimmed, topK: 5 }));
+      const response = await postJson<SearchResponse>("/api/search", { query: trimmed, topK: 5 });
+      setResult(response);
+      if (response.parcels?.filters && Object.keys(response.parcels.filters).length > 0) {
+        onFilters?.(response.parcels.filters);
+      }
     } catch (thrown) {
       setError(errorText(thrown));
       setResult(null);

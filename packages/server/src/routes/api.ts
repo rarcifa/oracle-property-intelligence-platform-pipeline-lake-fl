@@ -31,6 +31,7 @@ import {
   searchProperties,
 } from "../data/queries.js";
 import { readCoverage, readLatest, readRunHistory, readVerification } from "../data/run.js";
+import { callerOf, createRateLimiter, DEFAULT_QUERY_RATE_LIMIT } from "../chat/rate-limit.js";
 import { fail, json, type Router } from "../http/router.js";
 import { registerSearchRoutes } from "./search.js";
 
@@ -45,6 +46,10 @@ function queryObject(query: URLSearchParams): Record<string, string> {
 
 /** Register every `/api/*` route on the router. */
 export function registerApiRoutes(router: Router, context: AppContext): void {
+  // `/api/sql` is unauthenticated compute over a 215,806-row table and had no
+  // limit of any kind. Generous enough that the UI's own page-load bursts pass,
+  // tight enough that a scraper does not run free.
+  const queryLimiter = createRateLimiter(DEFAULT_QUERY_RATE_LIMIT);
   // Semantic retrieval lives in its own module but is part of the `/api/*`
   // surface, and is registered here so the composition root stays untouched.
   registerSearchRoutes(router, context);
@@ -152,6 +157,14 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
   });
 
   router.post("/api/sql", async (request) => {
+    const verdict = queryLimiter.take(callerOf(request.headers));
+    if (!verdict.allowed) {
+      return fail(
+        429,
+        "rate_limited",
+        `Too many queries from this caller. Try again in ${verdict.retryAfterSeconds}s. The published Parquet is on IPFS and can be queried locally without any limit — see the README.`,
+      );
+    }
     const parsed = readOnlySqlSchema.safeParse(request.body);
     if (!parsed.success) {
       return fail(400, "invalid_body", parsed.error.issues.map((i) => i.message).join("; "));
