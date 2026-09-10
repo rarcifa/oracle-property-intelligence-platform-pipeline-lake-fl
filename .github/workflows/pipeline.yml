@@ -126,6 +126,47 @@ jobs:
           restore-keys: |
             lake-row-hashes-
 
+      # The incremental mode fetches a 2-day permit window. Consolidate reads
+      # permits.csv wholesale, so without a base to merge into, a scheduled run
+      # would publish a table containing two days of permits and report the rest
+      # as removed — "incremental" would be true of the code and false of the
+      # data. The base is cached between runs and merged here.
+      - name: Restore the permit merge base
+        uses: actions/cache/restore@v4
+        with:
+          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
+          key: lake-permits-base-${{ github.run_id }}
+          restore-keys: |
+            lake-permits-base-
+
+      - name: Merge the permit window into the base
+        run: |
+          D="$PWD/data/downloads/lake"
+          if [ -f "$D/permits-base.csv" ] && [ "${{ steps.mode.outputs.mode }}" != "full" ]; then
+            # Newest row per permit wins; the window supplies updates, the base
+            # supplies everything the window no longer covers.
+            duckdb -c "
+              COPY (
+                SELECT * EXCLUDE (rn) FROM (
+                  SELECT *, row_number() OVER (
+                    PARTITION BY permit_number
+                    ORDER BY last_modified DESC NULLS LAST
+                  ) AS rn
+                  FROM (
+                    SELECT * FROM read_csv_auto('$D/permits-base.csv', all_varchar=true)
+                    UNION ALL BY NAME
+                    SELECT * FROM read_csv_auto('$D/permits.csv', all_varchar=true)
+                  )
+                ) WHERE rn = 1
+              ) TO '$D/permits-merged.csv' (HEADER, DELIMITER ',');"
+            mv "$D/permits-merged.csv" "$D/permits.csv"
+            echo "::notice::merged the permit window into the cached base"
+          else
+            echo "::notice::no cached base (or full run) — using the fetched permits as the base"
+          fi
+          cp "$D/permits.csv" "$D/permits-base.csv"
+          wc -l < "$D/permits.csv"
+
       - name: Consolidate the query table
         run: |
           D="$PWD/data/downloads/lake"
@@ -174,6 +215,13 @@ jobs:
       # Always, not only on success: a run that published and then failed later
       # has still moved the published state forward, and diffing the next run
       # against stale hashes would misreport it.
+      - name: Save the permit merge base for the next run
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
+          key: lake-permits-base-${{ github.run_id }}
+
       - name: Save the row hashes for the next run
         if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
         uses: actions/cache/save@v4

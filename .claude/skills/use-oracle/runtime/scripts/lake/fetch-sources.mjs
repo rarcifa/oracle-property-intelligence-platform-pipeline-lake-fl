@@ -23,6 +23,7 @@
  * @module scripts/lake/fetch-sources
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -104,7 +105,33 @@ async function downloadRoll(roll) {
   await writeFile(target, bytes);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   log("roll_downloaded", { dataset: roll.dataset, name: selected.name, bytes: bytes.length, sha256 });
-  return { dataset: roll.dataset, name: selected.name, path: target, bytes: bytes.length, sha256 };
+
+  // Extract here, not somewhere else later. The DOR ships these as ZIPs and
+  // build-query-table.sql reads the CSVs inside them by name, so a machine that
+  // only ran this script had the archives and none of the files the next step
+  // opens. It worked locally because the CSVs had been extracted by hand once,
+  // and would have failed on the first clean CI runner.
+  //
+  // System `unzip` on purpose: streaming unzip libraries cannot read every
+  // method the state uses, and this is the same reason the kit's Sunbiz skill
+  // calls out Deflate64.
+  const extracted = execFileSync("unzip", ["-o", "-j", target, "-d", DOWNLOAD_DIR], {
+    encoding: "utf8",
+  });
+  const csvNames = [...extracted.matchAll(/inflating:\s+\S*?([^/\s]+\.csv)/gi)].map((m) => m[1]);
+  if (csvNames.length === 0) {
+    throw new Error(`${roll.file} contained no CSV; build-query-table.sql would fail on it`);
+  }
+  log("roll_extracted", { dataset: roll.dataset, files: csvNames });
+
+  return {
+    dataset: roll.dataset,
+    name: selected.name,
+    path: target,
+    bytes: bytes.length,
+    sha256,
+    extracted: csvNames,
+  };
 }
 
 /**
