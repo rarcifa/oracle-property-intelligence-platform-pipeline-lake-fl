@@ -16,10 +16,7 @@ import {
 } from "./schema.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const runtimeSchemaPath = resolve(
-  here,
-  "../../../.claude/skills/use-oracle/runtime/src/counties/lake/query-table.mjs",
-);
+const runtimeSchemaPath = resolve(here, "../../../pipeline/src/counties/lake/query-table.mjs");
 
 /** Pull the declared column names out of the ingestion runtime's source. */
 function readRuntimeColumns(): string[] {
@@ -32,10 +29,10 @@ function readRuntimeColumns(): string[] {
 }
 
 describe("published schema", () => {
-  it("declares 62 columns", () => {
-    // 59 until the TPP roll's NAICS codes, account names and roofing-business
-    // count were published; all three were in the source file all along.
-    expect(QUERY_TABLE_COLUMN_COUNT).toBe(62);
+  it("declares 63 columns", () => {
+    // The 63rd column separates the age of an open roofing permit from the
+    // age of an unrelated open permit on the same parcel.
+    expect(QUERY_TABLE_COLUMN_COUNT).toBe(63);
   });
 
   it("matches the ingestion runtime column list exactly, in order", () => {
@@ -62,7 +59,7 @@ describe("assertSchemaMatches", () => {
   });
 
   it("rejects a wrong column count", () => {
-    expect(() => assertSchemaMatches(["property_id"])).toThrow(/expected 62/);
+    expect(() => assertSchemaMatches(["property_id"])).toThrow(/expected 63/);
   });
 
   it("rejects a reordered column list", () => {

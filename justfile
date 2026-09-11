@@ -10,7 +10,7 @@ set dotenv-load := false
 # Install dependencies for the application and the ingestion runtime
 setup:
     pnpm install --frozen-lockfile
-    cd .claude/skills/use-oracle/runtime && npm ci
+    cd pipeline && npm ci
 
 # Check code formatting
 format:
@@ -18,11 +18,9 @@ format:
 
 # Run linting.
 #
-# Two passes, because one cannot cover both. `eslint .` ignores `.claude/**` so
-# the vendored kit stays byte-identical to upstream, and ESLint prunes an ignored
-# directory before an un-ignore can fire — so a negation there silently lints
-# nothing. The second pass names the county files we wrote explicitly and forces
-# them in with `--no-ignore`. CI runs this recipe, so both passes gate a merge.
+# Two passes, because the root application and standalone ingestion runtime
+# have different lint boundaries. The second pass names the Lake pipeline and
+# publication files explicitly. CI runs this recipe, so both passes gate a merge.
 lint:
     npx eslint .
     pnpm run lint:county
@@ -35,29 +33,11 @@ type-check:
 
 # Run the application tests and the ingestion runtime tests.
 #
-# Four runtime tests are excluded by name, in two pairs, and none of them is
-# excluded because it found a defect.
-#
-# `no-oracle-node-runtime` and `mcp-json-parity` assert where the kit is checked
-# out: the first requires the directory to be named `soofi-xyz-team-kit`, the
-# second expects `.claude/mcp.json` where this repository keeps `.mcp.json` at
-# its root.
-#
-# `published-county-catalog` and `print-mcp-env-maps` assert that the catalog
-# holds exactly thirteen counties. Registering Lake through the kit's own
-# sanctioned `catalog:update` makes it fourteen, so these fail *because* the
-# registration succeeded. Any county added to this kit would break them.
-#
-# All four are excluded rather than edited, because the kit is vendored
-# unmodified and `.claude/KIT_VERSION` must keep matching upstream exactly.
+# The runtime's catalog tests are part of the gate: the project owns this
+# extracted pipeline and keeps its path and county-count assertions current.
 test:
     pnpm run test
-    cd .claude/skills/use-oracle/runtime && npx vitest run \
-        --exclude '**/tests/catalog/no-oracle-node-runtime.test.mjs' \
-        --exclude '**/tests/catalog/mcp-json-parity.test.mjs' \
-        --exclude '**/tests/catalog/published-county-catalog.test.mjs' \
-        --exclude '**/tests/catalog/print-mcp-env-maps.test.mjs'
-    cd .claude/skills/use-oracle/runtime && npm run test:transforms
+    npm test --prefix pipeline
 
 # Build every package
 build:
@@ -77,5 +57,5 @@ synth: bundle
 
 # Validate the county source catalog against the fail-closed readiness gate
 readiness:
-    python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
-        .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
+    python3 pipeline/scripts/validate-county-readiness.py \
+        pipeline/docs/lake-sources.yaml

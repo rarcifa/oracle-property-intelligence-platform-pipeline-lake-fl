@@ -62,7 +62,7 @@ bundle exceeds Lambda's 250 MB unzipped limit. It currently comes to 89 MB.
 
 The agent returns a clear 503 without a key rather than failing at boot.
 
-Do **not** set `ANTHROPIC_API_KEY` on the function directly. That was tried, worked, and was
+Do **not** set `OPENAI_API_KEY` on the function directly. A directly configured provider key is
 silently wrong: the stack declares `environment` in full, so the next `cdk deploy` drops the
 key and the agent goes dark with nothing failing loudly. The key lives in Secrets Manager,
 and the stack deploys only the secret's **name** plus an IAM grant to read it — the function
@@ -72,12 +72,12 @@ the plaintext into the function's own configuration, where anyone holding
 that arrangement, and it is no longer what the stack does.
 
 ```bash
-printf '%s' "$ANTHROPIC_API_KEY" > /tmp/key && \
-  aws secretsmanager create-secret --name oracle-lake/anthropic-api-key \
+printf '%s' "$OPENAI_API_KEY" > /tmp/key && \
+  aws secretsmanager create-secret --name oracle-lake/openai-api-key \
     --secret-string file:///tmp/key && rm -f /tmp/key
 ```
 
-Deploy without the agent by setting `ORACLE_ANTHROPIC_SECRET_NAME=""`.
+Deploy without the agent by setting `ORACLE_OPENAI_SECRET_NAME=""`.
 
 ## Pointing at a different published run
 
@@ -127,7 +127,9 @@ ORACLE_ALERT_EMAIL=oncall@example.com \
 
 Paging is gated on `ORACLE_ALERT_ENVIRONMENT` being exactly `production`, so a non-prod
 deploy cannot wake anybody even with a key in place. For the scheduled ingestion workflow,
-set `PAGERDUTY_ROUTING_KEY` as a repository secret.
+set `PAGERDUTY_ROUTING_KEY` as a repository secret. Metric definitions, dashboard fields,
+DLQ applicability, and the external owner checklist are recorded in the
+[observability handoff](observability-handoff.md).
 
 ## What the first deploy taught
 

@@ -49,10 +49,15 @@ function renderRoute(segments: readonly string[]): JSX.Element {
 export function App(): JSX.Element {
   const route = useHashRoute();
   const { mode, source, meta } = useDataSource();
+  // Property detail is a drill-down from Search, not a top-level tab of its
+  // own. Keeping Search active preserves orientation and makes the header's
+  // accessibility state truthful on the detail route.
+  const activePath =
+    route.segments[0] === "property" ? "/search" : `/${route.segments[0] ?? "overview"}`;
 
   return (
     <>
-      <Header activePath={`/${route.segments[0] ?? "overview"}`} />
+      <Header activePath={activePath} />
       <main className="app-main">{renderRoute(route.segments)}</main>
       <footer className="app-footer">
         <div className="inner stack-sm">

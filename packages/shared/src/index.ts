@@ -4,3 +4,4 @@ export * from "./honesty.js";
 export * from "./notes.js";
 export * from "./sql.js";
 export * from "./api.js";
+export * from "./permits.js";

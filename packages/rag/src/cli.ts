@@ -12,7 +12,9 @@ import { loadIndex, resetIndexCache } from "./index/load.js";
 import { writeIndex, INDEX_PATH } from "./index/build-index.js";
 import { retrieve, THRESHOLDS } from "./retrieve.js";
 import { runEval } from "./eval/run-eval.js";
+import { suggestPaths } from "./paths.js";
 import { readFile } from "node:fs/promises";
+import { promotePublishedCorpus } from "./promote.js";
 
 const debug = process.env.RAG_DEBUG === "true";
 
@@ -24,18 +26,87 @@ function print(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
-function flagValue(argv: string[], flag: string): string | null {
-  const position = argv.indexOf(flag);
-  return position >= 0 ? (argv[position + 1] ?? null) : null;
+interface QueryArguments {
+  text: string;
+  topK: number;
+}
+
+async function parseQueryArguments(argv: string[]): Promise<QueryArguments> {
+  let file: string | null = null;
+  let topK = 5;
+  const text: string[] = [];
+
+  for (let position = 0; position < argv.length; position += 1) {
+    const argument = argv[position] as string;
+    if (argument === "--file") {
+      file = argv[position + 1] ?? null;
+      if (file === null) throw new Error("--file requires a path");
+      position += 1;
+      continue;
+    }
+    if (argument === "--top-k") {
+      const value = argv[position + 1];
+      if (value === undefined) throw new Error("--top-k requires an integer");
+      topK = Number.parseInt(value, 10);
+      if (!/^\d+$/.test(value) || !Number.isInteger(topK)) {
+        throw new Error("--top-k requires an integer");
+      }
+      position += 1;
+      continue;
+    }
+    if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
+    text.push(argument);
+  }
+
+  if (file !== null && text.length > 0) {
+    throw new Error("Pass either positional text or --file, not both");
+  }
+  return { text: file === null ? text.join(" ") : await readFile(file, "utf8"), topK };
 }
 
 async function main(): Promise<number> {
   const [, , command = "help", ...rest] = process.argv;
 
   switch (command) {
+    case "promote": {
+      const values = new Map<string, string>();
+      for (let position = 0; position < rest.length; position += 2) {
+        const flag = rest[position];
+        const value = rest[position + 1];
+        if (!flag?.startsWith("--") || !value || value.startsWith("--")) {
+          throw new Error("promote flags must be --name value pairs");
+        }
+        values.set(flag, value);
+      }
+      const runId = values.get("--run-id");
+      const rootCid = values.get("--root-cid");
+      if (!runId || !rootCid) {
+        throw new Error("promote requires --run-id and --root-cid");
+      }
+      const result = await promotePublishedCorpus({
+        runId,
+        rootCid,
+        latestPath: values.get("--latest"),
+        manifestPath: values.get("--manifest"),
+        verificationPath: values.get("--verification"),
+        ledgerPath: values.get("--ledger"),
+      });
+      print({ command: "promote", runId, rootCid, ...result });
+      return 0;
+    }
+
     case "build": {
+      const runIdPosition = rest.indexOf("--run-id");
+      const runId = runIdPosition >= 0 ? rest[runIdPosition + 1] : undefined;
+      if (!runId) {
+        print({
+          error: "missing_run_id",
+          detail: "Pass --run-id matching the explicit corpus-source.json receipt.",
+        });
+        return 2;
+      }
       const started = Date.now();
-      const { path, index } = await writeIndex();
+      const { path, index } = await writeIndex(INDEX_PATH, runId);
       log(`built ${index.chunks.length} chunks in ${Date.now() - started} ms`);
       print({
         command: "build",
@@ -45,6 +116,7 @@ async function main(): Promise<number> {
         documents: new Set(index.chunks.map((chunk) => chunk.docId)).size,
         embedding: index.embedding,
         builtFrom: index.builtFrom,
+        sourceSnapshot: index.sourceSnapshot,
       });
       return 0;
     }
@@ -63,6 +135,7 @@ async function main(): Promise<number> {
         schemaVersion: index.raw.schemaVersion,
         county: index.raw.county,
         builtFrom: index.raw.builtFrom,
+        sourceSnapshot: index.raw.sourceSnapshot,
         embedding: index.raw.embedding,
         chunks: index.raw.chunks.length,
         documents: docs.size,
@@ -76,15 +149,7 @@ async function main(): Promise<number> {
     }
 
     case "query": {
-      const fromFile = flagValue(rest, "--file");
-      const topK = Number.parseInt(flagValue(rest, "--top-k") ?? "5", 10);
-      const text = fromFile
-        ? await readFile(fromFile, "utf8")
-        : rest
-            .filter(
-              (argument) => !argument.startsWith("--") && argument !== flagValue(rest, "--top-k"),
-            )
-            .join(" ");
+      const { text, topK } = await parseQueryArguments(rest);
       if (text.trim().length === 0) {
         print({ error: "empty_query", detail: "Pass a query string or --file <path>." });
         return 2;
@@ -95,6 +160,19 @@ async function main(): Promise<number> {
         `confidence=${result.confidence} considered=${result.consideredCount} kept=${result.chunks.length}`,
       );
       print(result);
+      return 0;
+    }
+
+    case "paths": {
+      const { text, topK } = await parseQueryArguments(rest);
+      if (text.trim().length === 0) {
+        print({ error: "empty_query", detail: "Pass acceptance criteria or --file <path>." });
+        return 2;
+      }
+      log(`paths: ${text.trim().slice(0, 120)}`);
+      const result = suggestPaths({ query: text.trim(), topK });
+      log(`abstained=${result.abstained} suggestions=${result.suggestions.length}`);
+      print({ command: "paths", ...result });
       return 0;
     }
 
@@ -111,8 +189,11 @@ async function main(): Promise<number> {
         command: "help",
         usage: [
           "pnpm --filter @oracle-lake/rag build:index",
+          "pnpm --filter @oracle-lake/rag promote:published -- --run-id <run> --root-cid <cid>",
           'pnpm --filter @oracle-lake/rag query -- "why is contractor_name empty"',
           "pnpm --filter @oracle-lake/rag query -- --top-k 8 --file ./question.txt",
+          'pnpm --filter @oracle-lake/rag paths -- "permit-grain contractor evidence"',
+          "pnpm --filter @oracle-lake/rag paths -- --top-k 8 --file ./criteria.txt",
           "pnpm --filter @oracle-lake/rag inspect",
           "pnpm --filter @oracle-lake/rag eval",
         ],

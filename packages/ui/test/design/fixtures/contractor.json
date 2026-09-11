@@ -1,18 +1,19 @@
 {
   "posture": {
-    "properties_with_permits": 12335,
-    "permit_records": 17457,
-    "roofing_permit_records": 3256,
-    "open_permit_records": 3610,
-    "open_roofing_permit_records": 236,
-    "properties_with_open_permit": 2799,
-    "properties_with_open_roofing_permit": 226,
-    "open_under_90_days": 1595,
-    "open_90_to_364_days": 917,
-    "open_1_to_5_years": 266,
+    "properties_with_permits": 14901,
+    "permit_records": 21221,
+    "roofing_permit_records": 3653,
+    "open_permit_records": 5525,
+    "open_roofing_permit_records": 342,
+    "properties_with_open_permit": 4213,
+    "properties_with_open_roofing_permit": 331,
+    "open_under_90_days": 2397,
+    "open_90_to_364_days": 1527,
+    "open_1_to_5_years": 267,
     "open_over_5_years": 20,
-    "longest_open_permit_days": 11194,
-    "contractor_names_present": 0,
+    "longest_open_permit_days": 11196,
+    "longest_open_roofing_permit_days": 3426,
+    "contractor_names_present": 2359,
     "bbb_ratings_present": 0
   },
   "gating": [
@@ -32,8 +33,8 @@
     }
   ],
   "provenance": {
-    "sql": "SELECT\n  count(*) FILTER (WHERE coalesce(has_permits, FALSE)) AS properties_with_permits,\n  sum(coalesce(permit_count, 0)) AS permit_records,\n  sum(coalesce(roofing_permit_count, 0)) AS roofing_permit_records,\n  sum(coalesce(open_permit_count, 0)) AS open_permit_records,\n  sum(coalesce(open_roofing_permit_count, 0)) AS open_roofing_permit_records,\n  count(*) FILTER (WHERE coalesce(open_permit_count, 0) > 0) AS properties_with_open_permit,\n  count(*) FILTER (WHERE coalesce(open_roofing_permit_count, 0) > 0) AS properties_with_open_roofing_permit,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 1 AND 89) AS open_under_90_days,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 90 AND 364) AS open_90_to_364_days,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 365 AND 1824) AS open_1_to_5_years,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) >= 1825) AS open_over_5_years,\n  max(coalesce(longest_open_permit_days, 0)) AS longest_open_permit_days,\n  max(latest_permit_date) AS latest_permit_date,\n  count(contractor_name) AS contractor_names_present,\n  count(bbb_rating) AS bbb_ratings_present\nFROM properties",
-    "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/.claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/20260909T185056Z/query-table.parquet",
+    "sql": "SELECT\n  count(*) FILTER (WHERE coalesce(has_permits, FALSE)) AS properties_with_permits,\n  sum(coalesce(permit_count, 0)) AS permit_records,\n  sum(coalesce(roofing_permit_count, 0)) AS roofing_permit_records,\n  sum(coalesce(open_permit_count, 0)) AS open_permit_records,\n  sum(coalesce(open_roofing_permit_count, 0)) AS open_roofing_permit_records,\n  count(*) FILTER (WHERE coalesce(open_permit_count, 0) > 0) AS properties_with_open_permit,\n  count(*) FILTER (WHERE coalesce(open_roofing_permit_count, 0) > 0) AS properties_with_open_roofing_permit,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 1 AND 89) AS open_under_90_days,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 90 AND 364) AS open_90_to_364_days,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 365 AND 1824) AS open_1_to_5_years,\n  count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) >= 1825) AS open_over_5_years,\n  max(coalesce(longest_open_permit_days, 0)) AS longest_open_permit_days,\n  max(coalesce(longest_open_roofing_permit_days, 0)) AS longest_open_roofing_permit_days,\n  max(latest_permit_date) AS latest_permit_date,\n  count(contractor_name) AS contractor_names_present,\n  count(bbb_rating) AS bbb_ratings_present\nFROM properties",
+    "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/pipeline/data/artifacts/publish/lake/runs/20260911T131000Z/query-table.parquet",
     "dataSourceKind": "local",
     "sourceSystems": [
       "Clermont eTRAKiT permits; null elsewhere",
@@ -41,13 +42,13 @@
       "FL DOR SDF 2026P",
       "FL DOR TPP 2026P",
       "FL GIO parcel centroids 2025",
-      "Lake County CD Plus permit layer",
+      "Lake County CD Plus permit layer + Clermont eTRAKiT permits",
       "derived by the pipeline",
       "gated at source (HTTP 403)",
       "not ingested for this run"
     ],
-    "runId": "20260909T185056Z",
-    "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q"
+    "runId": "20260910T225242Z",
+    "rootCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy"
   },
-  "note": "Permit signals come from the Lake County CD Plus permit layer, joined to the DOR roll on Alternate_Key. That layer publishes a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so it is a current-permit source, not a permit archive."
+  "note": "Permit signals combine the Lake County CD Plus layer, joined to the DOR roll on Alternate_Key, with the harvested Clermont eTRAKiT records. CD Plus publishes a rolling 365-day Permit_LastModDate window for unincorporated Lake County; Clermont is the only municipality with harvested contractor detail in this run."
 }

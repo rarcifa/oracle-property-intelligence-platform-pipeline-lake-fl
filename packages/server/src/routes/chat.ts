@@ -1,7 +1,7 @@
 /**
  * The `/api/chat` route.
  *
- * A missing `ANTHROPIC_API_KEY` is a 503 with an explanation, never a boot
+ * A missing `OPENAI_API_KEY` is a 503 with an explanation, never a boot
  * failure and never a crash: the data surfaces must keep working without a
  * model key.
  */
@@ -23,7 +23,7 @@ export function registerChatRoutes(router: Router, context: AppContext): void {
       return fail(
         503,
         "chat_unavailable",
-        "ANTHROPIC_API_KEY is not set on the server, so the natural-language agent is disabled. Every other view queries the published data directly and is unaffected.",
+        "OPENAI_API_KEY is not set on the server, so the natural-language agent is disabled. Every other view queries the published data directly and is unaffected.",
       );
     }
     // Identify the caller as well as a Function URL allows. `x-forwarded-for`

@@ -21,6 +21,20 @@ pnpm --filter @oracle-lake/rag eval
 
 Nothing here needs an API key, a model download or a network connection.
 
+After an externally authorized publication is finalized, promote that exact public release
+instead of editing `corpus-source.json` by hand:
+
+```bash
+pnpm --filter @oracle-lake/rag promote:published -- \
+  --run-id <YYYYMMDDTHHMMSSZ> --root-cid <bafy...>
+```
+
+Promotion validates that `artifacts/latest.json`, the run manifest, the complete
+two-independent-gateway verification receipt, the transactional publication ledger and the
+local run bytes all describe one `FINALIZED` run/root. It then writes a digest-bound
+promotion receipt, changes the explicit corpus source and rebuilds the committed index. It
+does not publish or deploy anything.
+
 Over HTTP, with the server running:
 
 ```bash
@@ -107,7 +121,8 @@ src/index/paths.ts       where the committed index lives — no build-time impor
 src/index/load.ts        validates and prepares it
 src/retrieve.ts          the pipeline and the confidence policy
 src/eval/                the evaluation set and its harness
-src/cli.ts               inspect | query | eval | build
+src/promote.ts           validate a finalized public release, receipt, and index promotion
+src/cli.ts               inspect | query | eval | build | promote
 index-data/lake-rag-index.json   committed build output (744 KB)
 ```
 

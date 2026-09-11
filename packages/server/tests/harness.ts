@@ -17,7 +17,7 @@ import type { HttpResponse, Router } from "../src/http/router.js";
 export const config: ServerConfig = loadConfig({
   ...process.env,
   // The test suite never reaches a model provider.
-  ANTHROPIC_API_KEY: "",
+  OPENAI_API_KEY: "",
 });
 
 /** True when a published Parquet is available to test against. */

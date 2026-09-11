@@ -29,6 +29,7 @@ import {
   getContractorView,
   getDatasetStats,
   getProperty,
+  getPropertyPermits,
   runReadOnlySql,
   searchProperties,
 } from "../data/queries.js";
@@ -78,7 +79,13 @@ const FILTER_PROPERTIES: JsonSchema = {
   maxRoofAge: numberProp("Maximum roof_age_years.", { minimum: 0 }),
   hasPermits: boolProp("Only parcels with (true) or without (false) permit records."),
   hasOpenRoofingPermit: boolProp("Only parcels with open_roofing_permit_count > 0."),
-  minOpenPermitDays: numberProp("Minimum longest_open_permit_days.", { minimum: 0 }),
+  minOpenPermitDays: numberProp("Minimum longest_open_permit_days for permits of any type.", {
+    minimum: 0,
+  }),
+  minOpenRoofingPermitDays: numberProp(
+    "Minimum longest_open_roofing_permit_days; also requires an open roofing permit.",
+    { minimum: 0 },
+  ),
   ownerOutOfCounty: boolProp("Owner mailing city is outside Lake County."),
   ownerOutOfState: boolProp("Owner mailing state is not FL."),
   noRecordedSale: boolProp(
@@ -106,12 +113,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
     name: "queryProperties",
     title: "Query properties with SQL",
     description:
-      "Run a single read-only SELECT or WITH statement against the published table, which is exposed as the view `properties`. Anything that mutates, attaches, installs or copies is rejected. Returns rows plus the SQL that produced them.",
+      "Run a single read-only SELECT or WITH statement against the published tables exposed as `properties` and `permits`. Anything that mutates, attaches, installs or copies is rejected. Returns rows plus the SQL that produced them.",
     inputSchema: {
       type: "object",
       properties: {
         sql: stringProp(
-          "A single read-only SELECT or WITH statement. Reference the table as `properties`.",
+          "A single read-only SELECT or WITH statement. Reference property rows as `properties` and full permit rows as `permits`.",
         ),
         limit: numberProp("Maximum rows to return.", { minimum: 1, maximum: 500 }),
       },
@@ -153,13 +160,30 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
     name: "getOracleProperty",
     title: "Get one property",
     description:
-      "Return every published column for one parcel, plus the upstream systems that contributed to it and the reason each permanently-null column is null.",
+      "Return every published column and linked permit record for one parcel, plus the upstream systems that contributed to it and the reason each permanently-null column is null.",
     inputSchema: {
       type: "object",
       properties: {
         parcelId: stringProp(
           "Lake County parcel id (request_identifier), e.g. 05-18-25-0004-000-00400.",
         ),
+      },
+      required: ["parcelId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "getPropertyPermits",
+    title: "Get permit records for one property",
+    description:
+      "Return full permit-grain records for one Lake County parcel, including status, dates, duration open, contractor identity, BBB rating when available, source URL, and linkage state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        parcelId: stringProp(
+          "Lake County parcel id (request_identifier), e.g. 05-18-25-0004-000-00400.",
+        ),
+        limit: numberProp("Maximum permit rows to return.", { minimum: 1, maximum: 500 }),
       },
       required: ["parcelId"],
       additionalProperties: false,
@@ -192,11 +216,17 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
     name: "findOpenRoofPermits",
     title: "Find open roofing permits",
     description:
-      "Find parcels carrying at least one open roofing permit, ordered by how long the longest open permit has been open.",
+      "Find parcels carrying at least one open roofing permit, ordered by how long the longest open roofing permit has been open.",
     inputSchema: {
       type: "object",
       properties: {
-        minOpenPermitDays: numberProp("Minimum longest_open_permit_days.", { minimum: 0 }),
+        minOpenRoofingPermitDays: numberProp("Minimum longest_open_roofing_permit_days.", {
+          minimum: 0,
+        }),
+        minOpenPermitDays: numberProp(
+          "Deprecated compatibility alias for minOpenRoofingPermitDays on this purpose-built tool.",
+          { minimum: 0, deprecated: true },
+        ),
         city: stringProp("Restrict to one city."),
         limit: numberProp("Rows to return.", { minimum: 1, maximum: 500 }),
       },
@@ -231,7 +261,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
  * Each tool advertises `additionalProperties: false`, but the Zod schemas
  * behind them were not strict, so Zod stripped anything unrecognised and the
  * tool ran with the arguments it did understand — usually none. A reviewer
- * calling `findOpenRoofPermits` with `minOpenDays` instead of `minOpenPermitDays`
+ * calling `findOpenRoofPermits` with `minOpenDays` instead of
+ * `minOpenRoofingPermitDays`
  * got all 226 open-roofing-permit rows back and reasonably concluded the filter
  * was ignored. It was not: the argument was.
  *
@@ -248,6 +279,11 @@ const noArgsSchema = strictArgs(z.object({}));
 const sqlToolSchema = strictArgs(readOnlySqlSchema);
 const listToolSchema = strictArgs(searchOptionsSchema);
 const propertyToolSchema = strictArgs(parcelIdSchema);
+const propertyPermitsToolSchema = strictArgs(
+  parcelIdSchema.extend({
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+  }),
+);
 
 const agedRoofsSchema = strictArgs(
   z.object({
@@ -263,6 +299,8 @@ const agedRoofsSchema = strictArgs(
 
 const openRoofPermitsSchema = strictArgs(
   z.object({
+    minOpenRoofingPermitDays: z.coerce.number().min(0).max(100_000).optional(),
+    /** Compatibility with callers of the original purpose-built tool. */
     minOpenPermitDays: z.coerce.number().min(0).max(100_000).optional(),
     city: z.string().trim().min(1).max(80).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(50),
@@ -405,6 +443,19 @@ export async function callTool(
       return { payload: detail };
     }
 
+    case "getPropertyPermits": {
+      const parsed = propertyPermitsToolSchema.safeParse(args);
+      if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
+      return {
+        payload: await getPropertyPermits(
+          context.store,
+          provenance,
+          parsed.data.parcelId,
+          parsed.data.limit,
+        ),
+      };
+    }
+
     case "findAgedRoofs": {
       const parsed = agedRoofsSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
@@ -431,14 +482,19 @@ export async function callTool(
     case "findOpenRoofPermits": {
       const parsed = openRoofPermitsSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
-      const { minOpenPermitDays, city, limit } = parsed.data;
+      const { minOpenRoofingPermitDays, minOpenPermitDays, city, limit } = parsed.data;
+      if (typeof minOpenRoofingPermitDays === "number" && typeof minOpenPermitDays === "number") {
+        return invalid(
+          "Use minOpenRoofingPermitDays; do not send it together with the deprecated minOpenPermitDays alias.",
+        );
+      }
       const [result, contractor] = await Promise.all([
         searchProperties(context.store, provenance, {
           hasOpenRoofingPermit: true,
-          minOpenPermitDays,
+          minOpenRoofingPermitDays: minOpenRoofingPermitDays ?? minOpenPermitDays,
           city,
           limit,
-          sortBy: "longest_open_permit_days",
+          sortBy: "longest_open_roofing_permit_days",
           sortDir: "desc",
         }),
         getContractorView(context.store, provenance),

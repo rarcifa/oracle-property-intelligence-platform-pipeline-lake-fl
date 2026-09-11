@@ -72,11 +72,11 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   owner_count: { means: "Derived by the pipeline by counting the owner names in owners_text." },
   owner_out_of_county: {
     means:
-      "Derived: true when the owner's mailing address is outside Lake County. 50,010 parcels are owned out of county. It is an absentee-ownership signal, not a residency determination.",
+      "Derived: true when the owner's mailing address is outside Lake County. It is an absentee-ownership signal, not a residency determination; use coverage.json or SQL for the current count.",
   },
   owner_out_of_state: {
     means:
-      "Derived: true when the owner's mailing address is outside Florida. 20,236 parcels are owned out of state.",
+      "Derived: true when the owner's mailing address is outside Florida; use coverage.json or SQL for the current count.",
   },
   built_year: {
     means:
@@ -104,12 +104,12 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   roof_age_years: {
     means:
-      "Derived roof age in years. Known on 169,028 parcels; 117,605 of those are 15 years or older, which is the county's default aged-roof threshold. Always read it together with roof_age_basis, because the two bases mean very different things.",
+      "Derived roof age in years. Fifteen years is the county's default aged-roof threshold. Always read it together with roof_age_basis, because the two bases mean very different things; use coverage.json or SQL for current counts.",
     nullWhen: "Null when neither a roofing permit nor a year built is available for the parcel.",
   },
   roof_age_basis: {
     means:
-      "Derived: names the evidence roof_age_years was computed from. roofing_permit_completed means a completed roofing permit dated the roof (2,646 parcels, the strongest basis). roofing_permit_issued means a roofing permit was issued but not recorded complete. year_built means no roofing permit is on record and the structure's year built was used, which makes the roof age an UPPER BOUND on roof age rather than a measurement of the roof. Because the permit layer is a rolling 365-day window covering unincorporated Lake County only, a year_built basis frequently means 'the re-roof is not in the window', not 'the roof was never replaced'.",
+      "Derived: names the evidence roof_age_years was computed from. roofing_permit_completed means a completed roofing permit dated the roof (the strongest basis). roofing_permit_issued means a roofing permit was issued but not recorded complete. year_built means no roofing permit is on record and the structure's year built was used, which makes the roof age an UPPER BOUND on roof age rather than a measurement of the roof. Because permit sources have jurisdiction and time limits, a year_built basis can mean 'the re-roof is outside the loaded permit coverage', not 'the roof was never replaced'.",
   },
   roof_last_permit_date: {
     means: "The roofing permit date that dated the roof, when the basis is a permit.",
@@ -118,25 +118,32 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   has_permits: {
     means:
-      "True when the CD Plus layer published at least one permit for the parcel. True on 12,335 parcels of 215,806.",
+      "True when either loaded permit source publishes at least one permit that links to the parcel; use coverage.json or SQL for the current count.",
     nullWhen:
       "False is not proof that no permit exists. The layer carries a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so a permit issued by any of the 14 municipalities, or issued and closed before the window, is simply absent.",
   },
-  permit_count: { means: "Permits from the CD Plus layer joined to this parcel by Alternate_Key." },
+  permit_count: {
+    means:
+      "Permit rows from the loaded county CD Plus and Clermont eTRAKiT sources joined to this parcel; use permit-table.parquet for record-level detail.",
+  },
   roofing_permit_count: {
     means:
-      "Permits of type RF, RFC, RFR, ROC or ROR on this parcel. 3,256 roofing permit records are joined across the county.",
+      "Loaded permits classified as roofing on this parcel. Use coverage.json or SQL for the current count and permit-table.parquet for the qualifying rows.",
   },
   open_permit_count: {
     means: "Permits in an open status: APPLY, INSPECT, ISSUED, READY or RENEWED.",
   },
   open_roofing_permit_count: {
     means:
-      "Open roofing permits on this parcel. 226 properties countywide have at least one, and 20 permits have been open more than five years.",
+      "Open roofing permits on this parcel. Use longest_open_roofing_permit_days for a duration threshold and coverage.json or SQL for current counts.",
   },
   longest_open_permit_days: {
     means:
-      "Days the parcel's longest-running open permit has been open, used to rank stalled work.",
+      "Days the parcel's longest-running open permit of any type has been open. It must not be used as proof that a roofing permit has been open that long.",
+  },
+  longest_open_roofing_permit_days: {
+    means:
+      "Days the parcel's longest-running open roofing permit has been open. A five-year roofing lead requires this roofing-specific value to be at least 1,825 days; the generic longest_open_permit_days is not a substitute.",
   },
   latest_permit_date: { means: "Most recent permit date on the parcel from the CD Plus layer." },
   contractor_name: {

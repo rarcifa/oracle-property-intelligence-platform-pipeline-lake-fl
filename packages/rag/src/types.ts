@@ -40,6 +40,8 @@ export const provenanceSchema = z.object({
   rootCid: z.string().nullable(),
   /** Resolvable `ipfs://` path, when the text is published. */
   ipfsPath: z.string().nullable(),
+  /** Whether these bytes are repository prose, a local candidate, or a released artifact. */
+  releaseState: z.enum(["repository", "local_candidate", "published"]),
 });
 
 export type Provenance = z.infer<typeof provenanceSchema>;
@@ -81,6 +83,8 @@ export const corpusLinkSchema = z.object({
     "requests_records_from",
     "published_in",
   ]),
+  /** Why the edge exists; kept explicit so graph traversal can explain itself. */
+  metadata: z.record(z.string()),
 });
 
 export type CorpusLink = z.infer<typeof corpusLinkSchema>;
@@ -90,11 +94,25 @@ const postingsSchema = z.array(z.tuple([z.number().int().min(0), z.number().int(
 
 /** The committed, key-free retrieval index. */
 export const ragIndexSchema = z.object({
-  schemaVersion: z.literal("oracle.rag-index.v1"),
+  schemaVersion: z.literal("oracle.rag-index.v2"),
   county: z.string(),
   builtFrom: z.object({
-    runId: z.string().nullable(),
+    runId: z.string(),
+    releaseState: z.enum(["local_candidate", "published"]),
     rootCid: z.string().nullable(),
+    /** Non-circular digest of the exact repository and run files used as corpus input. */
+    snapshotDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    sourceCount: z.number().int().min(1),
+    sourceReceipt: z.string(),
+  }),
+  sourceSnapshot: z.object({
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    inputs: z.array(
+      z.object({
+        path: z.string(),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+    ),
   }),
   /** Identifies the retrieval model so a stale index is detectable. */
   embedding: z.object({
@@ -166,8 +184,10 @@ export interface RetrievalResult {
   consideredCount: number;
   index: {
     chunkCount: number;
-    runId: string | null;
+    runId: string;
     rootCid: string | null;
+    releaseState: "local_candidate" | "published";
+    snapshotDigest: string;
     embeddingModel: string;
     embeddingDimension: number;
   };
@@ -175,7 +195,7 @@ export interface RetrievalResult {
 
 /** Retrieval request options. */
 export const retrievalOptionsSchema = z.object({
-  query: z.string().trim().min(2).max(500),
+  query: z.string().trim().min(2).max(4000),
   topK: z.number().int().min(1).max(20).default(5),
   /** Restrict to these document families. */
   docTypes: z.array(z.enum(DOC_TYPES)).optional(),

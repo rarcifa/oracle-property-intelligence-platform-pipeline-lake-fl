@@ -43,6 +43,12 @@ describe("interpretParcelQuery", () => {
 
   it("reads a stalled permit as a day threshold", () => {
     expect(filtersOf("roofing permits still open more than five years")).toMatchObject({
+      minOpenRoofingPermitDays: 1825,
+    });
+  });
+
+  it("keeps the generic duration field for a non-roofing permit query", () => {
+    expect(filtersOf("permits open more than five years")).toMatchObject({
       minOpenPermitDays: 1825,
     });
   });
@@ -105,11 +111,11 @@ describe("interpretParcelQuery", () => {
     // the word "open", so the roofing check never fired and the answer widened
     // from 2 parcels to 20 — silently, which is worse than failing.
     expect(filtersOf("roofing permits still open more than five years")).toMatchObject({
-      minOpenPermitDays: 1825,
+      minOpenRoofingPermitDays: 1825,
       hasOpenRoofingPermit: true,
     });
     expect(filtersOf("parcels with roofing permits open more than 5 years")).toMatchObject({
-      minOpenPermitDays: 1825,
+      minOpenRoofingPermitDays: 1825,
       hasOpenRoofingPermit: true,
     });
   });
@@ -123,7 +129,7 @@ describe("interpretParcelQuery", () => {
     );
     expect(result.filters.q).toBeUndefined();
     expect(result.filters).toMatchObject({
-      minOpenPermitDays: 1825,
+      minOpenRoofingPermitDays: 1825,
       hasOpenRoofingPermit: true,
     });
   });

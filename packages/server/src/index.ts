@@ -118,7 +118,7 @@ export async function main(): Promise<void> {
         resolveMs: opened.resolveMs,
         openMs: opened.openMs,
         propertyCount,
-        chatEnabled: config.anthropicApiKey !== null,
+        chatEnabled: config.openaiApiKey !== null,
         bootMs: Date.now() - startedAt,
       }),
     );

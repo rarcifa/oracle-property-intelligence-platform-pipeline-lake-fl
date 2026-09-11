@@ -2,7 +2,7 @@
  * The published Lake County query-table schema.
  *
  * Mirrors `LAKE_QUERY_TABLE_SCHEMA_FIELDS` in the ingestion runtime
- * (`.claude/skills/use-oracle/runtime/src/counties/lake/query-table.mjs`) in
+ * (`pipeline/src/counties/lake/query-table.mjs`) in
  * published column order. `assertQueryTableColumns` in the runtime is the
  * producer-side gate; `assertSchemaMatches` here is the consumer-side gate, so
  * a schema drift fails a test rather than silently returning empty columns.
@@ -67,7 +67,7 @@ const DERIVED = "derived by the pipeline";
  */
 const CLERMONT = "Clermont eTRAKiT permits; null elsewhere";
 
-/** All 62 published columns, in Parquet column order. */
+/** All 63 published columns, in Parquet column order. */
 export const QUERY_TABLE_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
   c("property_id", "UTF8", false, "Property id", DERIVED),
   c("property_cid", "UTF8", true, "Property CID", DERIVED),
@@ -119,6 +119,13 @@ export const QUERY_TABLE_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
   c("open_permit_count", "INT32", true, "Open permits", PERMITS),
   c("open_roofing_permit_count", "INT32", true, "Open roofing permits", PERMITS),
   c("longest_open_permit_days", "INT32", true, "Longest open permit (days)", PERMITS),
+  c(
+    "longest_open_roofing_permit_days",
+    "INT32",
+    true,
+    "Longest open roofing permit (days)",
+    PERMITS,
+  ),
   c("latest_permit_date", "UTF8", true, "Latest permit date", PERMITS),
   c("contractor_name", "UTF8", true, "Contractor of record", CLERMONT),
   c("bbb_rating", "UTF8", true, "BBB rating", "gated at source (HTTP 403)"),
@@ -224,6 +231,7 @@ export interface PropertyRow {
   open_permit_count: number | null;
   open_roofing_permit_count: number | null;
   longest_open_permit_days: number | null;
+  longest_open_roofing_permit_days: number | null;
   latest_permit_date: string | null;
   contractor_name: string | null;
   bbb_rating: string | null;

@@ -27,6 +27,24 @@ export interface Expansion {
 export const QUERY_EXPANSIONS: readonly Expansion[] = Object.freeze([
   {
     triggers: [
+      "open roofing",
+      "roofing permit still open",
+      "five year roofing",
+      "five years",
+      "1825 days",
+    ],
+    add: [
+      "longest_open_roofing_permit_days",
+      "days_open",
+      "is_roofing",
+      "is_open",
+      "five-year open-roofing lead",
+      "1825",
+      "permit table",
+    ],
+  },
+  {
+    triggers: [
       "empty",
       "blank",
       "missing",

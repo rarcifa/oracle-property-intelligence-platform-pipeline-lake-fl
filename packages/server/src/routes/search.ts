@@ -3,7 +3,7 @@
  *
  * Deliberately independent of the model key. The natural-language agent is the
  * nicer surface, but retrieval itself is a data capability, and a reviewer with
- * no `ANTHROPIC_API_KEY` must still be able to see that it works. Every hit
+ * no `OPENAI_API_KEY` must still be able to see that it works. Every hit
  * comes back with its score, its score's component signals, and the provenance
  * of the text — repository path, published artifact and CID.
  *
@@ -95,9 +95,14 @@ async function parcelHalf(
 
 /** Register the retrieval routes. */
 export function registerSearchRoutes(router: Router, context: AppContext): void {
-  router.get("/api/search", () => {
+  router.get("/api/search", async () => {
     try {
       const index = getRetrievalIndex();
+      const provenance = await context.provenance();
+      searchCorpus(
+        { query: "Lake County corpus status", topK: 1 },
+        { runId: provenance.runId, rootCid: provenance.rootCid },
+      );
       const byType = new Map<string, number>();
       const documents = new Set<string>();
       for (const chunk of index.raw.chunks) {
@@ -133,7 +138,11 @@ export function registerSearchRoutes(router: Router, context: AppContext): void 
       );
     }
     try {
-      const corpus = searchCorpus(parsed.data);
+      const provenance = await context.provenance();
+      const corpus = searchCorpus(parsed.data, {
+        runId: provenance.runId,
+        rootCid: provenance.rootCid,
+      });
 
       // Hybrid, and the second half is the point: retrieval used to cover the
       // dataset's metadata only, so a question about the 215,806 parcels

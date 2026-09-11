@@ -36,6 +36,7 @@ describe("tool definitions", () => {
         "findPropertiesInRadius",
         "getOracleDatasetInfo",
         "getOracleProperty",
+        "getPropertyPermits",
         "getPropertyQuerySchema",
         "listOracleProperties",
         "queryProperties",
@@ -48,6 +49,17 @@ describe("tool definitions", () => {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.inputSchema.type).toBe("object");
     }
+  });
+
+  it("advertises an explicit roofing-duration field", () => {
+    const list = MCP_TOOLS.find((tool) => tool.name === "listOracleProperties");
+    const openRoof = MCP_TOOLS.find((tool) => tool.name === "findOpenRoofPermits");
+    const listProperties = list?.inputSchema.properties as Record<string, unknown> | undefined;
+    const openRoofProperties = openRoof?.inputSchema.properties as
+      Record<string, { deprecated?: boolean }> | undefined;
+    expect(listProperties).toHaveProperty("minOpenRoofingPermitDays");
+    expect(openRoofProperties).toHaveProperty("minOpenRoofingPermitDays");
+    expect(openRoofProperties?.minOpenPermitDays?.deprecated).toBe(true);
   });
 });
 
@@ -130,7 +142,7 @@ describe.skipIf(!hasParquet)("MCP over the data layer", () => {
     };
     expect(result.isError).toBe(false);
     expect(result.content[0]?.type).toBe("text");
-    expect(result.structuredContent.columnCount).toBe(62);
+    expect(result.structuredContent.columnCount).toBe(63);
   });
 
   it("rejects a call to an unadvertised tool", async () => {
@@ -248,6 +260,32 @@ describe.skipIf(!hasParquet)("MCP tool handlers", () => {
     expect(result.isError).toBe(true);
   });
 
+  it("getPropertyPermits exposes bounded permit-grain records", async () => {
+    const seed = await callTool(await ctx(), "listOracleProperties", {
+      hasPermits: true,
+      limit: 1,
+    });
+    const parcelId = String(
+      (seed.payload as { rows: { request_identifier: string }[] }).rows[0]?.request_identifier,
+    );
+    const result = await callTool(await ctx(), "getPropertyPermits", {
+      parcelId,
+      limit: 5,
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.payload as {
+      permitsAvailable: boolean;
+      permits: { permit_id: string }[];
+      provenance: { sql: string };
+    };
+    if (payload.permitsAvailable) {
+      expect(payload.permits.length).toBeGreaterThan(0);
+      expect(payload.permits.length).toBeLessThanOrEqual(5);
+      expect(payload.permits[0]?.permit_id).toBeTruthy();
+    }
+    expect(payload.provenance.sql).toContain("FROM permits");
+  });
+
   it("an unknown tool name is a tool error, not a throw", async () => {
     const result = await callTool(await ctx(), "nope", {});
     expect(result.isError).toBe(true);
@@ -260,8 +298,9 @@ describe.skipIf(!hasParquet)("MCP tool handlers", () => {
  * behind them stripped unknown keys instead of refusing them, so a misspelled
  * filter returned the whole unfiltered result set and read as a valid answer —
  * which is exactly how `findOpenRoofPermits` came to be reported as ignoring
- * its filter. It does not; `minOpenPermitDays` narrows correctly, and both
- * halves are asserted here.
+ * its filter. It does not; `minOpenRoofingPermitDays` narrows correctly, and
+ * both halves are asserted here. The original field remains a documented alias
+ * on the purpose-built tool only.
  */
 describe.skipIf(!hasParquet)("MCP argument validation", () => {
   let context: AppContext | null = null;
@@ -280,6 +319,7 @@ describe.skipIf(!hasParquet)("MCP argument validation", () => {
     ["findPropertiesInRadius", { lat: 28.5, lon: -81.7, radiusMiles: 1, minRoofAgeYears: 30 }],
     ["listOracleProperties", { cityName: "CLERMONT" }],
     ["getOracleProperty", { parcelId: "05-18-25-0004-000-00400", verbose: true }],
+    ["getPropertyPermits", { parcelId: "05-18-25-0004-000-00400", verbose: true }],
     ["queryProperties", { sql: "SELECT 1 AS n", maxRows: 5 }],
     ["getPropertyQuerySchema", { county: "lake" }],
     ["getOracleDatasetInfo", { includeCoverage: true }],
@@ -292,10 +332,10 @@ describe.skipIf(!hasParquet)("MCP argument validation", () => {
     expect((result.payload as { detail: string }).detail).toMatch(/[Uu]nrecognized key/);
   });
 
-  it("minOpenPermitDays narrows the result set rather than being ignored", async () => {
-    const matched = async (minOpenPermitDays: number): Promise<number> => {
+  it("minOpenRoofingPermitDays narrows the result set rather than being ignored", async () => {
+    const matched = async (minOpenRoofingPermitDays: number): Promise<number> => {
       const result = await callTool(await ctx(), "findOpenRoofPermits", {
-        minOpenPermitDays,
+        minOpenRoofingPermitDays,
         limit: 1,
       });
       expect(result.isError).toBeFalsy();
@@ -306,6 +346,28 @@ describe.skipIf(!hasParquet)("MCP argument validation", () => {
     expect(aYear).toBeLessThan(all);
     expect(eightYears).toBeLessThan(aYear);
     expect(eightYears).toBeGreaterThan(0);
+  });
+
+  it("keeps the original purpose-built field as an unambiguous compatibility alias", async () => {
+    const [current, legacy] = await Promise.all([
+      callTool(await ctx(), "findOpenRoofPermits", {
+        minOpenRoofingPermitDays: 1825,
+        limit: 1,
+      }),
+      callTool(await ctx(), "findOpenRoofPermits", { minOpenPermitDays: 1825, limit: 1 }),
+    ]);
+    expect((current.payload as { matched: number }).matched).toBe(
+      (legacy.payload as { matched: number }).matched,
+    );
+  });
+
+  it("rejects both duration fields together instead of choosing one silently", async () => {
+    const result = await callTool(await ctx(), "findOpenRoofPermits", {
+      minOpenRoofingPermitDays: 1825,
+      minOpenPermitDays: 365,
+    });
+    expect(result.isError).toBe(true);
+    expect((result.payload as { error: string }).error).toBe("invalid_arguments");
   });
 });
 

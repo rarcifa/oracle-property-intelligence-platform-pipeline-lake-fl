@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "elephant.permit-table-schema.v1",
+  "county": "lake",
+  "table": "permit-table.parquet",
+  "columnCount": 22,
+  "columns": [
+    {
+      "name": "permit_id",
+      "type": "UTF8",
+      "optional": false
+    },
+    {
+      "name": "permit_number",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "parcel_identifier",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "alt_key",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "jurisdiction",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "permit_type",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "permit_description",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "permit_status",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "applied_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "approved_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "issued_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "completed_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "last_modified_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "is_roofing",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "is_open",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "days_open",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "contractor_name",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "contractor_license",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "bbb_rating",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "source_url",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "source_system",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "linkage_status",
+      "type": "UTF8",
+      "optional": true
+    }
+  ]
+}

@@ -19,7 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const agentSource = readFileSync(resolve(here, "../src/chat/agent.ts"), "utf8");
 
 function agentWith(apiKey: string | undefined) {
-  const config = loadConfig({ ...process.env, ANTHROPIC_API_KEY: apiKey ?? "" });
+  const config = loadConfig({ ...process.env, OPENAI_API_KEY: apiKey ?? "" });
   // The store is never opened: constructing it is enough for these assertions.
   const store = new OracleDataStore({ source: "/tmp/never-opened.parquet" });
   return createChatAgent(createContext(config, store));
@@ -35,24 +35,24 @@ describe("chat availability", () => {
       agentWith(undefined).run([{ role: "user", content: "hi" }]),
     ).rejects.toBeInstanceOf(ChatUnavailableError);
     await expect(agentWith(undefined).run([{ role: "user", content: "hi" }])).rejects.toThrow(
-      /ANTHROPIC_API_KEY/,
+      /OPENAI_API_KEY/,
     );
   });
 
   it("is enabled when a key is present", () => {
-    expect(agentWith("sk-ant-test").enabled).toBe(true);
+    expect(agentWith("sk-openai-test").enabled).toBe(true);
   });
 
   it("defaults to the configured model id", () => {
-    expect(agentWith("sk-ant-test").modelId).toBe("claude-haiku-4-5");
+    expect(agentWith("sk-openai-test").modelId).toBe("gpt-5-mini");
   });
 });
 
 describe("guideline conformance of the LLM path", () => {
   it("uses the Vercel AI SDK rather than a provider SDK directly", () => {
     expect(agentSource).toContain('from "ai"');
-    expect(agentSource).toContain('from "@ai-sdk/anthropic"');
-    expect(agentSource).not.toContain("@anthropic-ai/sdk");
+    expect(agentSource).toContain('from "@ai-sdk/openai"');
+    expect(agentSource).not.toContain("openai/resources");
   });
 
   it("declares tool inputs with Zod", () => {

@@ -47,14 +47,14 @@ describe.skipIf(!hasParquet)("REST API", () => {
     expect(body.run?.rootCid).toBe(served.provenance.rootCid);
   });
 
-  it("serves the 62-column schema", async () => {
+  it("serves the 63-column schema", async () => {
     const response = await request(await getRouterOnce(), "GET", "/api/meta/schema");
     const body = bodyJson<{
       columnCount: number;
       alwaysNullColumns: Record<string, string>;
       partiallyPopulatedColumns: Record<string, string>;
     }>(response);
-    expect(body.columnCount).toBe(62);
+    expect(body.columnCount).toBe(63);
     expect(body.alwaysNullColumns.bbb_rating).toContain("403");
     // contractor_name moved out of the always-null map when Clermont's eTRAKiT
     // portal started supplying it. A client that only read that map would now
@@ -88,7 +88,7 @@ describe.skipIf(!hasParquet)("REST API", () => {
   it("serves the cross-gateway verification evidence for the published run", async () => {
     const response = await request(await getRouterOnce(), "GET", "/api/meta/run");
     const body = bodyJson<{
-      run: { runId: string; rootCid: string } | null;
+      run: { runId: string; rootCid: string | null } | null;
       verification: {
         runId: string;
         rootCid: string;
@@ -102,6 +102,12 @@ describe.skipIf(!hasParquet)("REST API", () => {
       runHistory: { runs: unknown[] } | null;
     }>(response);
     if (body.run === null) return; // Nothing published yet: nothing to verify.
+    if (body.run.rootCid === null) {
+      // A local PREPARED_LOCAL candidate has no public identity or gateway
+      // proof. Borrowing either from the older bundled pointer is forbidden.
+      expect(body.verification).toBeNull();
+      return;
+    }
     expect(body.verification?.runId).toBe(body.run.runId);
     expect(body.verification?.rootCid).toBe(body.run.rootCid);
     const verifications = body.verification?.verifications ?? [];
@@ -126,6 +132,56 @@ describe.skipIf(!hasParquet)("REST API", () => {
     expect(body.provenance.sql).toContain("roof_age_years >= 15");
   });
 
+  it("filters long-open roofing permits with the roofing-specific field", async () => {
+    const response = await request(
+      await getRouterOnce(),
+      "GET",
+      "/api/properties?minOpenRoofingPermitDays=1825&sortBy=longest_open_roofing_permit_days&sortDir=desc&limit=5",
+    );
+    expect(response.status).toBe(200);
+    const body = bodyJson<{
+      rows: {
+        request_identifier: string;
+        open_roofing_permit_count: number;
+        longest_open_roofing_permit_days: number;
+      }[];
+      matched: number;
+      provenance: { sql: string };
+    }>(response);
+    expect(body.matched).toBeGreaterThan(0);
+    expect(body.provenance.sql).toContain("longest_open_roofing_permit_days, 0) >= 1825");
+    expect(body.provenance.sql).toContain(
+      "ORDER BY longest_open_roofing_permit_days DESC NULLS LAST",
+    );
+    for (const row of body.rows) {
+      expect(row.open_roofing_permit_count).toBeGreaterThan(0);
+      expect(row.longest_open_roofing_permit_days).toBeGreaterThanOrEqual(1825);
+    }
+
+    const lead = body.rows[0];
+    expect(lead).toBeDefined();
+    const detailResponse = await request(
+      await getRouterOnce(),
+      "GET",
+      `/api/properties/${encodeURIComponent(lead?.request_identifier ?? "")}`,
+    );
+    const detail = bodyJson<{
+      permitsAvailable: boolean;
+      permits: { is_roofing: boolean; is_open: boolean; days_open: number | null }[];
+    }>(detailResponse);
+    if (detail.permitsAvailable) {
+      expect(detail.permits).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            is_roofing: true,
+            is_open: true,
+            days_open: lead?.longest_open_roofing_permit_days,
+          }),
+        ]),
+      );
+    }
+  });
+
   it("rejects an unknown sort column with a 400", async () => {
     const response = await request(
       await getRouterOnce(),
@@ -144,6 +200,16 @@ describe.skipIf(!hasParquet)("REST API", () => {
     );
     expect(response.status).toBe(400);
     expect(bodyJson<ErrorBody>(response).detail).toMatch(/lat, lon and radiusMiles/);
+  });
+
+  it("rejects a roofing duration combined with an explicit no-open-roofing filter", async () => {
+    const response = await request(
+      await getRouterOnce(),
+      "GET",
+      "/api/properties?hasOpenRoofingPermit=false&minOpenRoofingPermitDays=1825",
+    );
+    expect(response.status).toBe(400);
+    expect(bodyJson<ErrorBody>(response).detail).toMatch(/requires hasOpenRoofingPermit/);
   });
 
   it("404s an unknown parcel with a readable message", async () => {
@@ -167,8 +233,42 @@ describe.skipIf(!hasParquet)("REST API", () => {
       `/api/properties/${encodeURIComponent(parcelId)}`,
     );
     expect(response.status).toBe(200);
-    const body = bodyJson<{ gating: { field: string }[] }>(response);
+    const body = bodyJson<{
+      gating: { field: string }[];
+      permits: unknown[];
+      permitsAvailable: boolean;
+    }>(response);
     expect(body.gating.map((notice) => notice.field)).toEqual(["contractor_name", "bbb_rating"]);
+    expect(Array.isArray(body.permits)).toBe(true);
+    expect(typeof body.permitsAvailable).toBe("boolean");
+  });
+
+  it("serves full permit-grain rows for a property with permits", async () => {
+    const list = await request(
+      await getRouterOnce(),
+      "GET",
+      "/api/properties?hasPermits=true&limit=1",
+    );
+    const parcelId = String(
+      bodyJson<{ rows: { request_identifier: string }[] }>(list).rows[0]?.request_identifier,
+    );
+    const response = await request(
+      await getRouterOnce(),
+      "GET",
+      `/api/properties/${encodeURIComponent(parcelId)}/permits`,
+    );
+    expect(response.status).toBe(200);
+    const body = bodyJson<{
+      permitsAvailable: boolean;
+      permits: { permit_id: string; source_system: string }[];
+      provenance: { sql: string };
+    }>(response);
+    if (body.permitsAvailable) {
+      expect(body.permits.length).toBeGreaterThan(0);
+      expect(body.permits[0]?.permit_id).toBeTruthy();
+      expect(body.permits[0]?.source_system).toMatch(/^lake_/);
+    }
+    expect(body.provenance.sql).toContain("FROM permits");
   });
 
   it("serves the three named views", async () => {
@@ -210,7 +310,7 @@ describe.skipIf(!hasParquet)("REST API", () => {
     expect(response.status).toBe(503);
     const body = bodyJson<ErrorBody>(response);
     expect(body.error).toBe("chat_unavailable");
-    expect(body.detail).toContain("ANTHROPIC_API_KEY");
+    expect(body.detail).toContain("OPENAI_API_KEY");
   });
 
   it("405s a GET on a POST-only route", async () => {

@@ -14,6 +14,7 @@
 
 import { z } from "zod";
 import { entityChunk, count } from "./entity.js";
+import { shortHash } from "../text.js";
 import type { CorpusChunk, Provenance } from "../types.js";
 
 export const coverageSchema = z.object({
@@ -24,7 +25,7 @@ export const coverageSchema = z.object({
   runId: z.string(),
   exportedAt: z.string(),
   denominator: z.object({ basis: z.string(), source: z.string(), assessedParcelCount: z.number() }),
-  tables: z.record(z.object({ rows: z.number(), source: z.string() })),
+  tables: z.record(z.object({ rows: z.number(), source: z.string() }).passthrough()),
   signals: z.record(z.number()),
   limitations: z.array(z.string()),
 });
@@ -40,32 +41,6 @@ export const indexSchema = z.object({
   queryTable: z.string(),
 });
 
-export const manifestSchema = z.object({
-  runId: z.string(),
-  root: z.object({ cid: z.string() }),
-  artifacts: z.array(
-    z.object({
-      cid: z.string(),
-      name: z.string(),
-      size: z.number(),
-      codec: z.string(),
-      sha256: z.string(),
-    }),
-  ),
-});
-
-export const latestSchema = z.object({
-  runId: z.string(),
-  rootCid: z.string(),
-  manifestCid: z.string().nullish(),
-  ipnsName: z.string().nullish(),
-  verifiedGateways: z.array(z.string()).nullish(),
-  propertyCount: z.number().nullish(),
-  publishedAt: z.string().nullish(),
-});
-
-export type Manifest = z.infer<typeof manifestSchema>;
-export type Latest = z.infer<typeof latestSchema>;
 export type PublishedIndex = z.infer<typeof indexSchema>;
 
 /** Human labels for the coverage snapshot's signal keys. */
@@ -75,7 +50,8 @@ const SIGNAL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   propertiesWithPermits: "parcels with at least one permit in the published layer",
   roofingPermitRecords: "roofing permit records joined to a parcel",
   propertiesWithOpenRoofingPermit: "parcels with an open roofing permit",
-  permitsOpenOverFiveYears: "permits that have been open more than five years",
+  permitsOpenOverFiveYears:
+    "properties with a roofing permit whose roofing-specific open duration is at least five years",
   outOfStateOwners: "parcels whose owner mails out of state",
   outOfCountyOwners: "parcels whose owner mails out of county",
   noRecordedSaleInDorWindow: "parcels with no recorded sale in the published DOR window",
@@ -93,6 +69,24 @@ const SIGNAL_LABELS: Readonly<Record<string, string>> = Object.freeze({
 function limitationHeadline(limitation: string): string {
   const firstSentence = limitation.split(/(?<=\.)\s/)[0] ?? limitation;
   return firstSentence.length > 130 ? `${firstSentence.slice(0, 127)}...` : firstSentence;
+}
+
+/** Content-based limitation key that stays stable when a new limitation is inserted. */
+function limitationKey(limitation: string): string {
+  const keys: readonly [RegExp, string][] = [
+    [/rolling 365-day/i, "permit-window"],
+    [/covers unincorporated/i, "municipal-coverage"],
+    [/^Contractor of record/i, "contractor-coverage"],
+    [/^Clermont's permits/i, "clermont-history"],
+    [/^BBB ratings/i, "bbb-gated"],
+    [/^Ownership tenure/i, "ownership-tenure"],
+    [/^Coordinates come/i, "coordinate-vintage"],
+    [/permits reference a parcel key absent/i, "unmatched-permits"],
+    [/^Business coverage/i, "business-attribution"],
+  ];
+  return (
+    keys.find(([pattern]) => pattern.test(limitation))?.[1] ?? `other-${shortHash(limitation)}`
+  );
 }
 
 /** Coverage snapshot: denominator, tables, signals, and one doc per limitation. */
@@ -163,10 +157,33 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
     }),
   );
 
+  chunks.push(
+    entityChunk({
+      docId: "coverage:limitations",
+      docType: "limitation",
+      title: "Coverage limitations carried with the selected run",
+      lines: [
+        `Candidate run ${coverage.runId} records ${coverage.limitations.length} source and interpretation limitations in coverage.json.`,
+        ...coverage.limitations.map(
+          (limitation, position) =>
+            `- ${position + 1}. ${limitationHeadline(limitation)} (document limitation:${limitationKey(limitation)}).`,
+        ),
+        "These limitations travel with the data. They constrain every count and must not be replaced by assumptions from missing values.",
+      ],
+      aliases: ["source limitations", "coverage limitations", "what is missing", "data caveats"],
+      metadata: {
+        family: "limitations",
+        runId: coverage.runId,
+        count: String(coverage.limitations.length),
+      },
+      provenance,
+    }),
+  );
+
   coverage.limitations.forEach((limitation, position) => {
     chunks.push(
       entityChunk({
-        docId: `limitation:${position + 1}`,
+        docId: `limitation:${limitationKey(limitation)}`,
         docType: "limitation",
         title: `Documented limitation ${position + 1} of ${coverage.limitations.length}: ${limitationHeadline(limitation)}`,
         lines: [
@@ -186,12 +203,14 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
 /** The published run: CIDs, IPNS, gateways, shard layout. */
 export function buildPublicationDocs(args: {
   index: PublishedIndex | null;
-  latest: Latest | null;
-  manifest: Manifest | null;
+  runId: string;
+  releaseState: "local_candidate" | "published";
+  rootCid: string | null;
+  releaseReceipt: string | null;
   ipnsName: string | null;
   provenance: Provenance;
 }): CorpusChunk[] {
-  const { index, latest, manifest, ipnsName, provenance } = args;
+  const { index, runId, releaseState, rootCid, releaseReceipt, ipnsName, provenance } = args;
   const chunks: CorpusChunk[] = [];
 
   chunks.push(
@@ -200,52 +219,27 @@ export function buildPublicationDocs(args: {
       docType: "publication",
       title: "How the Lake County dataset is published: run id, CIDs, IPNS name and gateways",
       lines: [
-        latest
-          ? `The newest verified run is ${latest.runId}, published ${latest.publishedAt ?? "on the run date"} with root CID ${latest.rootCid}.`
-          : "No published-run pointer is present in this checkout.",
-        latest?.manifestCid
-          ? `Its artifact manifest is CID ${latest.manifestCid}, listing every artifact with its CID, byte size, codec and SHA-256.`
-          : null,
-        ipnsName
+        releaseState === "published"
+          ? `The selected corpus run is published: ${runId}, with root CID ${rootCid ?? "missing (invalid receipt)"}.`
+          : `The selected corpus run is ${runId}, an unpublished local candidate. It has no public root CID, artifact CIDs or IPFS paths, and this corpus does not borrow them from an older public run.`,
+        releaseReceipt
+          ? `External release receipt: ${releaseReceipt}. This receipt, not directory recency, binds the immutable public identity.`
+          : "No external release receipt exists for this local candidate.",
+        releaseState === "published" && ipnsName
           ? `The dataset sits behind one IPNS name, ${ipnsName}, which is re-pointed at each run. A pointer is not a snapshot: every run's own root CID stays permanently resolvable.`
           : null,
-        latest?.verifiedGateways?.length
-          ? `Retrieval was verified from independent public gateways: ${latest.verifiedGateways.join(", ")}. The gateways ipfs.io, dweb.link and w3s.link answer HTTP 429 to datacenter and VPN egress and are therefore not used as evidence.`
-          : null,
         index
-          ? `The run directory holds query-table.parquet (the 59-column, one-row-per-parcel table), coverage.json, schema.json, index.json, three sample extracts, and ${index.shardCount} property shards of ${count(index.shardSize)} properties each covering ${count(index.propertyCount)} properties.`
+          ? `The run directory holds query-table.parquet (the 63-column, one-row-per-parcel table), permit-table.parquet (one row per permit), coverage.json, schema.json, permit-schema.json, index.json, three sample extracts, and ${index.shardCount} property shards of ${count(index.shardSize)} properties each covering ${count(index.propertyCount)} properties.`
           : null,
-        "There is no server in the read path: DuckDB range-reads the Parquet straight from a gateway by CID, so a consumer needs nothing this project runs.",
+        releaseState === "published"
+          ? "There is no server in the data read path: DuckDB can range-read the Parquet from a gateway by immutable CID."
+          : "Local validation reads the candidate artifacts from disk. Public claims remain bound to the older deployed release until this exact candidate is separately approved, published, verified and deployed.",
       ],
       aliases: ["published run", "root cid", "ipns", "how is it published", "gateways", "manifest"],
-      metadata: { family: "publication", runId: latest?.runId ?? index?.runId ?? "" },
+      metadata: { family: "publication", runId, releaseState },
       provenance,
     }),
   );
-
-  if (manifest) {
-    chunks.push(
-      entityChunk({
-        docId: "publication:artifacts",
-        docType: "publication",
-        title: "Published artifacts and their content identifiers for the current run",
-        lines: [
-          `Run ${manifest.runId} publishes ${manifest.artifacts.length} artifacts under root CID ${manifest.root.cid}.`,
-          ...manifest.artifacts
-            .filter((artifact) => artifact.codec === "file" && !artifact.name.startsWith("shards/"))
-            .map(
-              (artifact) =>
-                `- ${artifact.name}: CID ${artifact.cid}, ${count(artifact.size)} bytes, ${artifact.sha256}.`,
-            ),
-          "Property shards shards/shard-0000.json through shard-0021.json carry the same CID-addressed treatment; the manifest lists each one.",
-          "Fetching any of these from two independent gateways and comparing the SHA-256 against the manifest is what makes 'immutably published' checkable rather than claimed.",
-        ],
-        aliases: ["artifact cids", "manifest artifacts", "which cid", "sha256", "artifact list"],
-        metadata: { family: "publication", runId: manifest.runId },
-        provenance,
-      }),
-    );
-  }
 
   return chunks;
 }

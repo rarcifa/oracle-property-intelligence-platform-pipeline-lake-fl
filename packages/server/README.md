@@ -1,14 +1,14 @@
 # `@oracle-lake/server`
 
-One TypeScript process that serves three surfaces on **one port**, over one DuckDB
-connection to the published Lake County query table:
+One TypeScript process that serves four surfaces on **one port**, over one DuckDB
+connection to the published Lake County property and permit tables:
 
-| Surface         | Path              | What it is                                                                                                                                            |
-| --------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST API        | `GET/POST /api/*` | Filtered property search, property detail, dataset statistics, the three named views, coverage/run metadata, and a read-only SQL endpoint             |
-| MCP             | `POST /mcp`       | A stateless Model Context Protocol server (JSON-RPC 2.0 over HTTP) exposing eight tools over the same data layer                                      |
-| Chat agent      | `POST /api/chat`  | A natural-language agent built on the Vercel AI SDK with Anthropic, whose every answer cites the SQL, the source systems and the parcel ids behind it |
-| Single-page app | everything else   | The built `@oracle-lake/ui` bundle, with client-route fallback to `index.html`                                                                        |
+| Surface         | Path              | What it is                                                                                                                                         |
+| --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST API        | `GET/POST /api/*` | Filtered property search, property detail, dataset statistics, the three named views, coverage/run metadata, and a read-only SQL endpoint          |
+| MCP             | `POST /mcp`       | A stateless Model Context Protocol server (JSON-RPC 2.0 over HTTP) exposing nine tools over the same data layer                                    |
+| Chat agent      | `POST /api/chat`  | A natural-language agent built on the Vercel AI SDK with OpenAI, whose every answer cites the SQL, the source systems and the parcel ids behind it |
+| Single-page app | everything else   | The built `@oracle-lake/ui` bundle, with client-route fallback to `index.html`                                                                     |
 
 Because it is one process behind one URL, the whole application deploys as a single
 container or a single Node host with no reverse-proxy fan-out.
@@ -55,7 +55,7 @@ pnpm run format       # Prettier --write
 ### Enabling the chat agent
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
 pnpm run serve
 ```
 
@@ -77,40 +77,49 @@ All optional; the defaults point at the locally published run.
 | `ORACLE_RUN_DIR`         | newest directory under `…/publish/lake/runs/`    | Directory holding `coverage.json`, `index.json`, `schema.json`                                                                                              |
 | `ORACLE_LATEST_PATH`     | `<repo>/artifacts/latest.json`                   | Published-run pointer (`runId`, `rootCid`, `ipnsName`, …)                                                                                                   |
 | `ORACLE_UI_DIST`         | `<repo>/packages/ui/dist`                        | Built SPA to serve at `/`                                                                                                                                   |
-| `ANTHROPIC_API_KEY`      | —                                                | Enables `POST /api/chat`                                                                                                                                    |
-| `ORACLE_CHAT_MODEL`      | `claude-fable-5-1`                               | Model id passed to the Vercel AI SDK                                                                                                                        |
+| `OPENAI_API_KEY`         | —                                                | Enables `POST /api/chat`                                                                                                                                    |
+| `ORACLE_CHAT_MODEL`      | `gpt-5-mini`                                     | OpenAI model id passed to the Vercel AI SDK                                                                                                                 |
 | `ORACLE_CHAT_TIMEOUT_MS` | `120000`                                         | Wall-clock budget for one chat turn                                                                                                                         |
 
 Deploying with `ORACLE_PARQUET_URL` set to a Filebase gateway URL means the process
 holds no dataset of its own — it reads the same immutable CID the browser reads.
+`permit-table.parquet` is resolved beside `query-table.parquet` in the same run root;
+there is no independent mutable permit pointer.
 
 ---
 
 ## REST routes
 
-| Method       | Path                        | Returns                                                                                                                                                        |
-| ------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`        | `/api/health`               | `{ ok, county, dataSource, dataSourceKind, runId, rootCid, propertyCount }` — the count is queried, not cached                                                 |
-| `GET`        | `/api/meta/run`             | Published-run pointer, the coverage snapshot (including every documented limitation), the usable gateways and the ones deliberately avoided, and `chatEnabled` |
-| `GET`        | `/api/meta/schema`          | All 62 columns with type, label and upstream source, plus the always-null columns and the partially-populated ones, each with its reason                       |
-| `GET`        | `/api/meta/facets`          | Distinct cities, property types, roof-age bases and ZIPs with counts                                                                                           |
-| `GET`        | `/api/stats`                | Headline dataset counts and the roof-age band histogram                                                                                                        |
-| `GET`        | `/api/properties`           | Filtered, sorted, paged search + the true matching total                                                                                                       |
-| `GET`        | `/api/properties/:parcelId` | One parcel, its contributing sources, and the reason each null column is null                                                                                  |
-| `GET`        | `/api/views/tenant`         | Owner-locality and tenure posture, roof-age bands, owner mailing states                                                                                        |
-| `GET`        | `/api/views/business`       | DOR TPP business-account signal by city and property type                                                                                                      |
-| `GET`        | `/api/views/contractor`     | Permit posture and the contractor/BBB gating notices                                                                                                           |
-| `POST`       | `/api/sql`                  | `{ sql, limit? }` — a single read-only `SELECT`/`WITH` against the view `properties`                                                                           |
-| `POST`       | `/api/chat`                 | `{ messages }` → `{ answer, citations, model, runId }`, or 503 when no model key                                                                               |
-| `GET`/`POST` | `/mcp`                      | MCP endpoint (GET describes it, POST speaks JSON-RPC)                                                                                                          |
+| Method       | Path                                | Returns                                                                                                                                                        |
+| ------------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`        | `/api/health`                       | `{ ok, county, dataSource, dataSourceKind, runId, rootCid, propertyCount }` — the count is queried, not cached                                                 |
+| `GET`        | `/api/meta/run`                     | Published-run pointer, the coverage snapshot (including every documented limitation), the usable gateways and the ones deliberately avoided, and `chatEnabled` |
+| `GET`        | `/api/meta/schema`                  | All 63 columns with type, label and upstream source, plus the always-null columns and the partially-populated ones, each with its reason                       |
+| `GET`        | `/api/meta/facets`                  | Distinct cities, property types, roof-age bases and ZIPs with counts                                                                                           |
+| `GET`        | `/api/stats`                        | Headline dataset counts and the roof-age band histogram                                                                                                        |
+| `GET`        | `/api/properties`                   | Filtered, sorted, paged search + the true matching total                                                                                                       |
+| `GET`        | `/api/properties/:parcelId`         | One parcel, its full linked permit records, contributing sources, and the reason each null column is null                                                      |
+| `GET`        | `/api/properties/:parcelId/permits` | Full permit-grain rows with status, dates, open duration, contractor/BBB fields, source URL and linkage state                                                  |
+| `GET`        | `/api/views/tenant`                 | Owner-locality and tenure posture, roof-age bands, owner mailing states                                                                                        |
+| `GET`        | `/api/views/business`               | DOR TPP business-account signal by city and property type                                                                                                      |
+| `GET`        | `/api/views/contractor`             | Permit posture and the contractor/BBB gating notices                                                                                                           |
+| `POST`       | `/api/sql`                          | `{ sql, limit? }` — a single read-only `SELECT`/`WITH` against the `properties` or `permits` views                                                             |
+| `POST`       | `/api/chat`                         | `{ messages }` → `{ answer, citations, model, runId }`, or 503 when no model key                                                                               |
+| `GET`/`POST` | `/mcp`                              | MCP endpoint (GET describes it, POST speaks JSON-RPC)                                                                                                          |
 
 ### Search parameters
 
 `q`, `city`, `zip`, `propertyType`, `roofAgeBasis`, `minRoofAge`, `maxRoofAge`,
-`hasPermits`, `hasOpenRoofingPermit`, `minOpenPermitDays`, `ownerOutOfCounty`,
-`ownerOutOfState`, `noRecordedSale`, `hasBusinessAccount`, `minMarketValue`,
-`maxMarketValue`, `minBuiltYear`, `maxBuiltYear`, `lat`, `lon`, `radiusMiles`,
+`hasPermits`, `hasOpenRoofingPermit`, `minOpenPermitDays`,
+`minOpenRoofingPermitDays`, `ownerOutOfCounty`, `ownerOutOfState`,
+`noRecordedSale`, `hasBusinessAccount`, `minMarketValue`, `maxMarketValue`,
+`minBuiltYear`, `maxBuiltYear`, `lat`, `lon`, `radiusMiles`,
 `requireCoordinates`, `limit` (≤500), `offset`, `sortBy`, `sortDir`.
+
+`minOpenPermitDays` is the stable generic filter for permits of any type.
+`minOpenRoofingPermitDays` filters `longest_open_roofing_permit_days` and
+implicitly requires `open_roofing_permit_count > 0`; clients do not need to
+send the boolean separately.
 
 `lat`, `lon` and `radiusMiles` must be supplied together; matching rows carry a
 `distance_miles` column and are ordered nearest first.
@@ -136,16 +145,17 @@ Every data-bearing response carries a `provenance` block:
 `tools/call`, `ping`, `resources/list`, `prompts/list`, notifications (answered with
 `202` and no body) and batches. It is **stateless**: no session id, no SSE.
 
-| Tool                     | Purpose                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `getPropertyQuerySchema` | The 62 columns with types, labels, sources, and the null and partially-populated columns with reasons |
-| `queryProperties`        | Arbitrary **read-only** `SELECT`/`WITH` against the view `properties`; anything mutating is rejected  |
-| `getOracleDatasetInfo`   | Run identity, live counts queried from the Parquet, coverage tables, and every documented limitation  |
-| `listOracleProperties`   | Filtered/sorted/paged search with the true matching total                                             |
-| `getOracleProperty`      | One parcel with sources and gating reasons                                                            |
-| `findAgedRoofs`          | Roof age at or above a threshold (default 15 years), with `roof_age_basis` on every row               |
-| `findOpenRoofPermits`    | Parcels with an open roofing permit, longest-open first                                               |
-| `findPropertiesInRadius` | Parcels within a radius of a point, nearest first, with `distance_miles`                              |
+| Tool                     | Purpose                                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `getPropertyQuerySchema` | The 63 columns with types, labels, sources, and the null and partially-populated columns with reasons    |
+| `queryProperties`        | Arbitrary **read-only** `SELECT`/`WITH` against `properties` or `permits`; anything mutating is rejected |
+| `getOracleDatasetInfo`   | Run identity, live counts queried from the Parquet, coverage tables, and every documented limitation     |
+| `listOracleProperties`   | Filtered/sorted/paged search with the true matching total                                                |
+| `getOracleProperty`      | One parcel with linked permit records, sources and gating reasons                                        |
+| `getPropertyPermits`     | Full permit-grain records for one parcel, bounded to at most 500 rows                                    |
+| `findAgedRoofs`          | Roof age at or above a threshold (default 15 years), with `roof_age_basis` on every row                  |
+| `findOpenRoofPermits`    | Parcels with an open roofing permit, longest-open first                                                  |
+| `findPropertiesInRadius` | Parcels within a radius of a point, nearest first, with `distance_miles`                                 |
 
 Smoke test:
 
@@ -197,9 +207,10 @@ To register it with an MCP client:
   published roll carries only 2025–2026 sales, so it is a lower bound, not tenure.
 - The chat agent's system prompt forbids stating any number not obtained from a tool
   call in that turn, and requires the source systems and parcel ids behind each claim.
-- The consumer-side schema gate (`assertSchemaMatches`) runs at boot: if the opened
-  Parquet does not carry exactly the 62 published columns in order, the process fails
-  to start rather than serving a silently wrong table.
+- Consumer-side schema gates run at boot: the property Parquet must carry exactly the
+  63 published columns and the permit Parquet exactly its 22 columns, both in order.
+  Legacy runs without `permit-table.parquet` expose a typed empty `permits` table and
+  `permitsAvailable: false` rather than pretending the detail data exists.
 
 ---
 

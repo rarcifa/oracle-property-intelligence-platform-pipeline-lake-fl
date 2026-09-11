@@ -7,12 +7,9 @@ export default tseslint.config(
     ignores: [
       "**/dist/**",
       "**/node_modules/**",
-      // The vendored kit stays out of `eslint .` so it can remain byte-identical
-      // to upstream. Negations were tried here and silently did nothing: ESLint
-      // prunes an ignored directory before an un-ignore can fire, so the county
-      // code we wrote went on being unlinted while the config claimed otherwise.
-      // The `lint` script now runs a second, explicit pass over our own files.
-      ".claude/**",
+      // The standalone pipeline has its own dependency tree and generated data.
+      // The `lint` script runs a second pass over the Lake source files.
+      "pipeline/**",
       "artifacts/**",
       // Generated deployment output, not source: the Lambda bundle is
       // assembled from built packages and vendored dependencies by
@@ -33,7 +30,8 @@ export default tseslint.config(
       "infra/**/*.mjs",
       "infra/**/*.ts",
       "scripts/**/*.mjs",
-      ".claude/skills/use-oracle/runtime/**/*.mjs",
+      "pipeline/**/*.mjs",
+      "pipeline/**/*.ts",
     ],
     languageOptions: {
       globals: {
@@ -55,7 +53,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["packages/**/*.ts", "packages/**/*.tsx"],
+    files: ["packages/**/*.ts", "packages/**/*.tsx", "pipeline/**/*.ts"],
     rules: {
       // The engineering guidelines forbid `any` in LLM code; we forbid it everywhere.
       "@typescript-eslint/no-explicit-any": "error",

@@ -1,0 +1,640 @@
+{
+  "schemaVersion": "elephant.oracle-intake-run-manifest.v1",
+  "manifestId": "lake:20260911T131000Z:prepared-local:r002",
+  "revision": 2,
+  "previousRevision": "lake:20260911T131000Z:prepared-local:r001",
+  "state": "PREPARED_LOCAL",
+  "createdAt": "2026-09-11T13:10:00.000Z",
+  "updatedAt": "2026-09-11T15:11:05.413Z",
+  "county": {
+    "name": "Lake County",
+    "slug": "lake",
+    "state": "FL",
+    "fips": "12069",
+    "dorCountyNumber": "45"
+  },
+  "kit": {
+    "plugin": "soofi-xyz-team-kit@soofi-xyz-team-kit",
+    "version": "0.46.1",
+    "installationScope": "global",
+    "repositoryCopy": false,
+    "routingAgent": "arceus",
+    "primaryAgent": "oracle",
+    "skills": [
+      "apply-engineering-guidelines",
+      "onboard-county",
+      "use-oracle",
+      "county-readiness-preflight",
+      "county-query-table-publish",
+      "county-open-data-publish"
+    ]
+  },
+  "operatorIntake": {
+    "scope": "repair and prepare the full Lake County property intelligence pipeline",
+    "executionMode": "local-preparation-only",
+    "selectedIngestionStack": "aws-runtime-contract",
+    "remoteExecutionApproved": false,
+    "sourceReprobeApproved": false,
+    "secretReadApproved": false,
+    "publicationRequestedEventually": true,
+    "publicationApprovedForThisRun": false,
+    "liveHarvestApproved": false,
+    "workflowDispatchApproved": false,
+    "deploymentApproved": false,
+    "notes": [
+      "Reuse the verified facts in AGENTS.md and pipeline/docs/lake-sources.yaml.",
+      "No source endpoint was re-probed and no secret was read while producing this manifest.",
+      "The 2015-2026 Clermont baseline is not certified; only the completed 2026 local harvest is loaded.",
+      "The frozen workflow now restores this exact candidate artifact for a separate publish dispatch instead of rebuilding reviewed bytes.",
+      "Primary Filebase upload is insufficient: the signed target also requires a successfully reconciled independent secondary pin before public verification."
+    ]
+  },
+  "sourceCatalog": {
+    "path": "pipeline/docs/lake-sources.yaml",
+    "digest": "sha256:f97f908158bf95830edd923f03bb321b3564860f2423cba5173bff649b819c6e",
+    "readiness": "PASS_WITH_EXPLICIT_LIMITATIONS",
+    "snapshotTime": "2026-09-09T18:00:00.000Z",
+    "basis": "verified local catalog; not re-probed"
+  },
+  "sourceGraph": {
+    "nodes": [
+      {
+        "id": "fl-dor-nal-2026p",
+        "kind": "assessed-roll",
+        "status": "loaded",
+        "records": 215806,
+        "window": "2026 preliminary",
+        "authoritativeFor": [
+          "parcel denominator",
+          "ownership",
+          "assessed values",
+          "alternate key"
+        ]
+      },
+      {
+        "id": "fl-dor-sdf-2026p",
+        "kind": "sales",
+        "status": "loaded_partial_history",
+        "records": 37020,
+        "window": "2025-2026 only",
+        "authoritativeFor": [
+          "sale records in published window"
+        ]
+      },
+      {
+        "id": "fl-dor-tpp-2026p",
+        "kind": "business-accounts",
+        "status": "loaded_address_matched",
+        "records": 33346,
+        "window": "2026 preliminary",
+        "authoritativeFor": [
+          "TPP account and NAICS source rows"
+        ]
+      },
+      {
+        "id": "fl-gio-parcel-centroids-2025",
+        "kind": "coordinates",
+        "status": "loaded",
+        "records": 209503,
+        "sourceRecords": 210935,
+        "window": "2025 release",
+        "authoritativeFor": [
+          "parcel centroids only"
+        ]
+      },
+      {
+        "id": "lake-cdplus-permits",
+        "kind": "permits",
+        "jurisdiction": "unincorporated",
+        "status": "loaded_current_window",
+        "records": 17671,
+        "window": "rolling 365-day Permit_LastModDate",
+        "contractorFieldAvailable": false
+      },
+      {
+        "id": "lake-clermont-etrakit-permits",
+        "kind": "permits",
+        "jurisdiction": "clermont",
+        "status": "loaded_partial_history",
+        "enumeratedRecords": 4132,
+        "achievableRecords": 4061,
+        "deadRecords": 71,
+        "contractorRows": 3634,
+        "loadedYears": [
+          "26"
+        ],
+        "knownAvailableYears": [
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20",
+          "21",
+          "22",
+          "23",
+          "24",
+          "25",
+          "26"
+        ]
+      },
+      {
+        "id": "municipal-permit-routes",
+        "kind": "jurisdiction-coverage",
+        "status": "classified",
+        "jurisdictions": [
+          {
+            "key": "groveland",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "eustis",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "minneola",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "leesburg",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "tavares",
+            "status": "unavailable",
+            "route": "records-first"
+          },
+          {
+            "key": "mount-dora",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "umatilla",
+            "status": "manual-only",
+            "route": "records-first"
+          },
+          {
+            "key": "astatula",
+            "status": "manual-only",
+            "route": "records-first"
+          },
+          {
+            "key": "fruitland-park",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "howey-in-the-hills",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "lady-lake",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "mascotte",
+            "status": "blocked",
+            "route": "records-first"
+          },
+          {
+            "key": "montverde",
+            "status": "manual-only",
+            "route": "records-first"
+          }
+        ]
+      },
+      {
+        "id": "bbb",
+        "kind": "contractor-rating",
+        "status": "gated_403",
+        "loadedRecords": 0,
+        "publicationState": "not_published"
+      },
+      {
+        "id": "sunbiz",
+        "kind": "corporate-enrichment",
+        "status": "gated_403",
+        "loadedRecords": 0,
+        "publicationState": "not_published"
+      }
+    ],
+    "edges": [
+      {
+        "from": "fl-dor-nal-2026p",
+        "to": "lake-cdplus-permits",
+        "join": "NAL.ALT_KEY = permit.Alternate_Key"
+      },
+      {
+        "from": "fl-dor-nal-2026p",
+        "to": "lake-clermont-etrakit-permits",
+        "join": "NAL.ALT_KEY = eTRAKiT SITE_APN"
+      },
+      {
+        "from": "fl-dor-nal-2026p",
+        "to": "fl-gio-parcel-centroids-2025",
+        "join": "parcel identifier"
+      },
+      {
+        "from": "fl-dor-nal-2026p",
+        "to": "fl-dor-sdf-2026p",
+        "join": "PARCEL_ID"
+      },
+      {
+        "from": "fl-dor-nal-2026p",
+        "to": "fl-dor-tpp-2026p",
+        "join": "normalized situs street plus ZIP; one-to-many attribution is explicit"
+      },
+      {
+        "from": "lake-clermont-etrakit-permits",
+        "to": "bbb",
+        "join": "contractor identity",
+        "status": "blocked"
+      }
+    ]
+  },
+  "digests": {
+    "runtime": {
+      "algorithm": "sha256 over sorted '<digest>  <path>\\n' records",
+      "digest": "sha256:9940a26fc249e575b87ada1b5ada8f180912766bd9489e7dc2251521c51e826e",
+      "components": [
+        {
+          "path": "pipeline/package.json",
+          "digest": "sha256:055bfcfe628d8e5c50b31013ac1f8595d8c443cc726d0331396a29283823af72"
+        },
+        {
+          "path": "pipeline/package-lock.json",
+          "digest": "sha256:2bd52d330ecdc4c22ae33e1656c4817eb945fda30c627a6936a1d3e8cf5a7aee"
+        }
+      ]
+    },
+    "config": {
+      "algorithm": "sha256 over sorted '<digest>  <path>\\n' records",
+      "digest": "sha256:de71ef36611be45329ca04dea37553bba3e8ae4268c4711e3533f0881a815575",
+      "components": [
+        {
+          "path": "pipeline/docs/lake-sources.yaml",
+          "digest": "sha256:f97f908158bf95830edd923f03bb321b3564860f2423cba5173bff649b819c6e"
+        },
+        {
+          "path": "pipeline/scripts/lake/build-orchestration-manifest.mjs",
+          "digest": "sha256:7b25d964605b99df42aaba97de08c7cf180b87ab9df0fcf5ecec7b0a48c8c7da"
+        },
+        {
+          "path": "pipeline/src/counties/lake/enrichment-profile.mjs",
+          "digest": "sha256:7abaf382c4c5eff019324d491dade4e2a35198474baea28f07b1d0e9a2b418af"
+        },
+        {
+          "path": ".github/workflows/pipeline.yml",
+          "digest": "sha256:2f4e1f755f3030de6c1cce0e7c8998d2943f52e1e258c7e7a8ac80cedeb23483"
+        }
+      ]
+    },
+    "schema": {
+      "algorithm": "sha256 over sorted '<digest>  <path>\\n' records",
+      "digest": "sha256:48849e042e6430da2365d617dd44955faff3825964bed7f1e1f6d10e504385d8",
+      "components": [
+        {
+          "path": "pipeline/src/counties/lake/query-table.mjs",
+          "digest": "sha256:decd6a05598c76f68173ea5eb418599eb9378bdf69cb74fd80532262f89c0af5"
+        },
+        {
+          "path": "pipeline/src/counties/lake/permit-table.mjs",
+          "digest": "sha256:47b10a2df78c6f999e55dde6716f11667eddf19e7788405fbb0304340b9cb5bc"
+        },
+        {
+          "path": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z/schema.json",
+          "digest": "sha256:e54d3f642027da9cc4965067cab6fe62a1f253c00b09282ef466e9b557586c24"
+        },
+        {
+          "path": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z/permit-schema.json",
+          "digest": "sha256:44ec46c4f51c61507920ba2f88fc1660d9377148cb77293db6a5851603bd87d6"
+        }
+      ]
+    },
+    "provenance": {
+      "algorithm": "sha256 over sorted '<digest>  <path>\\n' records",
+      "digest": "sha256:2ebc95fc59a7a4d4d2eaebb7c279c28cbdd80ca660034b8a75161d7c24d33212",
+      "frozenAt": "2026-09-11T15:11:05.413Z",
+      "scope": [
+        "pipeline/package.json",
+        "pipeline/package-lock.json",
+        "pipeline/docs/lake-sources.yaml",
+        "pipeline/scripts/lake/build-query-table.sql",
+        "pipeline/scripts/lake/build-publish-set.mjs",
+        "pipeline/scripts/lake/publish-run.mjs",
+        "pipeline/src/core/publish-gate.mjs",
+        "pipeline/src/core/secondary-pin.mjs",
+        "pipeline/src/counties/lake/enrichment-profile.mjs",
+        "pipeline/src/counties/lake/query-table.mjs",
+        "pipeline/src/counties/lake/permit-table.mjs"
+      ]
+    }
+  },
+  "repositoryProvenance": {
+    "repository": "oracle-property-intelligence-platform-pipeline-lake-fl",
+    "branch": "pr/lake-fl-kit-pipeline",
+    "headCommit": "fb350fd9ee630f07ad18881e15badfcb43e712be",
+    "worktree": "dirty",
+    "dirtyStateIncludedByComponentDigests": true,
+    "authorshipPolicy": "rarcifa <ricardo.arcifa@cronoslabs.org>; no commit created in this stage"
+  },
+  "stageGraph": [
+    {
+      "stage": "intake",
+      "state": "COMPLETE",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "source-enumeration",
+      "state": "COMPLETE_FROM_VERIFIED_CATALOG",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "readiness-preflight",
+      "state": "PASS_WITH_EXPLICIT_LIMITATIONS",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "clermont-2015-2026-capture",
+      "state": "BLOCKED_OPERATOR_AUTHORIZATION",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "local-query-table-build",
+      "state": "COMPLETE",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "local-dag-freeze",
+      "state": "COMPLETE",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "publication-authorization",
+      "state": "UNAPPROVED",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "car-upload",
+      "state": "NOT_STARTED",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "independent-secondary-pin",
+      "state": "NOT_STARTED_UNCONFIGURED",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "public-gateway-verification",
+      "state": "NOT_STARTED",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "ipns-repoint-readback",
+      "state": "NOT_STARTED",
+      "remoteSideEffects": false
+    },
+    {
+      "stage": "hosted-runtime-deployment",
+      "state": "NOT_STARTED_UNAPPROVED",
+      "remoteSideEffects": false
+    }
+  ],
+  "watermarks": {
+    "loaded": {
+      "runId": "20260911T131000Z",
+      "state": "PREPARED_LOCAL",
+      "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+      "manifestCid": "bafkreiaqiwvmkfgz7yziuxeurgb4jpecbzwh57rj3qbzyjszsv2ltuhmwy",
+      "manifestDigest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+      "properties": 215806,
+      "permits": 21732,
+      "linkedPermits": 21221,
+      "validUnlinkedPermits": 511,
+      "contractorRows": 3634,
+      "distinctContractors": 996,
+      "asOfDate": "2026-09-11"
+    },
+    "published": {
+      "runId": "20260910T225242Z",
+      "state": "PUBLIC_VERIFIED",
+      "rootCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+      "manifestCid": "bafkreigyltpgm7qxu7ccyfqeyg3q2c3ygdrqkgwnajjunrplv3xf32phmi",
+      "properties": 215806,
+      "permits": 17671,
+      "contractorRows": 0,
+      "publishedAt": "2026-09-10T22:54:59.051Z"
+    },
+    "loadedIsNewerThanPublished": true,
+    "publicationIsStaleRelativeToLoaded": true
+  },
+  "publication": {
+    "state": "UNAPPROVED_PREPARED_LOCAL",
+    "approved": false,
+    "signedAuthorizationPresent": false,
+    "authorizationNonce": null,
+    "authorizationKeyId": null,
+    "authorizationExpiresAt": null,
+    "attemptId": "sha256:a4cb170e13fe9a249f42a267523fc74a4acecf7f15ecd5380c4db8ca37c3046b",
+    "attemptLedger": "artifacts/publication-attempts.json",
+    "attemptState": "BUILT",
+    "approvalRequest": "pipeline/data/artifacts/publish/lake/manifests/20260911T131000Z.publication-request.json",
+    "retiredBooleanGate": "artifacts/publish-gate.json",
+    "bucket": "elephant-oracle-open-data-lake",
+    "ipnsLabel": "oracle-open-data-lake",
+    "ipnsNetworkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+    "networkMutationsPerformed": false,
+    "rootUploaded": false,
+    "manifestUploaded": false,
+    "publicVerificationPerformed": false,
+    "historyAppended": false,
+    "ipnsRepointed": false,
+    "ipnsReadback": null,
+    "approvalConsumed": false,
+    "requiredAuthorizationBindings": [
+      "county",
+      "runId",
+      "rootCid",
+      "manifestDigest",
+      "provenanceDigest",
+      "bucket",
+      "ipnsLabel",
+      "ipnsNetworkKey",
+      "actions",
+      "issuedAt",
+      "expiresAt",
+      "nonce",
+      "approver",
+      "signature"
+    ],
+    "requiredActions": [
+      "upload-root-car",
+      "upload-manifest-car",
+      "pin-secondary-copy",
+      "verify-all-artifacts-two-gateways",
+      "append-history",
+      "repoint-ipns"
+    ],
+    "independentSecondaryPinRequired": true,
+    "independentSecondaryPinConfigured": false
+  },
+  "privacy": {
+    "classification": "public-source-derived personal and property data",
+    "containsOwnerNames": true,
+    "containsPropertyAddresses": true,
+    "containsContractorNames": true,
+    "containsSecrets": false,
+    "publicReleaseRequiresExplicitApproval": true,
+    "currentReleaseApproved": false,
+    "redactionPolicy": "No fabricated redaction claim; current candidate remains local until exact signed approval."
+  },
+  "orchestration": {
+    "owner": "oracle",
+    "lease": null,
+    "heartbeat": null,
+    "activeRemoteWorkers": 0,
+    "checkpoint": {
+      "stage": "BUILT",
+      "sequence": 3,
+      "nextAction": "configure-independent-pin-and-await-exact-signed-authorization"
+    },
+    "retryPolicy": {
+      "resumeSameAttempt": true,
+      "duplicateAttemptForSameTarget": false,
+      "unrecordedSideEffectPolicy": "reconcile exact idempotent target before retry",
+      "expiredAuthorizationPolicy": "block new network side effects and require a new exact authorization"
+    }
+  },
+  "blockers": [
+    {
+      "id": "publication-authorization",
+      "severity": "hard",
+      "state": "BLOCKED",
+      "reason": "No external one-time Ed25519 authorization exists for this exact target."
+    },
+    {
+      "id": "independent-secondary-pin",
+      "severity": "hard-for-publication",
+      "state": "UNCONFIGURED",
+      "reason": "A live release requires an independent non-Filebase IPFS Pinning Service endpoint and token; no credential was read or provider contacted during local preparation."
+    },
+    {
+      "id": "clermont-full-history",
+      "severity": "hard-for-complete-county-claim",
+      "state": "BLOCKED_OPERATOR_AUTHORIZATION",
+      "reason": "Permit years 15-25 are known accessible but not harvested; no certified immutable 2015-2026 last-good bundle exists."
+    },
+    {
+      "id": "municipal-permits",
+      "severity": "coverage",
+      "state": "CLASSIFIED_NOT_LOADED",
+      "reason": "Thirteen municipal routes are blocked, unavailable or manual-only and have records-first routes."
+    },
+    {
+      "id": "bbb",
+      "severity": "coverage",
+      "state": "GATED_403",
+      "reason": "BBB enrichment requires approved AWS remote browser execution; no such execution is approved."
+    },
+    {
+      "id": "sales-history",
+      "severity": "coverage",
+      "state": "SOURCE_LIMITATION",
+      "reason": "Published DOR attributes prove only the 2025-2026 sale window, not ten-year tenure."
+    },
+    {
+      "id": "pagerduty",
+      "severity": "operational",
+      "state": "UNCONFIGURED",
+      "reason": "No PagerDuty account/routing integration is available; configuration is an external owner action."
+    },
+    {
+      "id": "hosted-runtime",
+      "severity": "delivery",
+      "state": "STALE_RELATIVE_TO_LOCAL",
+      "reason": "The hosted runtime still points to the prior published watermark; deploy/repoint is unapproved."
+    }
+  ],
+  "handoffContract": {
+    "schemaVersion": "elephant.oracle-handoff.v1",
+    "required": [
+      "producer",
+      "consumer",
+      "county",
+      "runId",
+      "state",
+      "artifacts",
+      "runtimeDigest",
+      "configDigest",
+      "schemaDigest",
+      "provenanceDigest",
+      "loadedWatermark",
+      "publishedWatermark",
+      "coverage",
+      "blockers",
+      "privacy",
+      "publicationAuthorization"
+    ],
+    "instance": {
+      "producer": "oracle",
+      "consumer": "operator/publication-recovery",
+      "county": "lake",
+      "runId": "20260911T131000Z",
+      "state": "PREPARED_LOCAL",
+      "artifacts": {
+        "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z",
+        "artifactManifest": "pipeline/data/artifacts/publish/lake/manifests/20260911T131000Z.json",
+        "rootCar": "pipeline/data/artifacts/publish/lake/cars/20260911T131000Z.car",
+        "manifestCar": "pipeline/data/artifacts/publish/lake/cars/20260911T131000Z-manifest.car",
+        "approvalRequest": "pipeline/data/artifacts/publish/lake/manifests/20260911T131000Z.publication-request.json",
+        "attemptLedger": "artifacts/publication-attempts.json",
+        "coverage": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z/coverage.json"
+      },
+      "runtimeDigest": "sha256:9940a26fc249e575b87ada1b5ada8f180912766bd9489e7dc2251521c51e826e",
+      "configDigest": "sha256:de71ef36611be45329ca04dea37553bba3e8ae4268c4711e3533f0881a815575",
+      "schemaDigest": "sha256:48849e042e6430da2365d617dd44955faff3825964bed7f1e1f6d10e504385d8",
+      "provenanceDigest": "sha256:2ebc95fc59a7a4d4d2eaebb7c279c28cbdd80ca660034b8a75161d7c24d33212",
+      "loadedWatermark": "20260911T131000Z",
+      "publishedWatermark": "20260910T225242Z",
+      "coverage": {
+        "properties": 215806,
+        "permits": 21732,
+        "jurisdictionsLoaded": 2,
+        "jurisdictionsExpected": 15,
+        "clermontYearsLoaded": 1,
+        "clermontYearsKnownAvailable": 12,
+        "completeCountyHistory": false
+      },
+      "blockers": [
+        "publication-authorization",
+        "independent-secondary-pin",
+        "clermont-full-history",
+        "municipal-permits",
+        "bbb",
+        "sales-history",
+        "pagerduty",
+        "hosted-runtime"
+      ],
+      "privacy": "public-source-derived personal and property data; explicit public release approval required",
+      "publicationAuthorization": {
+        "state": "UNAPPROVED",
+        "required": "external exact-target Ed25519 authorization plus independent secondary-pin configuration",
+        "consumed": false
+      }
+    }
+  },
+  "completeness": {
+    "readyForLocalReview": true,
+    "readyForPublicPublication": false,
+    "readyForCompleteCountyClaim": false,
+    "readyForHostedDemoUpdate": false,
+    "reason": "The local candidate is deterministic and schema-gated. Public release remains blocked on full Clermont history, an independent secondary pin, explicit exact-target authorization, and the documented municipal/BBB source limitations."
+  }
+}

@@ -60,6 +60,9 @@ export function tableRef(source: string): string {
 /** The view name both runtimes register over the published Parquet. */
 export const PROPERTIES_VIEW = "properties";
 
+/** The full per-permit table published beside the property table. */
+export const PERMITS_VIEW = "permits";
+
 /** DDL that registers the shared `properties` view over a Parquet source. */
 export function buildCreateViewSql(source: string, view: string = PROPERTIES_VIEW): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(view)) {
@@ -102,7 +105,10 @@ export interface PropertyFilters {
   maxRoofAge?: number;
   hasPermits?: boolean;
   hasOpenRoofingPermit?: boolean;
+  /** Minimum duration of any open permit. Retained for generic-query compatibility. */
   minOpenPermitDays?: number;
+  /** Minimum duration of an open roofing permit; also implies hasOpenRoofingPermit. */
+  minOpenRoofingPermitDays?: number;
   ownerOutOfCounty?: boolean;
   ownerOutOfState?: boolean;
   noRecordedSale?: boolean;
@@ -164,13 +170,26 @@ export function buildPredicates(filters: PropertyFilters): string[] {
   if (typeof filters.hasPermits === "boolean") {
     where.push(`coalesce(has_permits, FALSE) = ${bool(filters.hasPermits)}`);
   }
-  if (filters.hasOpenRoofingPermit === true) {
+  if (
+    filters.hasOpenRoofingPermit === false &&
+    typeof filters.minOpenRoofingPermitDays === "number"
+  ) {
+    throw new Error("minOpenRoofingPermitDays requires hasOpenRoofingPermit to be true or omitted");
+  }
+  const requiresOpenRoofingPermit =
+    filters.hasOpenRoofingPermit === true || typeof filters.minOpenRoofingPermitDays === "number";
+  if (requiresOpenRoofingPermit) {
     where.push(`coalesce(open_roofing_permit_count, 0) > 0`);
   } else if (filters.hasOpenRoofingPermit === false) {
     where.push(`coalesce(open_roofing_permit_count, 0) = 0`);
   }
   if (typeof filters.minOpenPermitDays === "number") {
     where.push(`coalesce(longest_open_permit_days, 0) >= ${num(filters.minOpenPermitDays)}`);
+  }
+  if (typeof filters.minOpenRoofingPermitDays === "number") {
+    where.push(
+      `coalesce(longest_open_roofing_permit_days, 0) >= ${num(filters.minOpenRoofingPermitDays)}`,
+    );
   }
   if (typeof filters.ownerOutOfCounty === "boolean") {
     where.push(`owner_out_of_county = ${bool(filters.ownerOutOfCounty)}`);
@@ -274,6 +293,16 @@ export function buildPropertyDetailSql(source: string, parcelId: string): string
   );
 }
 
+/** Full permit rows for one parcel, most relevant/open records first. */
+export function buildPropertyPermitsSql(source: string, parcelId: string, limit = 200): string {
+  return (
+    `SELECT * FROM ${tableRef(source)} WHERE parcel_identifier = ${quote(parcelId)} ` +
+    `ORDER BY is_open DESC NULLS LAST, is_roofing DESC NULLS LAST, ` +
+    `coalesce(issued_date, applied_date, last_modified_date) DESC NULLS LAST, permit_id ASC ` +
+    `LIMIT ${num(clampLimit(limit))}`
+  );
+}
+
 /**
  * Headline dataset counts. Every number the UI shows comes from this query or
  * from a filtered search; none are hardcoded.
@@ -290,6 +319,7 @@ export function buildDatasetStatsSql(source: string): string {
   count(*) FILTER (WHERE coalesce(open_permit_count, 0) > 0) AS with_open_permit,
   count(*) FILTER (WHERE coalesce(open_roofing_permit_count, 0) > 0) AS with_open_roofing_permit,
   count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) > 1825) AS open_over_five_years,
+  count(*) FILTER (WHERE coalesce(longest_open_roofing_permit_days, 0) > 1825) AS open_roofing_over_five_years,
   count(*) FILTER (WHERE owner_out_of_county) AS owner_out_of_county,
   count(*) FILTER (WHERE owner_out_of_state) AS owner_out_of_state,
   count(*) FILTER (WHERE coalesce(no_recorded_sale_in_dor_window, FALSE)) AS no_recorded_sale,
@@ -352,6 +382,7 @@ export function buildPermitPostureSql(source: string): string {
   count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) BETWEEN 365 AND 1824) AS open_1_to_5_years,
   count(*) FILTER (WHERE coalesce(longest_open_permit_days, 0) >= 1825) AS open_over_5_years,
   max(coalesce(longest_open_permit_days, 0)) AS longest_open_permit_days,
+  max(coalesce(longest_open_roofing_permit_days, 0)) AS longest_open_roofing_permit_days,
   max(latest_permit_date) AS latest_permit_date,
   count(contractor_name) AS contractor_names_present,
   count(bbb_rating) AS bbb_ratings_present

@@ -1,0 +1,136 @@
+{
+  "property": {
+    "property_id": "2bba217cc9e57a8bce15b1e52e4c087b",
+    "property_cid": null,
+    "request_identifier": "09-20-26-0100-000-02300",
+    "parcel_identifier": "09-20-26-0100-000-02300",
+    "alt_key": "2535261",
+    "source_system": "lake_dor_roll",
+    "county_name": "Lake",
+    "state_code": "FL",
+    "address_street": "28344 COLUMBIA RD",
+    "address_city": "TAVARES",
+    "address_zip": "32778",
+    "latitude": 28.759327468808795,
+    "longitude": -81.71298346537564,
+    "lot_area_sqft": 87200,
+    "lot_size_acre": 2.001836547291093,
+    "property_type": "single_family",
+    "property_usage_type": "single_family",
+    "dor_use_code": "001",
+    "built_year": 1981,
+    "effective_built_year": 2022,
+    "livable_floor_area": 1619,
+    "building_count": 1,
+    "residential_units": 1,
+    "assessed_value": 191670,
+    "market_value": 317518,
+    "land_value": 145000,
+    "taxable_value": 140259,
+    "owner_name": "SPEARS JAMES M",
+    "owners_text": "SPEARS JAMES M",
+    "owner_count": 1,
+    "owner_mailing_city": "TAVARES",
+    "owner_mailing_state": "FL",
+    "owner_mailing_zip": "32778",
+    "owner_out_of_county": false,
+    "owner_out_of_state": false,
+    "last_sale_date": null,
+    "last_sale_price": null,
+    "prior_sale_date": null,
+    "prior_sale_price": null,
+    "sale_records_in_window": 0,
+    "no_recorded_sale_in_dor_window": true,
+    "roof_age_years": 45,
+    "roof_age_basis": "year_built",
+    "roof_last_permit_date": null,
+    "has_permits": true,
+    "permit_count": 1,
+    "roofing_permit_count": 1,
+    "open_permit_count": 1,
+    "open_roofing_permit_count": 1,
+    "longest_open_permit_days": 3426,
+    "longest_open_roofing_permit_days": 3426,
+    "latest_permit_date": "2017-04-25",
+    "contractor_name": null,
+    "bbb_rating": null,
+    "has_bbb_contractor": null,
+    "has_sunbiz_tenant": null,
+    "has_business_account": false,
+    "business_account_count": 0,
+    "business_naics_codes": null,
+    "business_names": null,
+    "roofing_business_count": 0,
+    "enrichment_status": "permits_loaded;contractor_gated_403;bbb_gated_403",
+    "source_systems": "fl_dor_nal_2026p|fl_gio_parcel_centroid_2025|lake_cdplus_permits"
+  },
+  "permits": [
+    {
+      "permit_id": "lake_cdplus_permits:2017030092",
+      "permit_number": "2017030092",
+      "parcel_identifier": "09-20-26-0100-000-02300",
+      "alt_key": "2535261",
+      "jurisdiction": "Lake County",
+      "permit_type": "RF",
+      "permit_description": "ROOF-REROOF (OLD)",
+      "permit_status": "ISSUED",
+      "applied_date": "2017-03-03",
+      "approved_date": "2017-03-03",
+      "issued_date": "2017-04-25",
+      "completed_date": null,
+      "last_modified_date": "2026-08-14",
+      "is_roofing": true,
+      "is_open": true,
+      "days_open": 3426,
+      "contractor_name": null,
+      "contractor_license": null,
+      "bbb_rating": null,
+      "source_url": "https://c.lakecountyfl.gov/offices/building_services/permit_report.ashx?type=history&number=2017030092",
+      "source_system": "lake_cdplus_permits",
+      "linkage_status": "linked_to_assessed_roll"
+    }
+  ],
+  "permitsAvailable": true,
+  "sources": [
+    {
+      "token": "fl_dor_nal_2026p",
+      "label": "FL DOR NAL 2026 preliminary tax roll"
+    },
+    {
+      "token": "fl_gio_parcel_centroid_2025",
+      "label": "FL GIO parcel centroids 2025"
+    },
+    {
+      "token": "lake_cdplus_permits",
+      "label": "Lake County CD Plus permit layer"
+    }
+  ],
+  "gating": [
+    {
+      "token": "contractor_gated_403",
+      "field": "contractor_name",
+      "severity": "gated",
+      "headline": "Contractor of record is gated at the source",
+      "detail": "No source that covers this parcel publishes a contractor. The CD Plus layer carries no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate that answers HTTP 403 to every egress tested, and thirteen of the fourteen municipalities are blocked, unavailable or manual-only. contractor_name is a real column that stays null rather than being fabricated."
+    },
+    {
+      "token": "bbb_gated_403",
+      "field": "bbb_rating",
+      "severity": "gated",
+      "headline": "BBB rating is gated at the source",
+      "detail": "bbb.org answers HTTP 403 to this egress, and BBB browser work requires approved remote compute that this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null rather than being fabricated."
+    }
+  ],
+  "provenance": {
+    "sql": "SELECT * FROM properties WHERE request_identifier = '09-20-26-0100-000-02300' OR property_id = '09-20-26-0100-000-02300' LIMIT 1;\n\nSELECT * FROM permits WHERE parcel_identifier = '09-20-26-0100-000-02300' ORDER BY is_open DESC NULLS LAST, is_roofing DESC NULLS LAST, coalesce(issued_date, applied_date, last_modified_date) DESC NULLS LAST, permit_id ASC LIMIT 200",
+    "dataSource": "pipeline/data/artifacts/publish/lake/query-table.parquet",
+    "dataSourceKind": "local",
+    "sourceSystems": [
+      "FL DOR NAL 2026 preliminary tax roll",
+      "FL GIO parcel centroids 2025",
+      "Lake County CD Plus permit layer"
+    ],
+    "runId": "20260910T225242Z",
+    "rootCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy"
+  }
+}

@@ -1,6 +1,6 @@
 node_modules
 dist
-.claude
+pipeline
 artifacts
 pnpm-lock.yaml
 infra/bundle/
@@ -10,4 +10,3 @@ infra/cdk.out/
 # and byte-compared against a rebuild in index-build.test.ts. Reformatting it
 # would make that comparison fail against a freshly built index.
 packages/rag/index-data/
-

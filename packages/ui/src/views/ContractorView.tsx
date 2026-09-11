@@ -56,7 +56,7 @@ export function ContractorView(): JSX.Element {
   const options = useMemo<SearchOptions>(
     () => ({
       hasOpenRoofingPermit: true,
-      sortBy: "longest_open_permit_days",
+      sortBy: "longest_open_roofing_permit_days",
       sortDir: "desc",
       limit: 50,
       offset,
@@ -165,22 +165,28 @@ export function ContractorView(): JSX.Element {
             />
           ))}
           <StatTile
-            label="Longest open permit"
+            label="Longest open permit (any type)"
             loading={view.loading && !view.data}
             value={formatDays(view.data?.posture.longest_open_permit_days)}
+          />
+          <StatTile
+            label="Longest open roofing permit"
+            loading={view.loading && !view.data}
+            value={formatDays(view.data?.posture.longest_open_roofing_permit_days)}
+            tone="warn"
           />
         </div>
       </Panel>
 
       <Panel
-        title="How long open permits have been open"
-        subtitle="Bucketed from longest_open_permit_days on each parcel."
+        title="How long open permits of any type have been open"
+        subtitle="Generic permit posture, bucketed from longest_open_permit_days on each parcel."
       >
         {view.loading && !view.data ? (
           <SkeletonRows rows={4} height={18} />
         ) : (
           <BarChart
-            ariaLabel="Parcels by how long their longest open permit has been open"
+            ariaLabel="Parcels by how long their longest open permit of any type has been open"
             emptyText="No open permits in the published table."
             data={DURATION_BUCKETS.map((bucket) => ({
               label: bucket.label,
@@ -202,7 +208,7 @@ export function ContractorView(): JSX.Element {
 
       <Panel
         title="Parcels with an open roofing permit"
-        subtitle="Ordered by the longest permit still open, descending."
+        subtitle="Ordered by the longest open roofing permit duration, descending."
       >
         {results.error ? <ErrorPanel error={results.error} onRetry={results.reload} /> : null}
         <PropertyTable

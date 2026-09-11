@@ -5,7 +5,7 @@ export default defineConfig({
     globals: false,
     environment: "node",
     include: ["packages/*/src/**/*.test.ts", "packages/*/tests/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**", ".claude/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "pipeline/**"],
     testTimeout: 60_000,
     hookTimeout: 120_000,
     pool: "forks",

@@ -1,17 +1,24 @@
 {
-  "schemaVersion": "elephant.publish-gate.v1",
-  "counties": {
-    "lake": {
-      "pending": false,
-      "approved": true,
-      "approvedBy": "rarcifa",
-      "approvedAt": "2026-09-10T17:51:18.000Z",
-      "approvalNote": "Owner authorised republishing the Lake County 2026 roll to public IPFS via Filebase and re-pointing the oracle-open-data-lake IPNS name (task 6, 2026-09-10).",
-      "recordedBy": "Claude Code agent, recording an authorisation the owner gave in conversation; not typed by the approver",
-      "lastDryRunWatermark": null,
-      "lastPublishedWatermark": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
-      "lastPublishedRunId": "20260910T225242Z",
-      "lastPublishedAt": "2026-09-10T22:54:59.000Z"
+  "schemaVersion": "elephant.retired-publish-gate.v1",
+  "active": false,
+  "retiredAt": "2026-09-11T12:30:00.000Z",
+  "reason": "Reusable conversational boolean approval cannot authorize a new immutable target. Publication now requires an external one-time Ed25519 authorization for the exact target recorded in artifacts/publication-attempts.json.",
+  "replacement": "artifacts/publication-attempts.json",
+  "historicalState": {
+    "schemaVersion": "elephant.publish-gate.v1",
+    "counties": {
+      "lake": {
+        "pending": true,
+        "approved": true,
+        "approvedBy": "rarcifa",
+        "approvedAt": "2026-09-10T17:51:18.000Z",
+        "approvalNote": "Owner authorised republishing the Lake County 2026 roll to public IPFS via Filebase and re-pointing the oracle-open-data-lake IPNS name (task 6, 2026-09-10).",
+        "recordedBy": "AI coding agent, recording an authorisation the owner gave in conversation; not typed by the approver",
+        "lastDryRunWatermark": null,
+        "lastPublishedWatermark": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+        "lastPublishedRunId": "20260910T225242Z",
+        "lastPublishedAt": "2026-09-10T22:54:59.000Z"
+      }
     }
   }
 }

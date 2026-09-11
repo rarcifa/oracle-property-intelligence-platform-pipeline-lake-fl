@@ -77,12 +77,12 @@ let coldStart = true;
  * and every other surface is unaffected.
  */
 async function resolveModelKey(): Promise<void> {
-  const secretId = process.env.ORACLE_ANTHROPIC_SECRET_ID;
-  if (process.env.ANTHROPIC_API_KEY || !secretId) return;
+  const secretId = process.env.ORACLE_OPENAI_SECRET_ID;
+  if (process.env.OPENAI_API_KEY || !secretId) return;
   try {
     const client = new SecretsManagerClient({});
     const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
-    if (result.SecretString) process.env.ANTHROPIC_API_KEY = result.SecretString.trim();
+    if (result.SecretString) process.env.OPENAI_API_KEY = result.SecretString.trim();
   } catch (error) {
     logger.error("model_key_unavailable", { secretId, error: String(error) });
   }

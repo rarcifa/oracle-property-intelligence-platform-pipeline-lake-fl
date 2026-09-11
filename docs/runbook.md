@@ -1,13 +1,14 @@
 # Runbook — Lake County, FL
 
 Everything runs from the repository root. Node 22.18+ and the DuckDB CLI are required.
-Publishing additionally needs `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` in `.env`; the
-Filebase API token is derived from them.
+Credentials alone never enable publication. A live release additionally needs Filebase
+credentials and a short-lived Ed25519 authorization for the exact frozen target.
 
 ## One-time setup
 
 ```bash
-(cd .claude/skills/use-oracle/runtime && npm ci)
+pnpm install --frozen-lockfile
+(cd pipeline && npm ci)
 ```
 
 ## Verify the runtime before touching the county
@@ -16,11 +17,11 @@ This is the bundled runtime's own evidence template. Both replays must report
 `publishResult.dryRun: true`.
 
 ```bash
-npm test --prefix .claude/skills/use-oracle/runtime
-node .claude/skills/use-oracle/runtime/bin/elephant-county.mjs replay \
-  --county pinellas --fixture .claude/skills/use-oracle/runtime/fixtures/pinellas-replay --output "$(mktemp -d)"
-node .claude/skills/use-oracle/runtime/bin/elephant-county.mjs replay \
-  --county duval --fixture .claude/skills/use-oracle/runtime/fixtures/duval-replay --output "$(mktemp -d)"
+npm test --prefix pipeline
+node pipeline/bin/elephant-county.mjs replay \
+  --county pinellas --fixture pipeline/fixtures/pinellas-replay --output "$(mktemp -d)"
+node pipeline/bin/elephant-county.mjs replay \
+  --county duval --fixture pipeline/fixtures/duval-replay --output "$(mktemp -d)"
 ```
 
 ## The readiness gate
@@ -28,14 +29,38 @@ node .claude/skills/use-oracle/runtime/bin/elephant-county.mjs replay \
 Non-zero exit stops everything. No seed, no pilot, no ingest.
 
 ```bash
-python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
-  .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
+python3 pipeline/scripts/validate-county-readiness.py \
+  pipeline/docs/lake-sources.yaml
 ```
 
-## A full run
+## Plan the complete Clermont history before a full run
+
+The portal exposes one partition per permit year from 2015 through 2026. The repaired
+local candidate contains **year 26 only**. Do not label its 4,061/4,061 achievable rows as
+all available Clermont history.
+
+Create an operator-reviewed request that binds source, configuration, schema, checkpoint,
+baseline, cost ceiling, and all 12 partitions, then evaluate it without acquiring data:
 
 ```bash
-cd .claude/skills/use-oracle/runtime
+cd pipeline
+npm run clermont:plan -- \
+  --request /secure/operator/clermont-full-request.json \
+  --baseline-store data/baselines/lake/clermont \
+  --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+The conservative estimate includes retries and the full partition bounds. The coordinator
+enters `WAITING_HUMAN` when the estimate exceeds 48 hours or the request's cost ceiling.
+A sustained harvest, AWS job, source reprobe, or cost approval is an external action; none
+is implied by running the local planner. See
+[`pipeline/config/clermont/README.md`](../pipeline/config/clermont/README.md) for the
+partition and handoff invariants.
+
+## Build a full local candidate
+
+```bash
+cd pipeline
 
 # 1. Acquire every source
 node scripts/lake/fetch-sources.mjs
@@ -43,75 +68,146 @@ node scripts/lake/fetch-sources.mjs
 # 2. Build the seed CSV, the input of record for every later stage
 node --max-old-space-size=6144 scripts/lake/build-seed.mjs
 
-# 2b. Clermont permits: the county's only open source of contractor of record.
-#     The export is git-ignored (use-oracle forbids committing scraped data),
-#     so a run that should carry contractors must be published from a machine
-#     that has run this step. CI has no export and publishes without it, and
-#     says so in its coverage snapshot.
-#     Benchmark BEFORE harvesting - county-permit-adapter requires it, and this
-#     harvest was once run without it (docs/lake-kit-deviations.md section 19).
-#     Concurrency is a politeness control on a municipal server: stay at or
-#     below 2, and prefer a delay over a second worker.
-JOBID=$(date -u +clermont-%Y%m%d)
-node scripts/lake/clermont-permits.mjs enumerate --job-id "$JOBID" --years 26
-node scripts/lake/clermont-permits.mjs measure   --job-id "$JOBID" --concurrency 1,2
-node scripts/lake/clermont-permits.mjs harvest   --job-id "$JOBID" --concurrency 1 --delay-ms 600
-node scripts/lake/clermont-permits.mjs coverage  --job-id "$JOBID"
-node scripts/lake/clermont-permits.mjs export    --job-id "$JOBID"
+# 2b. Materialize the exact certified 2015-2026 last-good Clermont baseline.
+#     This validates the pointer, source/config/schema signatures, all 12
+#     partition receipts and every digest before atomically replacing the CSV.
+#     There is no empty fallback and the year-26 local export is not a substitute.
+npm run clermont:materialize -- \
+  --request /secure/operator/clermont-baseline-request.json \
+  --baseline-store data/baselines/lake/clermont \
+  --output data/downloads/lake/clermont-permits.csv \
+  --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# 2c. The consolidation reads clermont-permits.csv unconditionally, so a
-#     checkout that skipped 2b needs an empty one. DuckDB's read_csv_auto has
-#     no "file may be absent" mode, and a silently-missing permit source is
-#     exactly the failure that would publish a county as having no contractors.
 D="$PWD/data/downloads/lake"
-[ -f "$D/clermont-permits.csv" ] || printf 'permit_number,alternate_key,parcel_id,permit_type,permit_desc,permit_status,applied_date,approved_date,issued_date,co_date,last_modified,permit_url,is_roofing,is_open,days_open,source_system,contractor_name,contractor_license\n' > "$D/clermont-permits.csv"
 
 # 3. Consolidate to the query table
 O="$PWD/data/artifacts/publish/lake/query-table.parquet"
-sed -e "s|\$DOWNLOAD_DIR|$D|g" -e "s|\$OUT_PARQUET|$O|g" -e "s|\$AS_OF_YEAR|$(date -u +%Y)|g" \
+P="$PWD/data/artifacts/publish/lake/permit-table.parquet"
+sed -e "s|\$DOWNLOAD_DIR|$D|g" -e "s|\$OUT_PARQUET|$O|g" \
+  -e "s|\$PERMIT_OUT_PARQUET|$P|g" -e "s|\$AS_OF_YEAR|$(date -u +%Y)|g" \
+  -e "s|\$AS_OF_DATE|$(date -u +%F)|g" \
   scripts/lake/build-query-table.sql > /tmp/lake-qt.sql
 duckdb -c ".read /tmp/lake-qt.sql"
 
 # 4. Assemble the publishable run directory
 RUNID=$(date -u +%Y%m%dT%H%M%SZ)
-node scripts/lake/build-publish-set.mjs --run-id "$RUNID"
+BASELINE_DIGEST=$(jq -er '.baseline.requiredSha256' \
+  /secure/operator/clermont-baseline-request.json)
+node scripts/lake/build-publish-set.mjs \
+  --run-id "$RUNID" \
+  --clermont-baseline-sha256 "$BASELINE_DIGEST" \
+  --clermont-evidence \
+  "data/baselines/lake/clermont/baselines/$BASELINE_DIGEST/baseline.json"
 
-# 5. Publish: local DAG, CAR import, IPNS re-point, multi-gateway verification
-node --max-old-space-size=6144 scripts/lake/publish-run.mjs --run-id "$RUNID" --mode full
+# 5. Prepare locally: validate, build deterministic CARs and emit the exact target request.
+#    Compute the digest from the same explicit scope as the workflow; do not reuse a
+#    digest from an older run manifest after code has changed.
+SCOPE=(
+  package.json package-lock.json docs/lake-sources.yaml
+  scripts/lake/build-query-table.sql scripts/lake/build-publish-set.mjs
+  scripts/lake/publish-run.mjs src/core/publish-gate.mjs
+  src/core/secondary-pin.mjs src/counties/lake/enrichment-profile.mjs
+  src/counties/lake/query-table.mjs src/counties/lake/permit-table.mjs
+)
+COMPONENTS=$(mktemp)
+for FILE in "${SCOPE[@]}"; do
+  printf '%s  pipeline/%s\n' "$(shasum -a 256 "$FILE" | cut -d' ' -f1)" "$FILE" >> "$COMPONENTS"
+done
+PROVENANCE_DIGEST="sha256:$(sort "$COMPONENTS" | shasum -a 256 | cut -d' ' -f1)"
+rm -f "$COMPONENTS"
+node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
+  --run-id "$RUNID" --mode full --dry-run \
+  --candidate-workflow-run-id local \
+  --provenance-digest "$PROVENANCE_DIGEST"
 ```
 
-Add `--dry-run` to step 5 to compute the root CID, write the CAR and the manifest, and
-upload nothing. `--skip-upload` reuses an upload already on Filebase and only re-verifies.
+Step 5 always uploads nothing. It records a `PREPARED_LOCAL`/`BUILT` attempt and writes
+`data/artifacts/publish/lake/manifests/$RUNID.publication-request.json` for review.
 
 ## The publish gate
 
-Step 5 goes through a human approval gate, and cannot upload without passing it. Bulk
-property data reaching public IPFS is human-gated: an unapproved run builds and validates
-the snapshot, uploads nothing, and leaves the county pending. Only a human opens it.
+The old committed boolean gate is retired and preserved only as historical evidence in
+`artifacts/publish-gate.json`. It is not authority. The operator signs the exact request
+outside this repository with an Ed25519 key; the signature binds county, run, root CID,
+manifest and provenance digests, publication mode, candidate workflow identity, bucket,
+existing IPNS name/key, actions, expiry and nonce. The private key and signed approval must
+remain outside the repository.
+
+A live invocation also requires `SECONDARY_PIN_SERVICE_URL` and
+`SECONDARY_PIN_SERVICE_TOKEN` for an IPFS Pinning Service API provider whose host is not
+Filebase. Both the root and manifest must reach `pinned` there before gateway verification.
 
 ```bash
-node scripts/lake/publish-approve.mjs --county lake --status
-node scripts/lake/publish-approve.mjs --county lake \
-  --by "<name>" --note "<what is being released>"
-node scripts/lake/publish-approve.mjs --county lake --revoke
+REQUEST="$PWD/data/artifacts/publish/lake/manifests/$RUNID.publication-request.json"
+node scripts/lake/publish-approve.mjs \
+  --request "$REQUEST" \
+  --private-key /secure/operator/lake-publication-ed25519.pem \
+  --output /secure/operator/"$RUNID".approval.json \
+  --approver "<operator identity>" \
+  --expires-at "<short-lived ISO-8601 timestamp>"
+
+node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
+  --run-id "$RUNID" --mode full \
+  --candidate-workflow-run-id local \
+  --provenance-digest "$PROVENANCE_DIGEST" \
+  --approve /secure/operator/"$RUNID".approval.json \
+  --approval-public-key /secure/operator/lake-publication-ed25519.pub.pem
+
+node scripts/lake/publish-approve.mjs --status
 ```
 
-The state is `artifacts/publish-gate.json`, committed, so an approval survives a scheduled
-runner and stays reviewable. `pending` clears only after a successful approved publication,
-and an unapproved run proves a given root CID once rather than rebuilding a 332 MB CAR every
-time it is invoked.
+`artifacts/publication-attempts.json` is the transactional receipt ledger. A retry resumes
+the same exact attempt; it does not create a second writer. The publisher records both CAR
+uploads, reconciles both independent pins, verifies every manifest artifact through two
+independent gateways, records history, repoints the pre-existing IPNS name last, reads the
+exact key/CID back, consumes the nonce and then finalizes. Before any mutation, the live
+IPNS value must equal the newest immutable local history predecessor. Null or mismatched
+readback, an unknown predecessor, expiry, target drift and replay all fail closed.
+
+## Two-phase GitHub Actions release
+
+1. Run the scheduled workflow or dispatch it with `publish=false`. It builds and uploads
+   `lake-run-<runId>` as a `PREPARED_LOCAL` artifact.
+2. Review its coverage, CARs, manifest, request, ledger, and full-history evidence. Sign
+   only its exact publication request outside the repository.
+3. Dispatch again with `publish=true`, the exact `publication_run_id`, and the first
+   workflow's `candidate_workflow_run_id`. This dispatch downloads those bytes; it skips
+   acquisition, consolidation, and candidate assembly.
+
+After a successful publish, RAG promotion and hosted runtime deployment remain separate
+reviewed changes. The workflow does not silently rewrite `packages/rag/corpus-source.json`
+or claim that a generated index was deployed.
+
+Promote only the explicit finalized run/root after its downloaded `latest.json`, manifest,
+verification receipt, publication ledger and run directory are present in this checkout:
+
+```bash
+pnpm --filter @oracle-lake/rag promote:published -- \
+  --run-id "$RUNID" --root-cid "$ROOT"
+pnpm --filter @oracle-lake/rag inspect
+pnpm --filter @oracle-lake/rag eval
+```
+
+The promotion command rejects identity drift, incomplete two-gateway verification, a ledger
+that is not exactly `FINALIZED`, or any local artifact whose bytes differ from the finalized
+manifest. Only after validation does it write the promotion receipt, switch the corpus
+source and rebuild the deterministic index. Review those three files before deploying the
+runtime.
 
 ## An incremental run
 
-The permit layer is the only source that moves daily. Window it on `Permit_LastModDate`:
+The county permit layer can be windowed on `Permit_LastModDate` only when a verified
+immutable merge base is supplied by the durable coordinator:
 
 ```bash
 node scripts/lake/fetch-sources.mjs --only permits --since 2026-09-08
 ```
 
-then repeat steps 3 to 5 with `--mode incremental`. The run history records per-table
-inserted / updated / unchanged / removed counts against the previous run's row hashes, and
-refuses to modify or drop any run already recorded.
+then repeat steps 3 to 5 with `--mode incremental`. A disposable runner never guesses a
+merge base from a cache; the checked-in workflow performs a bounded full county-source
+acquisition. Run history records property row deltas and per-table count deltas. When the
+mutable local hash cache is absent, publication reconstructs property hashes from the
+immutable predecessor Parquet and fails closed if it cannot.
 
 ## A pilot
 

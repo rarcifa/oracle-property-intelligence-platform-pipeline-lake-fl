@@ -12,6 +12,7 @@ const NUMBER_KEYS = [
   "minRoofAge",
   "maxRoofAge",
   "minOpenPermitDays",
+  "minOpenRoofingPermitDays",
   "minMarketValue",
   "maxMarketValue",
   "minBuiltYear",

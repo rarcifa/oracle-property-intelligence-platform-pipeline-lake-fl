@@ -18,15 +18,18 @@ import {
   buildFacetSql,
   buildOwnerPostureSql,
   buildPermitPostureSql,
+  buildPropertyPermitsSql,
   buildPropertyDetailSql,
   buildRoofAgeBandsSql,
   buildSearchSql,
   clampLimit,
   gatedFieldNotices,
   parseSourceSystems,
+  PERMITS_VIEW,
   PROPERTIES_VIEW,
   QUERY_TABLE_COLUMNS,
   type ResponseProvenance,
+  type PermitRow,
   type SearchOptions,
 } from "@oracle-lake/shared";
 import type { OracleDataStore, QueryRow } from "./duckdb.js";
@@ -115,6 +118,8 @@ export async function searchProperties(
 
 export interface PropertyDetail {
   property: QueryRow;
+  permits: PermitRow[];
+  permitsAvailable: boolean;
   sources: { token: string; label: string }[];
   gating: ReturnType<typeof gatedFieldNotices>;
   provenance: ResponseProvenance;
@@ -127,14 +132,56 @@ export async function getProperty(
   parcelId: string,
 ): Promise<PropertyDetail | null> {
   const sql = buildPropertyDetailSql(PROPERTIES_VIEW, parcelId);
-  const row = await store.queryOne(sql);
+  const permitSql = buildPropertyPermitsSql(PERMITS_VIEW, parcelId);
+  const [row, permits] = await Promise.all([
+    store.queryOne(sql),
+    store.query(permitSql) as unknown as Promise<PermitRow[]>,
+  ]);
   if (row === null) return null;
   const status = typeof row.enrichment_status === "string" ? row.enrichment_status : null;
   return {
     property: row,
+    permits,
+    permitsAvailable: store.permitsAvailable,
     sources: parseSourceSystems(typeof row.source_systems === "string" ? row.source_systems : null),
     gating: gatedFieldNotices(status),
-    provenance: provenance(context, sql, [row]),
+    provenance: provenance(context, `${sql};\n\n${permitSql}`, [row]),
+  };
+}
+
+/** Full permit-grain records for one parcel. */
+export async function getPropertyPermits(
+  store: OracleDataStore,
+  context: ProvenanceContext,
+  parcelId: string,
+  limit = 200,
+): Promise<{
+  parcelId: string;
+  permits: PermitRow[];
+  permitsAvailable: boolean;
+  provenance: ResponseProvenance;
+}> {
+  const sql = buildPropertyPermitsSql(PERMITS_VIEW, parcelId, limit);
+  const permits = (await store.query(sql)) as unknown as PermitRow[];
+  const sourceSystems = [
+    ...new Set(
+      permits.flatMap((permit) =>
+        typeof permit.source_system === "string" ? [permit.source_system] : [],
+      ),
+    ),
+  ];
+  return {
+    parcelId,
+    permits,
+    permitsAvailable: store.permitsAvailable,
+    provenance: {
+      sql,
+      dataSource: store.activePermitSource ?? context.dataSource,
+      dataSourceKind: context.dataSourceKind,
+      sourceSystems,
+      runId: context.runId,
+      rootCid: context.rootCid,
+    },
   };
 }
 
@@ -292,7 +339,7 @@ export async function getContractorView(
     // rather than letting the notices imply a countywide zero.
     gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
     provenance: provenance(context, sql, []),
-    note: "Permit signals come from the Lake County CD Plus permit layer, joined to the DOR roll on Alternate_Key. That layer publishes a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so it is a current-permit source, not a permit archive.",
+    note: "Permit signals combine the Lake County CD Plus layer, joined to the DOR roll on Alternate_Key, with the harvested Clermont eTRAKiT records. CD Plus publishes a rolling 365-day Permit_LastModDate window for unincorporated Lake County; Clermont is the only municipality with harvested contractor detail in this run.",
   };
 }
 

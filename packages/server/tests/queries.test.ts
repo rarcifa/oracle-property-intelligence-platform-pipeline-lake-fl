@@ -60,7 +60,7 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     closeStore();
   });
 
-  it("opens a table with rows and passes the 62-column schema gate", () => {
+  it("opens a table with rows and passes the 63-column schema gate", () => {
     // init() already ran assertSchemaMatches; reaching here means it passed.
     expect(total).toBeGreaterThan(100_000);
   });
@@ -121,7 +121,7 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     const open = await searchProperties(store, provenance, {
       hasOpenRoofingPermit: true,
       limit: 20,
-      sortBy: "longest_open_permit_days",
+      sortBy: "longest_open_roofing_permit_days",
       sortDir: "desc",
     });
     expect(open.matched).toBeGreaterThan(0);

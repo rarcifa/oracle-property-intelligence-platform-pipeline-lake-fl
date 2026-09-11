@@ -264,12 +264,21 @@ export function buildJurisdictionDocs(
         provenance,
       }),
     );
-    links.push({ sourceDocId: overviewId, targetDocId: docId, relation: "documents" });
+    links.push({
+      sourceDocId: overviewId,
+      targetDocId: docId,
+      relation: "documents",
+      metadata: { basis: "permit-jurisdiction-catalog", jurisdictionKey: jurisdiction.key },
+    });
     if (jurisdiction.records_request) {
       links.push({
         sourceDocId: docId,
         targetDocId: "source:cdplus",
         relation: "requests_records_from",
+        metadata: {
+          basis: "chapter-119-route",
+          jurisdictionKey: jurisdiction.key,
+        },
       });
     }
   }

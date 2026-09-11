@@ -1,7 +1,7 @@
 /**
  * The agent's upstream failures must not be relayed verbatim.
  *
- * `/api/chat` is public and unauthenticated. When the Anthropic account ran out
+ * `/api/chat` is public and unauthenticated. When a model account runs out
  * of credit the route answered anonymous callers with the provider's own billing
  * string — "Your credit balance is too low… go to Plans & Billing" — which is an
  * operator problem told to the wrong audience, and tells a stranger which
@@ -13,18 +13,17 @@ import { sanitizeProviderError } from "../src/chat/agent.js";
 
 describe("sanitizeProviderError", () => {
   it("does not relay a provider billing message", () => {
-    const raw =
-      "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.";
+    const raw = "You exceeded your current quota. Please check your plan and billing details.";
     const out = sanitizeProviderError(raw);
-    expect(out).not.toMatch(/credit balance/i);
-    expect(out).not.toMatch(/Plans & Billing/i);
+    expect(out).not.toMatch(/quota/i);
+    expect(out).not.toMatch(/billing/i);
     expect(out).toMatch(/temporarily unavailable/i);
   });
 
   it("does not relay an API key or auth detail", () => {
-    const out = sanitizeProviderError("401 invalid x-api-key sk-ant-api03-SECRET");
-    expect(out).not.toMatch(/sk-ant/);
-    expect(out).not.toMatch(/x-api-key/i);
+    const out = sanitizeProviderError("401 invalid Authorization bearer sk-SECRET");
+    expect(out).not.toMatch(/sk-SECRET/);
+    expect(out).not.toMatch(/Authorization/i);
   });
 
   it("keeps a rate-limit signal, which is useful and discloses nothing", () => {

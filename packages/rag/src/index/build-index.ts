@@ -29,9 +29,9 @@ function round(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
-/** Compute the full index from the corpus on disk. */
-export async function buildIndex(): Promise<RagIndex> {
-  const corpus = await buildCorpus();
+/** Compute the full index from the explicitly selected corpus run on disk. */
+export async function buildIndex(expectedRunId?: string): Promise<RagIndex> {
+  const corpus = await buildCorpus(expectedRunId);
   if (corpus.chunks.length === 0)
     throw new Error("Corpus is empty: no source documents were found");
 
@@ -71,9 +71,17 @@ export async function buildIndex(): Promise<RagIndex> {
   const latent = buildLatentSpace(rows, Math.min(LATENT_DIMENSIONS, Math.max(1, chunkCount - 1)));
 
   const index: RagIndex = {
-    schemaVersion: "oracle.rag-index.v1",
+    schemaVersion: "oracle.rag-index.v2",
     county: "lake",
-    builtFrom: { runId: corpus.runId, rootCid: corpus.rootCid },
+    builtFrom: {
+      runId: corpus.runId,
+      releaseState: corpus.releaseState,
+      rootCid: corpus.rootCid,
+      snapshotDigest: corpus.sourceSnapshot.digest,
+      sourceCount: corpus.sourceSnapshot.inputs.length,
+      sourceReceipt: corpus.sourceReceipt,
+    },
+    sourceSnapshot: corpus.sourceSnapshot,
     embedding: {
       model: "lsa-tfidf-svd",
       dimension: latent.singularValues.length,
@@ -97,8 +105,11 @@ export async function buildIndex(): Promise<RagIndex> {
 }
 
 /** Build the index and write it to the committed path. */
-export async function writeIndex(path = INDEX_PATH): Promise<{ path: string; index: RagIndex }> {
-  const index = await buildIndex();
+export async function writeIndex(
+  path = INDEX_PATH,
+  expectedRunId?: string,
+): Promise<{ path: string; index: RagIndex }> {
+  const index = await buildIndex(expectedRunId);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(index)}\n`, "utf8");
   return { path, index };

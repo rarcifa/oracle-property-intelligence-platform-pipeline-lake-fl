@@ -1,0 +1,285 @@
+{
+  "schemaVersion": "elephant.publication-attempt-ledger.v1",
+  "revision": 15,
+  "attempts": {
+    "sha256:eb86f1922a0181b0179ac7dae63f53eb46f4a03f45040dc1b91d4c5dde0e0db5": {
+      "attemptId": "sha256:eb86f1922a0181b0179ac7dae63f53eb46f4a03f45040dc1b91d4c5dde0e0db5",
+      "target": {
+        "county": "lake",
+        "runId": "20260911T131000Z",
+        "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+        "manifestDigest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+        "provenanceDigest": "sha256:72b986a01f6d64d564dbb7de7e2efdc6283e40ad8391bca3cde7b821ca0cfd02",
+        "bucket": "elephant-oracle-open-data-lake",
+        "ipnsLabel": "oracle-open-data-lake",
+        "ipnsNetworkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+        "actions": [
+          "upload-root-car",
+          "upload-manifest-car",
+          "verify-all-artifacts-two-gateways",
+          "append-history",
+          "repoint-ipns"
+        ]
+      },
+      "state": "ROLLED_BACK",
+      "createdAt": "2026-09-11T13:08:40.619Z",
+      "updatedAt": "2026-09-11T13:16:00.000Z",
+      "authorization": null,
+      "transitions": [
+        {
+          "sequence": 1,
+          "stage": "PREPARED",
+          "at": "2026-09-11T13:08:40.619Z",
+          "receipt": {
+            "localOnly": true
+          }
+        },
+        {
+          "sequence": 2,
+          "stage": "FROZEN",
+          "at": "2026-09-11T13:08:40.621Z",
+          "receipt": {
+            "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+            "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z"
+          }
+        },
+        {
+          "sequence": 3,
+          "stage": "BUILT",
+          "at": "2026-09-11T13:08:40.622Z",
+          "receipt": {
+            "rootCar": {
+              "cid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+              "bytes": 321903264
+            },
+            "manifest": {
+              "cid": "bafkreiaqiwvmkfgz7yziuxeurgb4jpecbzwh57rj3qbzyjszsv2ltuhmwy",
+              "digest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+              "bytes": 9561
+            }
+          }
+        },
+        {
+          "sequence": 4,
+          "stage": "ROLLED_BACK",
+          "at": "2026-09-11T13:16:00.000Z",
+          "receipt": {
+            "reason": "Superseded locally before authorization because formatting changed the frozen runtime provenance."
+          }
+        }
+      ]
+    },
+    "sha256:18b80fe66f6efc9b3b0ac5af7a6528881bcfbff554e0372b641f835b126c1324": {
+      "attemptId": "sha256:18b80fe66f6efc9b3b0ac5af7a6528881bcfbff554e0372b641f835b126c1324",
+      "target": {
+        "county": "lake",
+        "runId": "20260911T131000Z",
+        "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+        "manifestDigest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+        "provenanceDigest": "sha256:a3f11826c6e38681d6925001ee09ec0ae890f95e48172f3c18cf6e83eb94e4a4",
+        "bucket": "elephant-oracle-open-data-lake",
+        "ipnsLabel": "oracle-open-data-lake",
+        "ipnsNetworkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+        "actions": [
+          "upload-root-car",
+          "upload-manifest-car",
+          "verify-all-artifacts-two-gateways",
+          "append-history",
+          "repoint-ipns"
+        ]
+      },
+      "state": "ROLLED_BACK",
+      "createdAt": "2026-09-11T13:17:07.708Z",
+      "updatedAt": "2026-09-11T13:20:00.000Z",
+      "authorization": null,
+      "transitions": [
+        {
+          "sequence": 1,
+          "stage": "PREPARED",
+          "at": "2026-09-11T13:17:07.708Z",
+          "receipt": {
+            "localOnly": true
+          }
+        },
+        {
+          "sequence": 2,
+          "stage": "FROZEN",
+          "at": "2026-09-11T13:17:07.710Z",
+          "receipt": {
+            "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+            "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z"
+          }
+        },
+        {
+          "sequence": 3,
+          "stage": "BUILT",
+          "at": "2026-09-11T13:17:07.711Z",
+          "receipt": {
+            "rootCar": {
+              "cid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+              "bytes": 321903264
+            },
+            "manifest": {
+              "cid": "bafkreiaqiwvmkfgz7yziuxeurgb4jpecbzwh57rj3qbzyjszsv2ltuhmwy",
+              "digest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+              "bytes": 9561
+            }
+          }
+        },
+        {
+          "sequence": 4,
+          "stage": "ROLLED_BACK",
+          "at": "2026-09-11T13:20:00.000Z",
+          "receipt": {
+            "reason": "Superseded locally before authorization by the final strict ledger validation revision."
+          }
+        }
+      ]
+    },
+    "sha256:d1a6054d4c807deb9f2df69d292712ff6b43b5bb6560b051db6ff71ec84a11e2": {
+      "attemptId": "sha256:d1a6054d4c807deb9f2df69d292712ff6b43b5bb6560b051db6ff71ec84a11e2",
+      "target": {
+        "county": "lake",
+        "runId": "20260911T131000Z",
+        "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+        "manifestDigest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+        "provenanceDigest": "sha256:aaa0691c3f60e9bdf54cb55072132fc805ba05e71635b8739b401a33e091aac6",
+        "bucket": "elephant-oracle-open-data-lake",
+        "ipnsLabel": "oracle-open-data-lake",
+        "ipnsNetworkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+        "actions": [
+          "upload-root-car",
+          "upload-manifest-car",
+          "verify-all-artifacts-two-gateways",
+          "append-history",
+          "repoint-ipns"
+        ]
+      },
+      "state": "ROLLED_BACK",
+      "createdAt": "2026-09-11T13:20:25.996Z",
+      "updatedAt": "2026-09-11T14:55:00.000Z",
+      "authorization": null,
+      "transitions": [
+        {
+          "sequence": 1,
+          "stage": "PREPARED",
+          "at": "2026-09-11T13:20:25.996Z",
+          "receipt": {
+            "localOnly": true
+          }
+        },
+        {
+          "sequence": 2,
+          "stage": "FROZEN",
+          "at": "2026-09-11T13:20:26.000Z",
+          "receipt": {
+            "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+            "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z"
+          }
+        },
+        {
+          "sequence": 3,
+          "stage": "BUILT",
+          "at": "2026-09-11T13:20:26.001Z",
+          "receipt": {
+            "rootCar": {
+              "cid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+              "bytes": 321903264
+            },
+            "manifest": {
+              "cid": "bafkreiaqiwvmkfgz7yziuxeurgb4jpecbzwh57rj3qbzyjszsv2ltuhmwy",
+              "digest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+              "bytes": 9561
+            }
+          }
+        },
+        {
+          "sequence": 4,
+          "stage": "ROLLED_BACK",
+          "at": "2026-09-11T14:55:00.000Z",
+          "receipt": {
+            "reason": "Superseded locally before authorization by the independent-secondary-pin publication contract."
+          }
+        }
+      ]
+    },
+    "sha256:a4cb170e13fe9a249f42a267523fc74a4acecf7f15ecd5380c4db8ca37c3046b": {
+      "attemptId": "sha256:a4cb170e13fe9a249f42a267523fc74a4acecf7f15ecd5380c4db8ca37c3046b",
+      "target": {
+        "county": "lake",
+        "runId": "20260911T131000Z",
+        "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+        "manifestDigest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+        "provenanceDigest": "sha256:2ebc95fc59a7a4d4d2eaebb7c279c28cbdd80ca660034b8a75161d7c24d33212",
+        "bucket": "elephant-oracle-open-data-lake",
+        "ipnsLabel": "oracle-open-data-lake",
+        "ipnsNetworkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+        "actions": [
+          "upload-root-car",
+          "upload-manifest-car",
+          "pin-secondary-copy",
+          "verify-all-artifacts-two-gateways",
+          "append-history",
+          "repoint-ipns"
+        ]
+      },
+      "state": "BUILT",
+      "createdAt": "2026-09-11T15:11:05.409Z",
+      "updatedAt": "2026-09-11T15:11:05.413Z",
+      "authorization": null,
+      "transitions": [
+        {
+          "sequence": 1,
+          "stage": "PREPARED",
+          "at": "2026-09-11T15:11:05.409Z",
+          "receipt": {
+            "localOnly": true
+          }
+        },
+        {
+          "sequence": 2,
+          "stage": "FROZEN",
+          "at": "2026-09-11T15:11:05.412Z",
+          "receipt": {
+            "rootCid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+            "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z"
+          }
+        },
+        {
+          "sequence": 3,
+          "stage": "BUILT",
+          "at": "2026-09-11T15:11:05.413Z",
+          "receipt": {
+            "rootCar": {
+              "cid": "bafybeih5xrlpzdvjoky75aq7j2cad36dnnzec4suqiwboy3ucayjgyeqnq",
+              "bytes": 321903264
+            },
+            "manifest": {
+              "cid": "bafkreiaqiwvmkfgz7yziuxeurgb4jpecbzwh57rj3qbzyjszsv2ltuhmwy",
+              "digest": "sha256:1045aac514d9fe328a5c948983c4bc820e6c7efe29dc039c26599574b9d0ecb6",
+              "bytes": 9561
+            }
+          }
+        }
+      ]
+    }
+  },
+  "consumedApprovals": [],
+  "historicalAttempts": [
+    {
+      "attemptId": "legacy:20260909T182356Z:bafybeigb3grzqolyja5lefcf3pkfxb5tuhkdtbidnitigq4zzomivrltee",
+      "county": "lake",
+      "runId": "20260909T182356Z",
+      "rootCid": "bafybeigb3grzqolyja5lefcf3pkfxb5tuhkdtbidnitigq4zzomivrltee",
+      "manifestCid": "bafkreieasg746kmlxv3kyrmewdjjacju3nrnriqsuj646vzijbcdpiwonm",
+      "disposition": "ROLLED_BACK",
+      "recordedAt": "2026-09-11T12:30:00.000Z",
+      "reason": "The immutable CAR and manifest were uploaded and gateway-verified, but the existing IPNS name was not repointed or read back (ipnsName and resolvedCid are null). The later 20260909T185056Z attempt completed the pointer update. This records the root as an orphaned failed publication attempt without rewriting its immutable run-history evidence.",
+      "evidence": [
+        "artifacts/run-history.json#20260909T182356Z",
+        "artifacts/manifest-20260909T182356Z.json",
+        "artifacts/verification-20260909T182356Z.json"
+      ]
+    }
+  ]
+}

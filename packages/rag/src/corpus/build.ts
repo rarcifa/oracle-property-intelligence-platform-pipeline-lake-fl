@@ -7,11 +7,18 @@
  * makes the committed index reproducible and the build safe to run in CI.
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { load as parseYaml } from "js-yaml";
+import { z } from "zod";
+import {
+  PERMIT_TABLE_COLUMN_NAMES,
+  QUERY_TABLE_COLUMN_NAMES,
+  assertPermitSchemaMatches,
+  assertSchemaMatches,
+} from "@oracle-lake/shared";
 import { chunkMarkdown } from "./markdown.js";
 import {
   buildCoverageDocs,
@@ -19,15 +26,13 @@ import {
   buildSampleDocs,
   coverageSchema,
   indexSchema,
-  latestSchema,
-  manifestSchema,
   type Coverage,
-  type Latest,
-  type Manifest,
   type PublishedIndex,
   type SampleExtract,
 } from "./artifacts.js";
 import { buildColumnDocs } from "./columns.js";
+import { buildPermitDocs } from "./permits.js";
+import { buildSourceSnapshot, selectCorpusSource, type SourceInput } from "./source.js";
 import {
   buildAccessDocs,
   buildJurisdictionDocs,
@@ -41,31 +46,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** Repository root, resolved from either `src/corpus` or `dist/corpus`. */
 export const REPO_ROOT = process.env.ORACLE_REPO_ROOT ?? resolve(here, "../../../..");
 
-const RUNTIME_DOCS = resolve(REPO_ROOT, ".claude/skills/use-oracle/runtime/docs");
-const PUBLISH_DIR = resolve(
-  REPO_ROOT,
-  ".claude/skills/use-oracle/runtime/data/artifacts/publish/lake",
-);
-
-/** Newest published run directory, or null when nothing has been published. */
-export async function resolveRunDir(): Promise<string | null> {
-  const runsRoot = resolve(PUBLISH_DIR, "runs");
-  if (!existsSync(runsRoot)) return null;
-  const entries = await readdir(runsRoot, { withFileTypes: true });
-  const runs = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  const newest = runs.at(-1);
-  return newest ? resolve(runsRoot, newest) : null;
-}
-
-async function readJson<T>(path: string): Promise<T | null> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return null;
-  }
+const RUNTIME_DOCS = resolve(REPO_ROOT, "pipeline/docs");
+async function readJson<T>(path: string): Promise<T> {
+  return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
 /** Repository-relative path, so provenance is portable between checkouts. */
@@ -94,6 +77,18 @@ const MARKDOWN_SOURCES: readonly MarkdownSource[] = Object.freeze([
     aliases: ["runbook", "how do i run it", "pipeline commands", "operations"],
   },
   {
+    docId: "doc:quality-audit",
+    title: "Repository quality audit — repaired state and external blockers",
+    path: "docs/quality-audit.md",
+    aliases: ["quality audit", "repair status", "external blockers", "salvage verdict"],
+  },
+  {
+    docId: "doc:observability",
+    title: "Observability and on-call handoff",
+    path: "docs/observability-handoff.md",
+    aliases: ["observability", "metrics", "pagerduty", "dashboard", "alerts", "log retention"],
+  },
+  {
     docId: "doc:cost",
     title: "Cost model — why Oracle carries no ongoing infrastructure cost",
     path: "docs/cost.md",
@@ -108,13 +103,13 @@ const MARKDOWN_SOURCES: readonly MarkdownSource[] = Object.freeze([
   {
     docId: "doc:findings",
     title: "County profile — Lake County, FL discovery findings",
-    path: ".claude/skills/use-oracle/runtime/docs/lake-county-findings.md",
+    path: "pipeline/docs/lake-county-findings.md",
     aliases: ["county profile", "findings", "discovery", "county discovery"],
   },
   {
     docId: "doc:deviations",
     title: "Kit deviations — where Lake County departs from the team kit and why",
-    path: ".claude/skills/use-oracle/runtime/docs/lake-kit-deviations.md",
+    path: "pipeline/docs/lake-kit-deviations.md",
     aliases: ["deviations", "kit deviations", "why not restate", "kit usage"],
   },
 ]);
@@ -122,26 +117,24 @@ const MARKDOWN_SOURCES: readonly MarkdownSource[] = Object.freeze([
 export interface BuiltCorpus {
   chunks: CorpusChunk[];
   links: CorpusLink[];
-  runId: string | null;
+  runId: string;
+  releaseState: "local_candidate" | "published";
   rootCid: string | null;
+  sourceReceipt: string;
+  sourceSnapshot: { digest: string; inputs: SourceInput[] };
 }
 
 /** Read every input and produce the full corpus. */
-export async function buildCorpus(): Promise<BuiltCorpus> {
-  const runDir = await resolveRunDir();
-  const latest = latestSchema
-    .nullable()
-    .parse(await readJson<Latest>(resolve(REPO_ROOT, "artifacts/latest.json")));
-  const runId = latest?.runId ?? (runDir ? (runDir.split("/").at(-1) ?? null) : null);
-  const manifest = runId
-    ? manifestSchema
-        .nullable()
-        .parse(await readJson<Manifest>(resolve(REPO_ROOT, `artifacts/manifest-${runId}.json`)))
-    : null;
-  const rootCid = latest?.rootCid ?? manifest?.root.cid ?? null;
+export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> {
+  const selected = await selectCorpusSource(expectedRunId);
+  const { runId, releaseState, rootCid, releaseReceipt } = selected.receipt;
+  const runDir = selected.runDir;
 
-  const cidByArtifact = new Map<string, string>();
-  for (const artifact of manifest?.artifacts ?? []) cidByArtifact.set(artifact.name, artifact.cid);
+  const artifactPath = (name: string): string => {
+    const path = selected.artifactPaths.get(name);
+    if (!path) throw new Error(`Selected corpus has no ${name}`);
+    return path;
+  };
 
   /** Provenance for a file that lives only in the repository. */
   const repoProvenance = (path: string): Provenance => ({
@@ -151,6 +144,7 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
     cid: null,
     rootCid: null,
     ipfsPath: null,
+    releaseState: "repository",
   });
 
   /** Provenance for a file that is also published under the run root. */
@@ -158,9 +152,10 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
     sourceFile: runDir ? relative(resolve(runDir, artifactName)) : artifactName,
     artifact: artifactName,
     runId,
-    cid: cidByArtifact.get(artifactName) ?? null,
+    cid: null,
     rootCid,
     ipfsPath: rootCid ? `ipfs://${rootCid}/${artifactName}` : null,
+    releaseState,
   });
 
   const chunks: CorpusChunk[] = [];
@@ -197,62 +192,94 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
     chunks.push(...buildAccessDocs(catalog, catalogProvenance));
 
     // (c) The published run identity.
+    const publishedIndex = indexSchema.parse(
+      await readJson<PublishedIndex>(artifactPath("index.json")),
+    );
+    if (publishedIndex.runId !== runId) {
+      throw new Error(`index.json belongs to ${publishedIndex.runId}, expected ${runId}`);
+    }
     chunks.push(
       ...buildPublicationDocs({
-        index: runDir
-          ? indexSchema
-              .nullable()
-              .parse(await readJson<PublishedIndex>(resolve(runDir, "index.json")))
-          : null,
-        latest,
-        manifest,
-        ipnsName: catalog.publication?.ipns_name ?? latest?.ipnsName ?? null,
+        index: publishedIndex,
+        runId,
+        releaseState,
+        rootCid,
+        releaseReceipt,
+        ipnsName: catalog.publication?.ipns_name ?? null,
         provenance: artifactProvenance("index.json"),
       }),
     );
   }
 
-  // (d) One document per published column.
+  const tableSchema = z.object({
+    columnCount: z.number().int(),
+    columns: z.array(z.object({ name: z.string(), type: z.string(), optional: z.boolean() })),
+  });
+  const querySchema = tableSchema.parse(await readJson(artifactPath("schema.json")));
+  const permitSchema = tableSchema.parse(await readJson(artifactPath("permit-schema.json")));
+  assertSchemaMatches(querySchema.columns.map((column) => column.name));
+  assertPermitSchemaMatches(permitSchema.columns.map((column) => column.name));
+  if (querySchema.columnCount !== QUERY_TABLE_COLUMN_NAMES.length) {
+    throw new Error(
+      `schema.json columnCount is ${querySchema.columnCount}, expected ${QUERY_TABLE_COLUMN_NAMES.length}`,
+    );
+  }
+  if (permitSchema.columnCount !== PERMIT_TABLE_COLUMN_NAMES.length) {
+    throw new Error(
+      `permit-schema.json columnCount is ${permitSchema.columnCount}, expected ${PERMIT_TABLE_COLUMN_NAMES.length}`,
+    );
+  }
+
+  const coverage = coverageSchema.parse(await readJson<Coverage>(artifactPath("coverage.json")));
+  if (coverage.runId !== runId) {
+    throw new Error(`coverage.json belongs to ${coverage.runId}, expected ${runId}`);
+  }
+
+  // (d) One document per property column and per permit column.
   chunks.push(...buildColumnDocs(artifactProvenance("schema.json")));
+  chunks.push(...buildPermitDocs(coverage, artifactProvenance("permit-schema.json")));
 
   // (e) The coverage snapshot, with one document per limitation.
-  if (runDir) {
-    const coverage = coverageSchema
-      .nullable()
-      .parse(await readJson<Coverage>(resolve(runDir, "coverage.json")));
-    if (coverage) {
-      chunks.push(...buildCoverageDocs(coverage, artifactProvenance("coverage.json")));
-      for (let position = 1; position <= coverage.limitations.length; position += 1) {
-        links.push({
-          sourceDocId: `limitation:${position}`,
-          targetDocId: "coverage:tables",
-          relation: "limits",
-        });
-      }
-    }
-
-    // (f) The published sample extracts.
-    const samplesDir = resolve(runDir, "samples");
-    if (existsSync(samplesDir)) {
-      const names = (await readdir(samplesDir)).filter((name) => name.endsWith(".json")).sort();
-      const samples: SampleExtract[] = [];
-      for (const name of names) {
-        const parsed = await readJson<{
-          query?: string;
-          rowCount?: number;
-          rows?: Record<string, unknown>[];
-        }>(resolve(samplesDir, name));
-        if (!parsed || typeof parsed.query !== "string") continue;
-        samples.push({
-          name: name.replace(/\.json$/, ""),
-          query: parsed.query.replace(/'[^']*query-table\.parquet'/g, "'query-table.parquet'"),
-          rowCount: parsed.rowCount ?? parsed.rows?.length ?? 0,
-          columns: Object.keys(parsed.rows?.[0] ?? {}),
-        });
-      }
-      chunks.push(...buildSampleDocs(samples, artifactProvenance));
-    }
+  const coverageDocs = buildCoverageDocs(coverage, artifactProvenance("coverage.json"));
+  chunks.push(...coverageDocs);
+  for (const limitation of coverageDocs.filter((chunk) => chunk.docId.startsWith("limitation:"))) {
+    links.push({
+      sourceDocId: "coverage:limitations",
+      targetDocId: limitation.docId,
+      relation: "documents",
+      metadata: { basis: "coverage.json", runId },
+    });
+    links.push({
+      sourceDocId: limitation.docId,
+      targetDocId: "coverage:tables",
+      relation: "limits",
+      metadata: { basis: "coverage.json", runId },
+    });
   }
+
+  // (f) Exactly the sample extracts named and hashed by the source receipt.
+  const sampleNames = selected.receipt.artifacts
+    .map((artifact) => artifact.name)
+    .filter((name) => name.startsWith("samples/") && name.endsWith(".json"))
+    .sort();
+  const samples: SampleExtract[] = [];
+  for (const artifactName of sampleNames) {
+    const parsed = await readJson<{
+      query?: string;
+      rowCount?: number;
+      rows?: Record<string, unknown>[];
+    }>(artifactPath(artifactName));
+    if (typeof parsed.query !== "string") {
+      throw new Error(`${artifactName} has no query string`);
+    }
+    samples.push({
+      name: artifactName.replace(/^samples\//, "").replace(/\.json$/, ""),
+      query: parsed.query.replace(/'[^']*query-table\.parquet'/g, "'query-table.parquet'"),
+      rowCount: parsed.rowCount ?? parsed.rows?.length ?? 0,
+      columns: Object.keys(parsed.rows?.[0] ?? {}),
+    });
+  }
+  chunks.push(...buildSampleDocs(samples, artifactProvenance));
 
   // Provenance links from every column document to the source that fills it.
   //
@@ -284,9 +311,39 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
   for (const chunk of chunks) {
     if (chunk.docType !== "column") continue;
     for (const target of SOURCE_DOCS_BY_LABEL[chunk.metadata.sourceSystem ?? ""] ?? []) {
-      links.push({ sourceDocId: chunk.docId, targetDocId: target, relation: "derived_from" });
+      links.push({
+        sourceDocId: chunk.docId,
+        targetDocId: target,
+        relation: "derived_from",
+        metadata: { sourceSystem: chunk.metadata.sourceSystem ?? "unknown" },
+      });
     }
   }
+
+  links.push({
+    sourceDocId: "permit:table",
+    targetDocId: "source:cdplus",
+    relation: "derived_from",
+    metadata: { sourceSystem: "lake_cdplus_permits" },
+  });
+  links.push({
+    sourceDocId: "permit:table",
+    targetDocId: "jurisdiction:clermont",
+    relation: "derived_from",
+    metadata: { sourceSystem: "lake_clermont_etrakit_permits" },
+  });
+  links.push({
+    sourceDocId: "coverage:clermont-contractors",
+    targetDocId: "jurisdiction:clermont",
+    relation: "derived_from",
+    metadata: { basis: "coverage.json", jurisdiction: "Clermont" },
+  });
+  links.push({
+    sourceDocId: "coverage:clermont-contractors",
+    targetDocId: "limitation:contractor-coverage",
+    relation: "limits",
+    metadata: { basis: "coverage.json", jurisdiction: "Clermont" },
+  });
 
   chunks.sort((left, right) => left.id.localeCompare(right.id));
   links.sort((left, right) =>
@@ -295,5 +352,29 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
     ),
   );
 
-  return { chunks, links, runId, rootCid };
+  const sourcePaths = [
+    selected.receiptPath,
+    ...(selected.releaseReceiptPath ? [selected.releaseReceiptPath] : []),
+    ...selected.artifactPaths.values(),
+    ...chunks.map((chunk) => resolve(REPO_ROOT, chunk.provenance.sourceFile)),
+    resolve(REPO_ROOT, "packages/shared/src/schema.ts"),
+    resolve(REPO_ROOT, "packages/shared/src/permits.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/aliases.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/corpus/artifacts.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/corpus/columns.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/corpus/entity.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/corpus/permits.ts"),
+    resolve(REPO_ROOT, "packages/rag/src/corpus/sources-yaml.ts"),
+  ];
+  const sourceSnapshot = await buildSourceSnapshot(sourcePaths);
+
+  return {
+    chunks,
+    links,
+    runId,
+    releaseState,
+    rootCid,
+    sourceReceipt: relative(selected.receiptPath),
+    sourceSnapshot,
+  };
 }

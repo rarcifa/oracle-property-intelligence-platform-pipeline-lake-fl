@@ -11,9 +11,11 @@
 export { retrieve, THRESHOLDS, WEIGHTS, bandOf, MAX_CHUNKS_PER_DOC } from "./retrieve.js";
 export { loadIndex, prepareIndex, resetIndexCache, type LoadedIndex } from "./index/load.js";
 export { INDEX_PATH, PACKAGE_ROOT } from "./index/paths.js";
+export { assertIndexCompatibleWithRun, type ServedRunIdentity } from "./compatibility.js";
 export { runEval, type EvalReport, type CaseResult } from "./eval/run-eval.js";
 export { EVAL_CASES, POSITIVE_CASES, NEGATIVE_CASES, type EvalCase } from "./eval/questions.js";
 export { expandQuery, aliasScore, QUERY_EXPANSIONS } from "./aliases.js";
+export { suggestPaths, pathOptionsSchema, type PathResult, type PathSuggestion } from "./paths.js";
 export { tokenize, normalize, stem, shortHash } from "./text.js";
 export {
   interpretParcelQuery,

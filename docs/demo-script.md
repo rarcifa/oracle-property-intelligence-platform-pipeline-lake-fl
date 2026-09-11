@@ -1,7 +1,10 @@
 # Demo script — Lake County, FL
 
-Follows the assignment's demo transcript beat for beat, against the **deployed runtime**.
-Every number comes from a query against the published run; none are typed by hand.
+This script records one **explicit finalized public release**. It refuses to start when the
+deployed run/root, complete Clermont evidence, contractor posture, or MCP tool surface does
+not match that release. The older public runtime and the one-year local candidate therefore
+cannot be presented as the completed submission and must not lend their CIDs or verification
+receipts to a newer run.
 
 There is no local step anywhere in this script. If a beat renders, the hosted runtime served
 it — that is the point of running it this way rather than from a checkout.
@@ -10,10 +13,16 @@ it — that is the point of running it this way rather than from a checkout.
 U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
 RUN=$(curl -s "$U/api/meta/run" | jq -r .run.runId)
 ROOT=$(curl -s "$U/api/meta/run" | jq -r .run.rootCid)
+
+DEMO_BASE_URL="$U" DEMO_RUN_ID="$RUN" DEMO_ROOT_CID="$ROOT" \
+  pnpm --filter @oracle-lake/ui exec node scripts/record-demo.mjs out/
 ```
 
-The recorded walkthrough is reproducible: `pnpm --filter @oracle-lake/ui exec node
-scripts/record-demo.mjs out/` drives these same beats in a real browser and writes the video.
+Before Playwright creates a video, the recorder asserts `/api/meta/run` names exactly
+`$RUN/$ROOT`, `/mcp` exposes the expected nine tools, and the contractor view and coverage
+snapshot report complete 2015–2026 Clermont evidence as one of 15 jurisdictions while BBB
+remains zero and HTTP-403-gated. Any missed beat exits non-zero; an incomplete take is never
+reported as a successful recording.
 
 ## 1. The published run
 
@@ -46,13 +55,20 @@ distance and not a bounding box.
 
 ## 3. What the data cannot say
 
-Open `/#/contractor`. Contractor of record and BBB ratings are gated at source behind HTTP 403. They are real columns that stay null, each carrying its gating reason.
+Open `/#/contractor`. Contractor of record is populated only where the certified Clermont
+2015–2026 harvest names one. The other 14 permitting jurisdictions do not have accessible
+contractor coverage, and BBB ratings remain gated at source and null.
 
 ```bash
-curl -s "$U/api/views/contractor" | jq '{gating, note}'
+curl -s "$U/api/views/contractor" \
+  | jq '{contractor_names_present: .posture.contractor_names_present,
+         bbb_ratings_present: .posture.bbb_ratings_present, gating, note}'
 ```
 
-Nothing here is invented to fill the gap. That is the whole claim.
+Every displayed contractor count is therefore labelled Clermont-only, never countywide.
+Where Clermont publishes a permit but no contractor, the row records
+`contractor_absent_on_permit`; outside that evidence boundary it records
+`contractor_gated_403`. Nothing is inferred to fill either null.
 
 ## 4. Business coverage, including its own double count
 
@@ -88,13 +104,19 @@ curl -s "$U/api/sql" -H 'content-type: application/json' \
 
 ## 6. The agent, on the same data
 
-Open `/#/ask` and ask the question that has an unanswerable half:
+If the public runtime reports `chatEnabled: true`, open `/#/ask` and ask the question that
+has an unanswerable half:
 
 > Within five miles of Clermont, which properties have roofs older than 15 years and an open
 > roofing permit — and who is the contractor?
 
-It answers the answerable half with cited tool calls against the published run, then says
-plainly that contractor identity is gated at source. It does not produce a plausible name.
+The OpenAI-backed agent must answer with cited tool calls against the published run and apply
+the row-level contractor semantics: report a published Clermont contractor when present,
+state an established absence for `contractor_absent_on_permit`, and state the source gate for
+`contractor_gated_403`. It must not turn the Clermont-only count into countywide coverage. If
+the model key is not configured, the expected result is the explicit `chat_unavailable`
+notice; use the REST/MCP queries instead and do not present the notice as a passing agent
+demo.
 
 ## 7. Retrieval from public IPFS, and immutability
 
@@ -124,5 +146,9 @@ curl -s "$U/mcp" -H 'content-type: application/json' \
        "params":{"name":"findOpenRoofPermits","arguments":{"minOpenDays":3000}}}' \
   | jq -r '.result.content[0].text' | jq .error        # invalid_arguments
 
-# The real filter narrows: 0 / 365 / 3000 → 226 / 9 / 1
+# Record the actual counts returned by this immutable public run; do not copy
+# counts from the newer local candidate.
 ```
+
+The release demo requires exactly nine tools, including `getPropertyPermits`. Eight tools is
+evidence that the hosted runtime is stale, and the recorder fails before opening a browser.

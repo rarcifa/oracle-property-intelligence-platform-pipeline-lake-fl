@@ -44,6 +44,7 @@ interface Draft {
   minRoofAge: number;
   hasPermits: boolean;
   hasOpenRoofingPermit: boolean;
+  minOpenRoofingPermitDays: string;
   ownerOutOfCounty: boolean;
   ownerOutOfState: boolean;
   noRecordedSale: boolean;
@@ -68,6 +69,7 @@ const EMPTY_DRAFT: Draft = {
   minRoofAge: DEFAULT_ROOF_AGE_THRESHOLD_YEARS,
   hasPermits: false,
   hasOpenRoofingPermit: false,
+  minOpenRoofingPermitDays: "",
   ownerOutOfCounty: false,
   ownerOutOfState: false,
   noRecordedSale: false,
@@ -100,6 +102,7 @@ function toOptions(
   const lat = numberOrUndefined(draft.lat);
   const lon = numberOrUndefined(draft.lon);
   const radiusMiles = numberOrUndefined(draft.radiusMiles);
+  const minOpenRoofingPermitDays = numberOrUndefined(draft.minOpenRoofingPermitDays);
   const radiusReady =
     typeof lat === "number" &&
     typeof lon === "number" &&
@@ -114,7 +117,9 @@ function toOptions(
     roofAgeBasis: draft.roofAgeBasis || undefined,
     minRoofAge: draft.useRoofAge ? draft.minRoofAge : undefined,
     hasPermits: draft.hasPermits ? true : undefined,
-    hasOpenRoofingPermit: draft.hasOpenRoofingPermit ? true : undefined,
+    hasOpenRoofingPermit:
+      draft.hasOpenRoofingPermit || typeof minOpenRoofingPermitDays === "number" ? true : undefined,
+    minOpenRoofingPermitDays,
     ownerOutOfCounty: draft.ownerOutOfCounty ? true : undefined,
     ownerOutOfState: draft.ownerOutOfState ? true : undefined,
     noRecordedSale: draft.noRecordedSale ? true : undefined,
@@ -333,8 +338,39 @@ export function SearchView(): JSX.Element {
             <Toggle
               label="Open roofing permit"
               checked={draft.hasOpenRoofingPermit}
-              onChange={(value) => update("hasOpenRoofingPermit", value)}
+              onChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  hasOpenRoofingPermit: value,
+                  minOpenRoofingPermitDays: value ? current.minOpenRoofingPermitDays : "",
+                }))
+              }
             />
+            <div className="field" style={{ margin: "8px 0 12px" }}>
+              <label htmlFor="filter-min-open-roofing-days">Minimum roofing permit days open</label>
+              <input
+                id="filter-min-open-roofing-days"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={100_000}
+                value={draft.minOpenRoofingPermitDays}
+                placeholder="e.g. 1825 (five years)"
+                aria-describedby="filter-min-open-roofing-days-help"
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDraft((current) => ({
+                    ...current,
+                    minOpenRoofingPermitDays: value,
+                    hasOpenRoofingPermit:
+                      value.trim().length > 0 ? true : current.hasOpenRoofingPermit,
+                  }));
+                }}
+              />
+              <span id="filter-min-open-roofing-days-help" className="micro">
+                Applies only to the longest open roofing permit and turns that signal on.
+              </span>
+            </div>
             <Toggle
               label="Owner mails out of county"
               checked={draft.ownerOutOfCounty}
@@ -480,6 +516,13 @@ export function SearchView(): JSX.Element {
             // Drive the rail from the interpretation, so the grid and the panel
             // answer the same question and every applied filter is visible and
             // editable rather than hidden inside the panel.
+            const minOpenRoofingPermitDays =
+              typeof filters.minOpenRoofingPermitDays === "number"
+                ? filters.minOpenRoofingPermitDays
+                : filters.hasOpenRoofingPermit === true &&
+                    typeof filters.minOpenPermitDays === "number"
+                  ? filters.minOpenPermitDays
+                  : undefined;
             setDraft((current) => ({
               ...EMPTY_DRAFT,
               q: typeof filters.q === "string" ? filters.q : "",
@@ -489,7 +532,13 @@ export function SearchView(): JSX.Element {
               minRoofAge:
                 typeof filters.minRoofAge === "number" ? filters.minRoofAge : current.minRoofAge,
               hasPermits: filters.hasPermits === true,
-              hasOpenRoofingPermit: filters.hasOpenRoofingPermit === true,
+              hasOpenRoofingPermit:
+                filters.hasOpenRoofingPermit === true ||
+                typeof minOpenRoofingPermitDays === "number",
+              minOpenRoofingPermitDays:
+                typeof minOpenRoofingPermitDays === "number"
+                  ? String(minOpenRoofingPermitDays)
+                  : "",
               ownerOutOfCounty: filters.ownerOutOfCounty === true,
               ownerOutOfState: filters.ownerOutOfState === true,
               noRecordedSale: filters.noRecordedSale === true,

@@ -322,8 +322,11 @@ export function interpretParcelQuery(
     }
   }
 
+  const roofingMentioned = /\broofing\s+permits?\b/.test(original);
+
   // A permit open beyond five years, before the generic open-permit rule so the
-  // more specific reading wins.
+  // more specific reading wins. Roofing questions use the roofing-specific
+  // contract; `minOpenPermitDays` remains available for any-type permit queries.
   const stalled =
     /(?:open|outstanding)[^.]{0,24}?(?:more than|over|longer than)\s+(\d+|five)\s+years?/.exec(
       text,
@@ -331,7 +334,7 @@ export function interpretParcelQuery(
   if (stalled) {
     const years = NUMBER_WORDS[stalled[1] ?? ""] ?? Number(stalled[1]);
     const days = Number.isFinite(years) ? Math.round(years * 365) : FIVE_YEARS_IN_DAYS;
-    apply("minOpenPermitDays", days, stalled[0]);
+    apply(roofingMentioned ? "minOpenRoofingPermitDays" : "minOpenPermitDays", days, stalled[0]);
   }
 
   // Roof age: an explicit number wins over the documented default.
@@ -357,9 +360,8 @@ export function interpretParcelQuery(
   // still open more than five years" lost its roofing filter and quietly
   // widened from 2 parcels to 20. A filter must not depend on the order the
   // rules happen to run in.
-  const roofingMentioned = /\broofing\s+permits?\b/.test(original);
   const openMentioned = /\b(open|outstanding|still\s+open|unclosed)\b/.test(original);
-  if (roofingMentioned && (openMentioned || "minOpenPermitDays" in filters)) {
+  if (roofingMentioned && (openMentioned || "minOpenRoofingPermitDays" in filters)) {
     const phrase =
       /open\s+roofing\s+permits?/.exec(original)?.[0] ??
       /roofing\s+permits?/.exec(original)?.[0] ??

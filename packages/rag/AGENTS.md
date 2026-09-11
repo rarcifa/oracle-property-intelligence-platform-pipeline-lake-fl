@@ -18,6 +18,8 @@ pnpm --filter @oracle-lake/rag query -- --top-k 8 "which jurisdictions are block
 pnpm --filter @oracle-lake/rag query -- --file ./question.txt
 pnpm --filter @oracle-lake/rag eval
 pnpm --filter @oracle-lake/rag build:index
+pnpm --filter @oracle-lake/rag promote:published -- \
+  --run-id <YYYYMMDDTHHMMSSZ> --root-cid <bafy...>
 ```
 
 - `inspect` prints corpus counts, the embedding model, the run the index was
@@ -29,6 +31,11 @@ pnpm --filter @oracle-lake/rag build:index
 - `build:index` regenerates `index-data/lake-rag-index.json` from the checkout.
   Run it after changing any corpus source; the committed index is asserted
   against a rebuild by `tests/index-build.test.ts`.
+- `promote:published` is the only supported way to select a finalized public
+  run. It validates the latest pointer, manifest bytes, complete two-gateway
+  verification, exact `FINALIZED` ledger attempt and local artifact bytes,
+  then writes `promotion-receipt.json`, changes `corpus-source.json` and
+  rebuilds the index. It performs no publication or deployment.
 
 **stdout is always JSON.** Diagnostics go to stderr only when `RAG_DEBUG=true`.
 
@@ -108,5 +115,7 @@ one signal of five rather than the whole retriever.
 
 - Do not add live ingestion (network fetches, SaaS APIs) to this package.
 - Do not commit `index-data/lake-rag-index.json` edits by hand; regenerate it.
+- Do not edit a published `corpus-source.json` or `promotion-receipt.json` by
+  hand; use `promote:published` with an explicit run and root.
 - Do not send retrieved text to a provider as though it were user data: it is
   public documentation, but it is also the thing being cited, so keep it intact.

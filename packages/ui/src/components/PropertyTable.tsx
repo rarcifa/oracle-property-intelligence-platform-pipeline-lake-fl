@@ -115,7 +115,7 @@ export function PropertyTable({
             const outOfState = bool(row, "owner_out_of_state") === true;
             const outOfCounty = bool(row, "owner_out_of_county") === true;
             const openRoofing = num(row, "open_roofing_permit_count") ?? 0;
-            const longestOpen = num(row, "longest_open_permit_days");
+            const longestOpen = num(row, "longest_open_roofing_permit_days");
             return (
               <tr
                 key={parcelId ?? index}
@@ -170,6 +170,7 @@ export function PropertyTable({
                       title={longestOpen ? `Longest open ${longestOpen} days` : undefined}
                     >
                       {formatCount(openRoofing)} open
+                      {longestOpen === null ? null : ` · ${formatCount(longestOpen)} d`}
                     </Badge>
                   ) : (
                     <span className="dim">0</span>

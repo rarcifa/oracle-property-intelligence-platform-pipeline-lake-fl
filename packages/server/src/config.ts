@@ -2,7 +2,7 @@
  * Server configuration, resolved once at boot from the environment with
  * development defaults that point at the locally published run.
  *
- * Nothing here throws for a missing `ANTHROPIC_API_KEY`: the chat route degrades
+ * Nothing here throws for a missing `OPENAI_API_KEY`: the chat route degrades
  * to a 503 with an explanation instead of taking the process down, because the
  * data surfaces must stay usable without a model key.
  */
@@ -17,10 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, "../../..");
 
 /** Where the ingestion runtime publishes Lake County artifacts. */
-export const DEFAULT_PUBLISH_DIR = resolve(
-  REPO_ROOT,
-  ".claude/skills/use-oracle/runtime/data/artifacts/publish/lake",
-);
+export const DEFAULT_PUBLISH_DIR = resolve(REPO_ROOT, "pipeline/data/artifacts/publish/lake");
 
 export interface ServerConfig {
   port: number;
@@ -41,9 +38,13 @@ export interface ServerConfig {
   runDir: string | null;
   /** `artifacts/latest.json`, written by the publish step. */
   latestPath: string;
+  /** Exact run identity for an explicitly materialized/downloaded table. */
+  dataRunId: string | null;
+  /** Exact public root when a gateway artifact was materialized to a local path. */
+  dataRootCid: string | null;
   /** Directory of built UI assets, served at `/`. */
   uiDist: string;
-  anthropicApiKey: string | null;
+  openaiApiKey: string | null;
   chatModelId: string;
   /** Max wall-clock milliseconds one chat turn may consume. */
   chatTimeoutMs: number;
@@ -94,7 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   // pointer. There is no baked CID anywhere in the chain.
   const ipnsName = env.ORACLE_IPNS_NAME?.trim();
 
-  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  const apiKey = env.OPENAI_API_KEY?.trim();
 
   return {
     port: Number.parseInt(env.PORT ?? "8787", 10),
@@ -104,9 +105,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ipnsName: ipnsName && ipnsName.length > 0 ? ipnsName : null,
     runDir,
     latestPath: env.ORACLE_LATEST_PATH ?? resolve(REPO_ROOT, "artifacts/latest.json"),
+    dataRunId: env.ORACLE_DATA_RUN_ID?.trim() || null,
+    dataRootCid: env.ORACLE_DATA_ROOT_CID?.trim() || null,
     uiDist: env.ORACLE_UI_DIST ?? resolve(REPO_ROOT, "packages/ui/dist"),
-    anthropicApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
-    chatModelId: env.ORACLE_CHAT_MODEL ?? "claude-haiku-4-5",
+    openaiApiKey: apiKey && apiKey.length > 0 ? apiKey : null,
+    chatModelId: env.ORACLE_CHAT_MODEL ?? "gpt-5-mini",
     // Must fire before the request is killed from outside, so the caller gets
     // this agent's own message rather than a dropped connection.
     //

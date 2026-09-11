@@ -58,6 +58,29 @@ describe("buildPredicates", () => {
     ]);
   });
 
+  it("keeps the generic open-duration filter on permits of any type", () => {
+    expect(buildPredicates({ hasOpenRoofingPermit: true, minOpenPermitDays: 1825 })).toEqual([
+      "coalesce(open_roofing_permit_count, 0) > 0",
+      "coalesce(longest_open_permit_days, 0) >= 1825",
+    ]);
+  });
+
+  it("makes the roofing-duration filter explicit and self-coupling", () => {
+    expect(buildPredicates({ minOpenRoofingPermitDays: 1825 })).toEqual([
+      "coalesce(open_roofing_permit_count, 0) > 0",
+      "coalesce(longest_open_roofing_permit_days, 0) >= 1825",
+    ]);
+  });
+
+  it("rejects a roofing duration combined with an explicit no-open-roofing filter", () => {
+    expect(() =>
+      buildPredicates({
+        hasOpenRoofingPermit: false,
+        minOpenRoofingPermitDays: 1825,
+      }),
+    ).toThrow(/requires hasOpenRoofingPermit/);
+  });
+
   it("builds a bounding box plus an exact great-circle test for a radius", () => {
     const predicates = buildPredicates({ lat: 28.55, lon: -81.75, radiusMiles: 3 });
     expect(predicates.some((p) => p.includes("latitude BETWEEN"))).toBe(true);
@@ -156,6 +179,7 @@ describe("clampLimit", () => {
 describe("assertReadOnlySql", () => {
   const accepted = [
     "SELECT count(*) FROM properties",
+    "SELECT count(*) FROM permits WHERE is_roofing",
     "select * from properties where roof_age_years >= 15 limit 10",
     "WITH aged AS (SELECT * FROM properties WHERE roof_age_years >= 15) SELECT count(*) FROM aged",
     "SELECT address_city, count(*) FROM properties GROUP BY 1 ORDER BY 2 DESC",

@@ -1,0 +1,9 @@
+cdk.out
+data
+docs
+fixtures
+node_modules
+scripts
+tests
+transforms
+*.log

@@ -8,13 +8,19 @@
  * where SQL meets data and exactly one schema gate.
  */
 
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import {
+  assertPermitSchemaMatches,
   assertSchemaMatches,
+  buildEmptyPermitTableSql,
   buildCreateViewSql,
   buildDescribeSql,
   gatewayOf,
+  parquetArtifactCandidates,
   parquetCandidates,
+  PERMITS_VIEW,
   PROPERTIES_VIEW,
 } from "@oracle-lake/shared";
 
@@ -129,6 +135,8 @@ export function normalizeRows(rows: readonly QueryRow[]): QueryRow[] {
 export interface DataStoreOptions {
   /** Parquet path or https URL. */
   source: string;
+  /** Optional permit Parquet override. `null` deliberately disables it. */
+  permitSource?: string | null;
   /** Skip the published-schema column gate. Only used by fixture-backed tests. */
   skipSchemaCheck?: boolean;
 }
@@ -138,9 +146,16 @@ export class OracleDataStore {
 
   readonly sourceKind: "ipfs" | "local";
 
+  readonly permitSource: string | null;
+
+  /** True only when a real `permit-table.parquet` was opened and gated. */
+  permitsAvailable = false;
+
   #instance: DuckDBInstance | null = null;
   /** The URL that actually served the table, which may not be `source`. */
   activeSource: string | null = null;
+
+  activePermitSource: string | null = null;
 
   #connection: DuckDBConnection | null = null;
 
@@ -156,6 +171,10 @@ export class OracleDataStore {
     }
     this.source = options.source;
     this.sourceKind = /^https?:\/\//.test(options.source) ? "ipfs" : "local";
+    this.permitSource =
+      options.permitSource === undefined
+        ? inferPermitSource(options.source, this.sourceKind)
+        : options.permitSource;
     this.#skipSchemaCheck = options.skipSchemaCheck === true;
   }
 
@@ -241,6 +260,35 @@ export class OracleDataStore {
     }
     this.activeSource = opened;
 
+    // A separate permit-grain artifact preserves every available permit,
+    // including records that do not join the assessed parcel roll. Legacy
+    // publications predate it; those open an empty typed table and report
+    // permitsAvailable=false instead of making the property surface unusable.
+    if (this.permitSource !== null) {
+      const permitCandidates =
+        this.sourceKind === "ipfs" && rootCid !== null
+          ? parquetArtifactCandidates(rootCid, "permit-table.parquet", this.permitSource)
+          : [this.permitSource];
+      for (const candidate of permitCandidates) {
+        try {
+          await connection.run(
+            buildCreateViewSql(candidate, PERMITS_VIEW).replace(
+              `CREATE OR REPLACE VIEW ${PERMITS_VIEW} AS`,
+              `CREATE OR REPLACE TABLE ${PERMITS_VIEW} AS`,
+            ),
+          );
+          this.activePermitSource = candidate;
+          this.permitsAvailable = true;
+          break;
+        } catch {
+          // Keep trying transports for the same immutable artifact.
+        }
+      }
+    }
+    if (!this.permitsAvailable) {
+      await connection.run(buildEmptyPermitTableSql(PERMITS_VIEW));
+    }
+
     // Take the AWS credentials away from DuckDB before anything can read them.
     //
     // httpfs picks up the Lambda's execution-role credentials from the standard
@@ -282,6 +330,8 @@ export class OracleDataStore {
     if (!this.#skipSchemaCheck) {
       const described = await this.query(buildDescribeSql(PROPERTIES_VIEW));
       assertSchemaMatches(described.map((row) => String(row.column_name)));
+      const permitDescription = await this.query(buildDescribeSql(PERMITS_VIEW));
+      assertPermitSchemaMatches(permitDescription.map((row) => String(row.column_name)));
     }
   }
 
@@ -317,5 +367,20 @@ export class OracleDataStore {
     this.#instance?.closeSync();
     this.#instance = null;
     this.#ready = null;
+  }
+}
+
+/** Infer the sibling permit artifact without making the caller know layout. */
+export function inferPermitSource(source: string, sourceKind: "ipfs" | "local"): string | null {
+  if (sourceKind === "local") {
+    const candidate = resolve(dirname(source), "permit-table.parquet");
+    return existsSync(candidate) ? candidate : null;
+  }
+  try {
+    const url = new URL(source);
+    url.pathname = url.pathname.replace(/query-table\.parquet$/, "permit-table.parquet");
+    return url.toString();
+  } catch {
+    return null;
   }
 }

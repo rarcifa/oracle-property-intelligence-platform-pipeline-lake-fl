@@ -156,7 +156,12 @@ export function gatewayUrls(cid: string, path = ""): string[] {
 
 /** The first-choice Parquet URL for a published run root CID. */
 export function parquetUrl(rootCid: string): string {
-  return gatewayUrl(RANGE_READ_GATEWAY, rootCid, "query-table.parquet");
+  return parquetArtifactUrl(rootCid, "query-table.parquet");
+}
+
+/** First-choice URL for a named Parquet artifact inside a published run. */
+export function parquetArtifactUrl(rootCid: string, path: string): string {
+  return gatewayUrl(RANGE_READ_GATEWAY, rootCid, path);
 }
 
 /**
@@ -167,9 +172,16 @@ export function parquetUrl(rootCid: string): string {
  * the fallbacks rather than replacing them.
  */
 export function parquetCandidates(rootCid: string, preferred?: string | null): string[] {
-  const candidates = RANGE_READ_GATEWAYS.map((gateway) =>
-    gatewayUrl(gateway, rootCid, "query-table.parquet"),
-  );
+  return parquetArtifactCandidates(rootCid, "query-table.parquet", preferred);
+}
+
+/** Every range-read URL worth trying for one named Parquet artifact. */
+export function parquetArtifactCandidates(
+  rootCid: string,
+  path: string,
+  preferred?: string | null,
+): string[] {
+  const candidates = RANGE_READ_GATEWAYS.map((gateway) => gatewayUrl(gateway, rootCid, path));
   const ordered = preferred ? [preferred, ...candidates] : candidates;
   return [...new Set(ordered)];
 }

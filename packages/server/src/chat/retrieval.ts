@@ -13,11 +13,13 @@
  */
 
 import {
+  assertIndexCompatibleWithRun,
   loadIndex,
   retrieve,
   retrievalOptionsSchema,
   type LoadedIndex,
   type RetrievalResult,
+  type ServedRunIdentity,
 } from "@oracle-lake/rag";
 
 /** One retrieved document, flattened for citation display. */
@@ -78,8 +80,20 @@ export function resetRetrievalIndex(): void {
 export const searchRequestSchema = retrievalOptionsSchema;
 
 /** Run one retrieval. Throws {@link RetrievalUnavailableError} when unusable. */
-export function searchCorpus(input: unknown): RetrievalResult {
-  return retrieve(searchRequestSchema.parse(input), getRetrievalIndex());
+export function searchCorpus(input: unknown, served?: ServedRunIdentity): RetrievalResult {
+  const index = getRetrievalIndex();
+  if (served !== undefined) {
+    try {
+      assertIndexCompatibleWithRun(index.raw, served);
+    } catch (error) {
+      throw new RetrievalUnavailableError(
+        `The retrieval corpus does not describe the dataset currently being served. ${
+          error instanceof Error ? error.message : String(error)
+        } Rebuild the index from an exact source receipt for that run.`,
+      );
+    }
+  }
+  return retrieve(searchRequestSchema.parse(input), index);
 }
 
 /** Flatten a retrieval result into citation records. */

@@ -16,7 +16,8 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { num, parcelIdOf } from "../lib/rows.js";
 
@@ -171,7 +172,7 @@ export function MapPanel({
       map.getCanvas().style.cursor = "crosshair";
     });
 
-    map.on("click", (event) => {
+    map.on("click", (event: MapMouseEvent) => {
       if (readyRef.current && map.getLayer(RESULTS_LAYER)) {
         const hits = map.queryRenderedFeatures(event.point, { layers: [RESULTS_LAYER] });
         const properties: unknown = hits[0]?.properties;

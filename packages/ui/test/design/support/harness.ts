@@ -21,7 +21,8 @@ function fixture(name: string): unknown {
 }
 
 /**
- * Captured from `http://127.0.0.1:8791/api/*` against the published Lake run.
+ * Captured from `http://127.0.0.1:8791/api/*` against a frozen Lake run or
+ * local release candidate; each fixture's provenance records which one.
  *
  * Hand-maintained: nothing generates these files and no spec compares them with
  * a live server, so they can only drift. Two kinds of content live in them and
@@ -40,6 +41,7 @@ export const FIXTURES = {
   business: fixture("business"),
   contractor: fixture("contractor"),
   search: fixture("search"),
+  property: fixture("property"),
 } as const;
 
 /**
@@ -73,6 +75,7 @@ export async function mockPublishedRun(page: Page): Promise<void> {
     route.fulfill(json(FIXTURES.contractor)),
   );
   await page.route(/\/api\/properties(\?|$)/, (route) => route.fulfill(json(FIXTURES.search)));
+  await page.route(/\/api\/properties\/[^/]+$/, (route) => route.fulfill(json(FIXTURES.property)));
 }
 
 /**

@@ -48,14 +48,16 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
     const { parcels } = await search("aged roofs with an open roofing permit in Clermont");
     expect(parcels).not.toBeNull();
     const half = parcels as ParcelHalf;
-    // 194 parcels county-wide carry an aged roof and an open roofing permit; 41
-    // are in Clermont. Verified independently against /api/sql.
-    //
-    // These were 11 and 2 until roof age stopped being reset by a roofing
-    // permit that was issued and never closed. Those parcels always had aged
-    // roofs; they were being published as recently re-roofed, so the query that
-    // exists to find them skipped them.
-    expect(half.matched).toBe(41);
+    const expected = Number(
+      await (
+        await getContext()
+      ).store.queryScalar(
+        "SELECT count(*) FROM properties WHERE roof_age_years >= 15 " +
+          "AND open_roofing_permit_count > 0 AND address_city = 'CLERMONT'",
+      ),
+    );
+    expect(half.matched).toBe(expected);
+    expect(half.matched).toBeGreaterThan(0);
     expect(half.rows.length).toBeGreaterThan(0);
     for (const row of half.rows) {
       expect(Number(row.roof_age_years)).toBeGreaterThanOrEqual(15);
@@ -100,9 +102,12 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
   it("finds the long-stalled permits the coverage snapshot counts", async () => {
     const { parcels } = await search("roofing permits still open more than five years");
     const half = parcels as ParcelHalf;
-    expect(half.filters).toMatchObject({ minOpenPermitDays: 1825 });
+    expect(half.filters).toMatchObject({
+      hasOpenRoofingPermit: true,
+      minOpenRoofingPermitDays: 1825,
+    });
     for (const row of half.rows) {
-      expect(Number(row.longest_open_permit_days)).toBeGreaterThan(1825);
+      expect(Number(row.longest_open_roofing_permit_days)).toBeGreaterThanOrEqual(1825);
     }
   }, 120_000);
 
@@ -110,8 +115,12 @@ describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", 
     const { parcels } = await search("out of state owners", 5);
     const half = parcels as ParcelHalf;
     expect(half.returned).toBeLessThanOrEqual(5);
-    // The published coverage snapshot records 20,236 out-of-state owners.
-    expect(half.matched).toBe(20236);
+    const expected = Number(
+      await (
+        await getContext()
+      ).store.queryScalar("SELECT count(*) FROM properties WHERE owner_out_of_state"),
+    );
+    expect(half.matched).toBe(expected);
   }, 120_000);
 
   it("explains itself, naming the phrase behind every filter", async () => {

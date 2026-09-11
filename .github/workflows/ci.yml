@@ -36,6 +36,11 @@ jobs:
 
       - uses: extractions/setup-just@v2
 
+      - name: Install DuckDB CLI
+        run: |
+          curl -sSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
       - name: Install
         run: just setup
 
@@ -73,6 +78,8 @@ jobs:
           test -s /tmp/query-table.parquet
           echo "ORACLE_PARQUET_PATH=/tmp/query-table.parquet" >> "$GITHUB_ENV"
           echo "ORACLE_PUBLISHED_PARQUET_URL=$URL" >> "$GITHUB_ENV"
+          echo "ORACLE_DATA_RUN_ID=$(jq -r .runId artifacts/latest.json)" >> "$GITHUB_ENV"
+          echo "ORACLE_DATA_ROOT_CID=$ROOT" >> "$GITHUB_ENV"
 
       # The retrievability signal the change above removes from the test path,
       # kept as its own check so it fails as itself rather than as a timeout.

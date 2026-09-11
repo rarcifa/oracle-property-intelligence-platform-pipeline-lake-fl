@@ -29,14 +29,13 @@ import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 /**
- * Default Secrets Manager secret holding the Anthropic API key.
+ * Default Secrets Manager secret holding the OpenAI API key.
  *
- * Override with `ORACLE_ANTHROPIC_SECRET_NAME`; set it to an empty string to
+ * Override with `ORACLE_OPENAI_SECRET_NAME`; set it to an empty string to
  * deploy without the agent, in which case `/api/chat` returns a documented 503
  * and every other surface is unaffected.
  */
-const ANTHROPIC_SECRET_NAME =
-  process.env.ORACLE_ANTHROPIC_SECRET_NAME ?? "oracle-lake/anthropic-api-key";
+const OPENAI_SECRET_NAME = process.env.ORACLE_OPENAI_SECRET_NAME ?? "oracle-lake/openai-api-key";
 
 /**
  * The chat agent's key, as a CloudFormation dynamic reference.
@@ -49,14 +48,14 @@ const ANTHROPIC_SECRET_NAME =
  * deploy itself carry the key, so it survives every redeploy, and the repository
  * and the synthesised template hold only `{{resolve:secretsmanager:...}}`.
  */
-function anthropicKeyEnvironment(): Record<string, string> {
-  if (ANTHROPIC_SECRET_NAME.length === 0) return {};
+function openaiKeyEnvironment(): Record<string, string> {
+  if (OPENAI_SECRET_NAME.length === 0) return {};
   // The NAME, not the value. This was a CloudFormation dynamic reference with
   // `unsafeUnwrap()`, which resolves at deploy time and writes the plaintext key
   // into the function's own configuration, where anyone in the account holding
   // `lambda:GetFunctionConfiguration` can read it. The function fetches the
   // secret itself at cold start instead, so the key is never in the config.
-  return { ORACLE_ANTHROPIC_SECRET_ID: ANTHROPIC_SECRET_NAME };
+  return { ORACLE_OPENAI_SECRET_ID: OPENAI_SECRET_NAME };
 }
 
 /**
@@ -177,7 +176,7 @@ export class LakeRuntimeStack extends Stack {
         ...(PAGERDUTY_SECRET_NAME.length > 0
           ? { ORACLE_PAGERDUTY_SECRET_ID: PAGERDUTY_SECRET_NAME }
           : {}),
-        ...anthropicKeyEnvironment(),
+        ...openaiKeyEnvironment(),
       },
       // The Function URL is public and unauthenticated on purpose, so an
       // unbounded number of concurrent invocations is the one thing standing
@@ -190,13 +189,13 @@ export class LakeRuntimeStack extends Stack {
       // not recorded as a deviation either.
       tracing: Tracing.ACTIVE,
       loggingFormat: LoggingFormat.JSON,
-      logRetention: RetentionDays.ONE_MONTH,
+      logRetention: RetentionDays.THREE_MONTHS,
     });
 
     // Least privilege: read that one secret, nothing else. This is the only IAM
     // grant the stack adds beyond the default execution role.
-    if (ANTHROPIC_SECRET_NAME.length > 0) {
-      Secret.fromSecretNameV2(this, "AnthropicKey", ANTHROPIC_SECRET_NAME).grantRead(runtime);
+    if (OPENAI_SECRET_NAME.length > 0) {
+      Secret.fromSecretNameV2(this, "OpenAIKey", OPENAI_SECRET_NAME).grantRead(runtime);
     }
 
     // The routing key the function pages with. Least privilege: read that one

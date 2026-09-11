@@ -2,6 +2,10 @@
   "schemaVersion": "elephant.mcp-smoke.v1",
   "checkedAt": "2026-09-09T19:35:46.430576Z",
   "county": "lake",
+  "releaseState": "historical_published_smoke",
+  "supersededByPublicRun": "20260910T225242Z",
+  "currentLocalCandidate": "20260911T131000Z",
+  "scope": "This PASS applies only to the immutable 20260909T185056Z public bytes named below. Current local MCP behavior is covered by repository tests and must not inherit these gateway receipts.",
   "purpose": "use-oracle step 13 requires a post-publish MCP smoke test through donphan. The bundled elephant MCP server did not connect in this session, so the substance of that step was verified directly against the URLs now registered in the MCP environment maps: the same bytes the MCP's embedded DuckDB would read.",
   "registeredUrls": {
     "propertyQueryTable": "https://ipfs.filebase.io/ipfs/bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q/query-table.parquet",
@@ -37,7 +41,7 @@
   },
   "findings": [
     "county-query-table-publish mandates SET unsafe_disable_etag_checks = true for HTTPFS range reads. DuckDB v1.3.2 does not recognise that parameter and errors on it. The range read succeeds without it, so the setting appears to target a different DuckDB version than the one installed.",
-    "catalog:sync-mcp-json resolves the MCP config to <repo>/.claude/mcp.json. This repository keeps .mcp.json at its root, which is where Claude Code reads it, so the kit script fails there. It was called through scripts/lake/sync-mcp-json.mjs with an explicit path rather than edited, so the vendored kit stays byte-identical to upstream."
+    "The extracted pipeline now resolves the MCP config directly to <repo>/.mcp.json. Catalog parity and working-directory independence are covered by the pipeline catalog tests."
   ],
   "overall": "PASS"
 }

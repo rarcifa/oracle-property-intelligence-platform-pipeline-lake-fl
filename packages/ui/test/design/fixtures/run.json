@@ -403,7 +403,7 @@
       }
     ]
   },
-  "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/.claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/20260909T185056Z/query-table.parquet",
+  "dataSource": "/Users/ricardoarcifa/Downloads/oracle-lake-fl-kit/pipeline/data/artifacts/publish/lake/runs/20260909T185056Z/query-table.parquet",
   "dataSourceKind": "local",
   "gateways": [
     {

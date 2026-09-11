@@ -101,7 +101,7 @@ const latestPointer = JSON.parse(
 );
 const runSource = path.join(
   REPO_ROOT,
-  ".claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs",
+  "pipeline/data/artifacts/publish/lake/runs",
   String(latestPointer.runId),
 );
 mkdirSync(path.join(BUNDLE, "run"), { recursive: true });

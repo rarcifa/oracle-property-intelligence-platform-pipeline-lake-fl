@@ -17,7 +17,7 @@ const rebuiltPromise = buildIndex();
 
 describe("committed index", () => {
   it("validates against its own schema", () => {
-    expect(committed.schemaVersion).toBe("oracle.rag-index.v1");
+    expect(committed.schemaVersion).toBe("oracle.rag-index.v2");
     expect(committed.chunks.length).toBeGreaterThan(100);
     expect(committed.embedding.dimension).toBeGreaterThan(1);
   });
@@ -32,6 +32,7 @@ describe("committed index", () => {
     );
     expect(rebuilt.embedding).toEqual(committed.embedding);
     expect(rebuilt.builtFrom).toEqual(committed.builtFrom);
+    expect(rebuilt.sourceSnapshot).toEqual(committed.sourceSnapshot);
     expect(Object.keys(rebuilt.lexical.postings)).toEqual(Object.keys(committed.lexical.postings));
   });
 
@@ -51,5 +52,24 @@ describe("committed index", () => {
     expect(committed.embedding.model).toBe("lsa-tfidf-svd");
     const serialised = JSON.stringify(committed.embedding);
     expect(serialised).not.toMatch(/openai|bedrock|anthropic|voyage|cohere/i);
+  });
+
+  it("binds one unpublished candidate without borrowing a public CID", () => {
+    expect(committed.builtFrom).toMatchObject({
+      runId: "20260911T131000Z",
+      releaseState: "local_candidate",
+      rootCid: null,
+      sourceReceipt: "packages/rag/corpus-source.json",
+    });
+    expect(committed.builtFrom.snapshotDigest).toBe(committed.sourceSnapshot.digest);
+    expect(committed.sourceSnapshot.inputs).toHaveLength(committed.builtFrom.sourceCount);
+    for (const chunk of committed.chunks.filter(
+      (entry) => entry.provenance.releaseState === "local_candidate",
+    )) {
+      expect(chunk.provenance.runId).toBe("20260911T131000Z");
+      expect(chunk.provenance.rootCid).toBeNull();
+      expect(chunk.provenance.cid).toBeNull();
+      expect(chunk.provenance.ipfsPath).toBeNull();
+    }
   });
 });

@@ -4,10 +4,10 @@
 # load. This is what makes it recur: a daily incremental refresh windowed on the
 # permit layer's own LastModDate, a monthly full rebuild, and manual dispatch.
 #
-# Publishing is gated on the Filebase credentials being configured as repository
-# secrets. Without them the job still runs the full ingest and consolidation and
-# uploads the artifacts for inspection, but it does not publish, and it says so
-# rather than reporting a success it did not achieve.
+# Scheduled and ordinary manual runs build a frozen local candidate and upload
+# it for inspection. Publication is a separate manual dispatch that restores
+# those exact bytes and additionally requires a short-lived exact-target
+# signature; credentials alone are never authority.
 name: Lake County ingestion
 
 on:
@@ -27,9 +27,19 @@ on:
         description: "Publish to IPFS after building"
         type: boolean
         default: false
+      publication_run_id:
+        description: "Exact PREPARED_LOCAL run id covered by the signed publication authorization"
+        type: string
+        required: false
+      candidate_workflow_run_id:
+        description: "Workflow run id whose lake-run artifact contains the reviewed frozen candidate"
+        type: string
+        required: false
 
 permissions:
+  actions: read
   contents: read
+  id-token: write
 
 concurrency:
   # One run at a time. Two concurrent publishes would race the single IPNS
@@ -41,27 +51,11 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Job level, deliberately. The publish guard below tests
-    # `env.S3_ACCESS_KEY_ID`, and a step's own `env:` block is not in scope when
-    # that step's `if:` is evaluated — so with these declared on the step, the
-    # guard read an empty string every time: publishing could never run and the
-    # "skipped" notice always did. Declared here, the guard sees them.
-    env:
-      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
     defaults:
       run:
-        working-directory: .claude/skills/use-oracle/runtime
+        working-directory: pipeline
     steps:
       - uses: actions/checkout@v4
-
-      # Needed by the retrieval-index rebuild after a publish; the ingestion
-      # runtime itself is npm.
-      # No `version:` here on purpose. package.json already pins
-      # `packageManager: pnpm@10.20.0`, and specifying both makes the action
-      # fail outright with "Multiple versions of pnpm specified" — which is how
-      # this workflow failed the first time it ever ran.
-      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
@@ -87,193 +81,257 @@ jobs:
             echo "mode=incremental" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve the immutable candidate identity
+        id: target
+        working-directory: .
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" = "true" ]; then
+            RUN_ID="${{ inputs.publication_run_id }}"
+            SOURCE_RUN_ID="${{ inputs.candidate_workflow_run_id }}"
+            test -n "$RUN_ID" && test -n "$SOURCE_RUN_ID" || {
+              echo "::error::publication_run_id and candidate_workflow_run_id are required for publication"
+              exit 1
+            }
+          else
+            RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the reviewed frozen candidate
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+        uses: actions/download-artifact@v4
+        with:
+          name: lake-run-${{ steps.target.outputs.run_id }}
+          path: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.candidate_workflow_run_id }}
+
       # The readiness gate runs before any acquisition, exactly as it does
       # locally. A BLOCKED catalog stops the run here.
       - name: County readiness gate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         working-directory: .
         run: |
-          python3 .claude/skills/use-oracle/scripts/validate-county-readiness.py \
-            .claude/skills/use-oracle/runtime/docs/lake-sources.yaml
+          python3 pipeline/scripts/validate-county-readiness.py \
+            pipeline/docs/lake-sources.yaml
 
-      - name: Restore the permit merge base
-        uses: actions/cache/restore@v4
-        with:
-          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
-          key: lake-permits-base-${{ github.run_id }}
-          restore-keys: |
-            lake-permits-base-
-
-      # The permit window is an optimisation over a full fetch, and it is only
-      # valid when there is a base to merge it into. Without one, a windowed
-      # fetch IS the dataset — which published 281 permits over 17,671 and
-      # passed every gate on the way, because nothing downstream can tell a
-      # small county from a truncated one. So the base is restored first, and
-      # its absence forces a full permit fetch whatever the mode says.
+      # A disposable runner has no canonical merge base. Fetching a two-day
+      # window against a best-effort cache once published 281 permits as though
+      # they were the full 17,671-row layer. Until a content-addressed raw base
+      # is supplied by the durable coordinator, clean runners perform a bounded
+      # full acquisition. The incremental implementation remains available to
+      # that coordinator; this workflow never guesses a base from cache age.
       - name: Acquire sources
-        run: |
-          BASE="$PWD/data/downloads/lake/permits-base.csv"
-          if [ "${{ steps.mode.outputs.mode }}" = "full" ]; then
-            node scripts/lake/fetch-sources.mjs
-          elif [ ! -f "$BASE" ]; then
-            echo "::notice::no cached permit base — fetching permits in full; a window without a base would be the whole dataset"
-            node scripts/lake/fetch-sources.mjs
-          else
-            node scripts/lake/fetch-sources.mjs --only rolls
-            node scripts/lake/fetch-sources.mjs --only centroids
-            node scripts/lake/fetch-sources.mjs --only permits \
-              --since "$(date -u -d '2 days ago' +%Y-%m-%d)"
-          fi
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
+        run: node scripts/lake/fetch-sources.mjs
 
       - name: Build seed
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: node --max-old-space-size=6144 scripts/lake/build-seed.mjs
 
-      # The delta between runs is computed against `artifacts/row-hashes.json`,
-      # a 14 MB working file that is gitignored — correctly, it is regenerated
-      # output. But nothing carried it between runs, so every scheduled run
-      # started with no prior state and would have reported all 215,806 rows as
-      # inserted. "Incremental" would have been true of the code and false of
-      # every number it produced.
-      #
-      # `restore-keys` makes the newest previous cache the starting point, since
-      # the exact key changes every run.
-      - name: Restore the previous run's row hashes
-        uses: actions/cache/restore@v4
-        with:
-          path: artifacts/row-hashes.json
-          key: lake-row-hashes-${{ github.run_id }}
-          restore-keys: |
-            lake-row-hashes-
-
-      # `artifacts/run-history.json` is committed, and a scheduled run appends to
-      # the checked-out copy and then throws it away with the runner. Nothing
-      # carried it forward, so the next scheduled run started from the committed
-      # file again and every publish made between commits was absent from the
-      # record — a history that documents itself as append-only while silently
-      # losing entries. Carried between runs and merged below, it accumulates.
-      - name: Restore the run history published by earlier scheduled runs
-        uses: actions/cache/restore@v4
-        with:
-          path: /tmp/carried-run-history.json
-          key: lake-run-history-${{ github.run_id }}
-          restore-keys: |
-            lake-run-history-
-
-      # A union, not an overwrite: the carried copy and the committed copy can
-      # each hold runs the other does not, and a run recorded in both must be
-      # identical in both or the merge fails. No published run is ever edited.
-      - name: Merge the carried run history into the repository's copy
+      # Clermont is deliberately not live-harvested from a disposable runner.
+      # A scheduled build may consume only the last-good immutable 2015-2026
+      # baseline certified by the durable local coordinator. Missing, stale,
+      # incompatible or corrupt evidence fails before consolidation; it never
+      # manufactures an empty CSV or silently drops contractor coverage.
+      - name: Require an immutable Clermont baseline location
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         working-directory: .
+        env:
+          CLERMONT_BASELINE_READ_ROLE_ARN: ${{ vars.CLERMONT_BASELINE_READ_ROLE_ARN }}
+          CLERMONT_BASELINE_S3_URI: ${{ vars.CLERMONT_BASELINE_S3_URI }}
         run: |
-          if [ -f /tmp/carried-run-history.json ]; then
-            node .claude/skills/use-oracle/runtime/scripts/lake/merge-run-history.mjs \
-              artifacts/run-history.json /tmp/carried-run-history.json
-          else
-            echo "::notice::no carried run history yet — this run starts from the committed copy"
-          fi
+          test -n "$CLERMONT_BASELINE_READ_ROLE_ARN" || {
+            echo "::error::CLERMONT_BASELINE_READ_ROLE_ARN is not configured"
+            exit 1
+          }
+          test -n "$CLERMONT_BASELINE_S3_URI" || {
+            echo "::error::CLERMONT_BASELINE_S3_URI is not configured"
+            exit 1
+          }
+          case "$CLERMONT_BASELINE_S3_URI" in s3://*) ;; *)
+            echo "::error::CLERMONT_BASELINE_S3_URI must be an s3:// prefix"
+            exit 1
+          esac
 
-      # The incremental mode fetches a 2-day permit window. Consolidate reads
-      # permits.csv wholesale, so without a base to merge into, a scheduled run
-      # would publish a table containing two days of permits and report the rest
-      # as removed — "incremental" would be true of the code and false of the
-      # data. The base is cached between runs and merged here.
-      - name: Merge the permit window into the base
-        run: |
-          D="$PWD/data/downloads/lake"
-          if [ -f "$D/permits-base.csv" ] && [ "${{ steps.mode.outputs.mode }}" != "full" ]; then
-            # Newest row per permit wins; the window supplies updates, the base
-            # supplies everything the window no longer covers.
-            duckdb -c "
-              COPY (
-                SELECT * EXCLUDE (rn) FROM (
-                  SELECT *, row_number() OVER (
-                    PARTITION BY permit_number
-                    ORDER BY last_modified DESC NULLS LAST
-                  ) AS rn
-                  FROM (
-                    SELECT * FROM read_csv_auto('$D/permits-base.csv', all_varchar=true)
-                    UNION ALL BY NAME
-                    SELECT * FROM read_csv_auto('$D/permits.csv', all_varchar=true)
-                  )
-                ) WHERE rn = 1
-              ) TO '$D/permits-merged.csv' (HEADER, DELIMITER ',');"
-            mv "$D/permits-merged.csv" "$D/permits.csv"
-            echo "::notice::merged the permit window into the cached base"
-          else
-            echo "::notice::full permit set fetched — recording it as the new base"
-          fi
-          cp "$D/permits.csv" "$D/permits-base.csv"
-          wc -l < "$D/permits.csv"
+      - name: Assume the read-only baseline role
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.CLERMONT_BASELINE_READ_ROLE_ARN }}
+          aws-region: ${{ vars.CLERMONT_BASELINE_AWS_REGION || 'us-east-2' }}
 
-      # Clermont's eTRAKiT permits are deliberately NOT harvested here.
-      #
-      # It is a single municipal server, the harvest is thousands of requests
-      # over hours, and its measured ceiling is cumulative request volume rather
-      # than concurrency (docs/lake-county-findings.md section 7). Pointing a
-      # scheduled job on shared datacenter egress at it is the impoliteness
-      # `county-permit-adapter` warns about, and a CI runner cannot back off and
-      # resume the way an operator can. The harvest is run deliberately from a
-      # workstation (docs/runbook.md step 2b).
-      #
-      # Its export is NOT committed: `use-oracle` forbids committing scraped
-      # data, and `data/downloads/` is git-ignored. The honest consequence,
-      # stated rather than hidden: a scheduled run on a fresh checkout has no
-      # Clermont export and publishes with no contractor of record, and its
-      # coverage snapshot reports zero Clermont permits and zero contractors
-      # for that run. A run that is meant to carry contractors has to be
-      # published from a workstation that holds the export.
-      #
-      # The consolidation reads the file unconditionally, so a checkout without
-      # one gets an empty header. DuckDB's read_csv_auto has no "may be absent"
-      # mode, and a silently-skipped permit source would publish the county as
-      # having no contractors at all.
-      - name: Ensure a Clermont permit export exists
+      - name: Restore the exact certified Clermont baseline
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
+        working-directory: .
+        env:
+          CLERMONT_BASELINE_REQUEST_B64: ${{ secrets.CLERMONT_BASELINE_REQUEST_B64 }}
+          CLERMONT_BASELINE_S3_URI: ${{ vars.CLERMONT_BASELINE_S3_URI }}
         run: |
-          D="$PWD/data/downloads/lake"
-          if [ ! -f "$D/clermont-permits.csv" ]; then
-            printf 'permit_number,alternate_key,parcel_id,permit_type,permit_desc,permit_status,applied_date,approved_date,issued_date,co_date,last_modified,permit_url,is_roofing,is_open,days_open,source_system,contractor_name,contractor_license\n' \
-              > "$D/clermont-permits.csv"
-            echo "::notice::no Clermont permit export in this checkout — consolidating without contractor of record"
-          else
-            echo "::notice::Clermont permit export present: $(( $(wc -l < "$D/clermont-permits.csv") - 1 )) permits"
-          fi
+          test -n "$CLERMONT_BASELINE_REQUEST_B64" || {
+            echo "::error::no exact certified Clermont baseline request is configured"
+            exit 1
+          }
+          umask 077
+          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
+          STORE="pipeline/data/baselines/lake/clermont"
+          printf '%s' "$CLERMONT_BASELINE_REQUEST_B64" | base64 --decode > "$REQUEST"
+          DIGEST="$(jq -er '.baseline.requiredSha256 | select(test("^[a-f0-9]{64}$"))' "$REQUEST")"
+          mkdir -p "$STORE/baselines/$DIGEST"
+          aws s3 cp "$CLERMONT_BASELINE_S3_URI/last-good.json" "$STORE/last-good.json" --no-progress
+          POINTER_DIGEST="$(jq -er '.baselineSha256' "$STORE/last-good.json")"
+          test "$POINTER_DIGEST" = "$DIGEST" || {
+            echo "::error::durable last-good pointer does not match the exact requested digest"
+            exit 1
+          }
+          aws s3 sync "$CLERMONT_BASELINE_S3_URI/baselines/$DIGEST/" \
+            "$STORE/baselines/$DIGEST/" --no-progress --no-follow-symlinks
+
+      - name: Materialize the certified Clermont export
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
+        run: |
+          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
+          npm run clermont:materialize -- \
+            --request "$REQUEST" \
+            --baseline-store data/baselines/lake/clermont \
+            --output data/downloads/lake/clermont-permits.csv \
+            --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Consolidate the query table
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: |
           D="$PWD/data/downloads/lake"
           O="$PWD/data/artifacts/publish/lake/query-table.parquet"
+          P="$PWD/data/artifacts/publish/lake/permit-table.parquet"
+          AS_OF_DATE="$(date -u +%F)"
           mkdir -p "$(dirname "$O")"
           sed -e "s|\$DOWNLOAD_DIR|$D|g" -e "s|\$OUT_PARQUET|$O|g" \
+              -e "s|\$PERMIT_OUT_PARQUET|$P|g" \
+              -e "s|\$AS_OF_DATE|$AS_OF_DATE|g" \
               -e "s|\$AS_OF_YEAR|$(date -u +%Y)|g" \
               scripts/lake/build-query-table.sql > /tmp/lake-qt.sql
           duckdb -c ".read /tmp/lake-qt.sql"
 
       - name: Assemble the publish set
-        id: build
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: |
-          RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          node scripts/lake/build-publish-set.mjs --run-id "$RUN_ID"
+          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
+          DIGEST="$(jq -er '.baseline.requiredSha256' "$REQUEST")"
+          node scripts/lake/build-publish-set.mjs \
+            --run-id "${{ steps.target.outputs.run_id }}" \
+            --clermont-baseline-sha256 "$DIGEST" \
+            --clermont-evidence "data/baselines/lake/clermont/baselines/$DIGEST/baseline.json"
 
-      - name: Publish to IPFS
-        if: ${{ env.S3_ACCESS_KEY_ID != '' }}
-        run: |
-          node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
-            --run-id "${{ steps.build.outputs.run_id }}" \
-            --mode "${{ steps.mode.outputs.mode }}"
-
-      # The retrieval corpus is built from the run's own coverage, schema, index
-      # and sample extracts, so a new run leaves the committed index describing
-      # the previous one. Rebuilding here keeps the uploaded artifacts internally
-      # consistent. The published table itself needs no deploy — the function
-      # resolves the IPNS pointer at cold start — but the corpus is shipped in
-      # the bundle, so it reaches the runtime on the next `cdk deploy`.
-      - name: Rebuild the retrieval index for the new run
-        if: ${{ env.S3_ACCESS_KEY_ID != '' }}
+      - name: Compute the candidate provenance
+        id: candidate
         working-directory: .
         run: |
-          pnpm install --frozen-lockfile
-          pnpm --filter @oracle-lake/rag run build:index
-          git --no-pager diff --stat -- packages/rag/index-data || true
+          SCOPE=(
+            pipeline/package.json
+            pipeline/package-lock.json
+            pipeline/docs/lake-sources.yaml
+            pipeline/scripts/lake/build-query-table.sql
+            pipeline/scripts/lake/build-publish-set.mjs
+            pipeline/scripts/lake/publish-run.mjs
+            pipeline/src/core/publish-gate.mjs
+            pipeline/src/core/secondary-pin.mjs
+            pipeline/src/counties/lake/enrichment-profile.mjs
+            pipeline/src/counties/lake/query-table.mjs
+            pipeline/src/counties/lake/permit-table.mjs
+          )
+          : > "$RUNNER_TEMP/provenance-components.txt"
+          for FILE in "${SCOPE[@]}"; do
+            test -f "$FILE"
+            printf '%s  %s\n' "$(sha256sum "$FILE" | cut -d' ' -f1)" "$FILE" \
+              >> "$RUNNER_TEMP/provenance-components.txt"
+          done
+          PROVENANCE_DIGEST="sha256:$(sort "$RUNNER_TEMP/provenance-components.txt" | sha256sum | cut -d' ' -f1)"
+          echo "provenance_digest=$PROVENANCE_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Freeze the local publication candidate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
+        working-directory: .
+        run: |
+          node --max-old-space-size=6144 pipeline/scripts/lake/publish-run.mjs \
+            --run-id "${{ steps.target.outputs.run_id }}" \
+            --mode "${{ steps.mode.outputs.mode }}" \
+            --candidate-workflow-run-id "${{ github.run_id }}" \
+            --provenance-digest "${{ steps.candidate.outputs.provenance_digest }}" \
+            --dry-run
+
+      - name: Verify the restored candidate identity
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+        working-directory: .
+        run: |
+          REQUEST="pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-request.json"
+          test -f "$REQUEST" || { echo "::error::frozen publication request is missing"; exit 1; }
+          jq -e \
+            --arg run "${{ steps.target.outputs.run_id }}" \
+            --arg mode "${{ steps.mode.outputs.mode }}" \
+            --arg workflow "${{ inputs.candidate_workflow_run_id }}" \
+            --arg provenance "${{ steps.candidate.outputs.provenance_digest }}" \
+            '.schemaVersion == "elephant.publication-request.v1" and
+             .target.runId == $run and .target.mode == $mode and
+             .target.candidateWorkflowRunId == $workflow and
+             .target.provenanceDigest == $provenance' "$REQUEST" >/dev/null || {
+              echo "::error::dispatch mode, source workflow, run, or provenance does not match the reviewed candidate"
+              exit 1
+            }
+          ATTEMPT_ID="$(jq -er '.attemptId' "$REQUEST")"
+          jq -e --slurpfile request "$REQUEST" --arg id "$ATTEMPT_ID" \
+            '.attempts[$id].state == "BUILT" and .attempts[$id].target == $request[0].target' \
+            artifacts/publication-attempts.json >/dev/null || {
+              echo "::error::candidate ledger does not contain the exact reviewed BUILT target"
+              exit 1
+            }
+
+      - name: Publish to IPFS
+        id: publish
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+        env:
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          FILEBASE_API_TOKEN: ${{ secrets.FILEBASE_API_TOKEN }}
+          SECONDARY_PIN_SERVICE_URL: ${{ secrets.SECONDARY_PIN_SERVICE_URL }}
+          SECONDARY_PIN_SERVICE_TOKEN: ${{ secrets.SECONDARY_PIN_SERVICE_TOKEN }}
+          PUBLISH_AUTHORIZATION_JSON_B64: ${{ secrets.PUBLISH_AUTHORIZATION_JSON_B64 }}
+          PUBLISH_APPROVAL_PUBLIC_KEY_B64: ${{ secrets.PUBLISH_APPROVAL_PUBLIC_KEY_B64 }}
+        run: |
+          test -n "$S3_ACCESS_KEY_ID" && test -n "$S3_SECRET_ACCESS_KEY" && \
+            test -n "$FILEBASE_API_TOKEN" && test -n "$SECONDARY_PIN_SERVICE_URL" && \
+            test -n "$SECONDARY_PIN_SERVICE_TOKEN" || {
+              echo "::error::manual publication requires Filebase and independent secondary-pin credentials"
+              exit 1
+            }
+          test -n "$PUBLISH_AUTHORIZATION_JSON_B64" && \
+            test -n "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" || {
+              echo "::error::manual publication requires an external exact-target authorization and trusted Ed25519 public key"
+              exit 1
+            }
+          umask 077
+          APPROVAL="$RUNNER_TEMP/lake-publication-approval.json"
+          PUBLIC_KEY="$RUNNER_TEMP/lake-publication-approval.pub.pem"
+          printf '%s' "$PUBLISH_AUTHORIZATION_JSON_B64" | base64 --decode > "$APPROVAL"
+          printf '%s' "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" | base64 --decode > "$PUBLIC_KEY"
+          node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
+            --run-id "${{ steps.target.outputs.run_id }}" \
+            --mode "${{ steps.mode.outputs.mode }}" \
+            --candidate-workflow-run-id "${{ inputs.candidate_workflow_run_id }}" \
+            --provenance-digest "${{ steps.candidate.outputs.provenance_digest }}" \
+            --approve "$APPROVAL" \
+            --approval-public-key "$PUBLIC_KEY"
+
+      # The retrieval corpus has a reviewed, digest-bound source receipt in the
+      # repository. A workflow run must not silently rewrite that receipt or
+      # pretend its generated index was deployed. Publication records the exact
+      # run; promoting it into RAG is a subsequent reviewed repository change
+      # followed by a runtime deploy.
+      - name: Report the retrieval promotion boundary
+        if: ${{ steps.publish.outcome == 'success' }}
+        run: |
+          echo "::notice::Published run ${{ steps.target.outputs.run_id }} is not yet the served RAG corpus." \
+               "Run the explicit promote:published command, review its receipt and deterministic index," \
+               "and deploy the runtime as a separate change."
 
       # A scheduled ingestion run that fails is a terminal failure of a job
       # nobody is watching: it runs at 07:20 UTC and its only other output is a
@@ -310,7 +368,7 @@ jobs:
               "custom_details": {
                 "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
                 "mode": "${{ steps.mode.outputs.mode }}",
-                "run_id": "${{ steps.build.outputs.run_id }}"
+                "run_id": "${{ steps.target.outputs.run_id }}"
               }
             }
           }
@@ -322,52 +380,26 @@ jobs:
           echo "::notice::paged on-call, dedup_key $(jq -r .dedup_key /tmp/pd.json)"
 
       - name: Report that publishing was skipped
-        if: ${{ env.S3_ACCESS_KEY_ID == '' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: |
-          echo "::notice::Filebase credentials are not configured, so this run built" \
-               "the dataset but published nothing. Configure S3_ACCESS_KEY_ID and" \
-               "S3_SECRET_ACCESS_KEY as repository secrets to enable publishing."
-
-      # Saved after publishing, so the next scheduled run diffs against this one.
-      # Always, not only on success: a run that published and then failed later
-      # has still moved the published state forward, and diffing the next run
-      # against stale hashes would misreport it.
-      - name: Save the permit merge base for the next run
-        if: ${{ always() }}
-        uses: actions/cache/save@v4
-        with:
-          path: .claude/skills/use-oracle/runtime/data/downloads/lake/permits-base.csv
-          key: lake-permits-base-${{ github.run_id }}
-
-      - name: Save the row hashes for the next run
-        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
-        uses: actions/cache/save@v4
-        with:
-          path: artifacts/row-hashes.json
-          key: lake-row-hashes-${{ github.run_id }}
-
-      # The history this run just appended to, carried to the next scheduled
-      # run. Saved on the same terms as the row hashes: only when the run could
-      # publish, and always rather than only on success, because a run that
-      # published and then failed later has still moved the record forward.
-      - name: Save the run history for the next run
-        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
-        run: cp artifacts/run-history.json /tmp/carried-run-history.json
-        working-directory: .
-
-      - name: Cache the run history for the next run
-        if: ${{ always() && env.S3_ACCESS_KEY_ID != '' }}
-        uses: actions/cache/save@v4
-        with:
-          path: /tmp/carried-run-history.json
-          key: lake-run-history-${{ github.run_id }}
+          echo "::notice::This schedule/manual dry run built local artifacts only. Publishing" \
+               "requires workflow_dispatch with publish=true and an external exact-target" \
+               "Ed25519 authorization; stored credentials alone are never authority."
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lake-run-${{ steps.build.outputs.run_id }}
+          name: lake-run-${{ steps.target.outputs.run_id }}
+          if-no-files-found: error
           path: |
+            artifacts/latest.json
+            artifacts/manifest-${{ steps.target.outputs.run_id }}.json
+            artifacts/verification-${{ steps.target.outputs.run_id }}.json
             artifacts/run-history.json
-            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/coverage.json
-            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/index.json
-            .claude/skills/use-oracle/runtime/data/artifacts/publish/lake/runs/${{ steps.build.outputs.run_id }}/query-table.parquet
+            artifacts/publication-attempts.json
+            artifacts/row-hashes.json
+            pipeline/data/artifacts/publish/lake/runs/${{ steps.target.outputs.run_id }}/
+            pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.json
+            pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-request.json
+            pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}.car
+            pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}-manifest.car
           retention-days: 30

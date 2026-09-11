@@ -1,7 +1,7 @@
 /**
  * The evaluation set.
  *
- * Twenty realistic questions with the documents that should answer them, plus
+ * Twenty-four realistic questions with the documents that should answer them, plus
  * five questions the corpus deliberately cannot answer. The negatives are not
  * padding: an evaluation that only measures whether the right document is found
  * cannot detect a retriever that returns something for everything, and the
@@ -57,19 +57,24 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
   {
     id: "permit-layer-coverage",
     question: "What does the Lake County CD Plus permit layer actually cover?",
-    expected: ["source:cdplus", "limitation:1", "limitation:2"],
+    expected: ["source:cdplus", "limitation:permit-window", "limitation:municipal-coverage"],
     intent: "Source-coverage question spanning a source document and its limitations.",
   },
   {
     id: "permit-history-depth",
     question: "How far back does the permit history go?",
-    expected: ["limitation:1", "source:cdplus"],
+    expected: ["limitation:permit-window", "source:cdplus"],
     intent: "Time-coverage question phrased with none of the corpus's own vocabulary.",
   },
   {
     id: "missing-coordinates",
     question: "Why do some properties have no latitude or longitude?",
-    expected: ["column:latitude", "column:longitude", "source:gio", "limitation:6"],
+    expected: [
+      "column:latitude",
+      "column:longitude",
+      "source:gio",
+      "limitation:coordinate-vintage",
+    ],
     intent: "Null-explanation question with a release-year cause.",
   },
   {
@@ -143,6 +148,45 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
     question: "What is in the open roofing permits sample extract?",
     expected: ["sample:open-roofing-permits"],
     intent: "Published-artifact retrieval.",
+  },
+  {
+    id: "five-year-roofing-leads",
+    question: "How is a roofing permit still open for five years defined and evidenced?",
+    expected: [
+      "permit:table",
+      "column:longest_open_roofing_permit_days",
+      "permit-column:days_open",
+      "coverage:signals",
+    ],
+    intent:
+      "Pins the roofing-specific duration semantic so a generic open permit cannot become a roofing lead.",
+  },
+  {
+    id: "clermont-contractor-coverage",
+    question: "How many Clermont permit rows name contractors and is that countywide coverage?",
+    expected: [
+      "coverage:clermont-contractors",
+      "limitation:contractor-coverage",
+      "jurisdiction:clermont",
+    ],
+    intent: "Measured partial contractor coverage with the one-of-fifteen boundary.",
+  },
+  {
+    id: "permit-grain-details",
+    question: "Where are full permit number status dates source URL and linkage details stored?",
+    expected: [
+      "permit:table",
+      "permit-column:permit_number",
+      "permit-column:source_url",
+      "permit-column:linkage_status",
+    ],
+    intent: "Verifies that retrieval knows the companion one-row-per-permit table.",
+  },
+  {
+    id: "source-limitations-overview",
+    question: "What source coverage limitations constrain this candidate dataset?",
+    expected: ["coverage:limitations"],
+    intent: "Broad limitation question must reach the run-carried honesty statement.",
   },
   {
     id: "negative-income",

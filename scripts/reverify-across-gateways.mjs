@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_GATEWAYS,
   verifyArtifactAcrossGateways,
-} from "../.claude/skills/use-oracle/runtime/src/core/gateway-verify.mjs";
+} from "../pipeline/src/core/gateway-verify.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ARTIFACTS = path.join(REPO_ROOT, "artifacts");

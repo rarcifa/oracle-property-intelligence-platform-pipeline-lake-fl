@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "oracle.rag-corpus-source.v1",
+  "county": "lake",
+  "runId": "20260911T131000Z",
+  "releaseState": "local_candidate",
+  "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z",
+  "rootCid": null,
+  "releaseReceipt": null,
+  "supersedes": {
+    "runId": "20260911T110728Z",
+    "reason": "Superseded local dry-run evidence; it is not the current release candidate."
+  },
+  "artifacts": [
+    {
+      "name": "coverage.json",
+      "sha256": "28baa3eb1158f5f9ca6d7a5fbb49202a2643e665d20e0fe1e5a4519bf239783f"
+    },
+    {
+      "name": "index.json",
+      "sha256": "51237a737bbd634484f834d768ff6fe3ef3828466f8cc47d23c443b667eb497a"
+    },
+    {
+      "name": "permit-schema.json",
+      "sha256": "44ec46c4f51c61507920ba2f88fc1660d9377148cb77293db6a5851603bd87d6"
+    },
+    {
+      "name": "samples/aged-roofs.json",
+      "sha256": "a9473731e88ad5ce32eaf508f4ddc1b2049dd2fd9f68468bb9324c341ce25328"
+    },
+    {
+      "name": "samples/open-roofing-permits.json",
+      "sha256": "6809ef9bcdfd447ce949534b2b4b2241296d5d2d1f04880cb1dad1a9a6941370"
+    },
+    {
+      "name": "samples/out-of-area-owners.json",
+      "sha256": "706c1e86a6d8866cc12d5053f3a6e9287e3f438a6642d50ac1398d99224d817b"
+    },
+    {
+      "name": "schema.json",
+      "sha256": "e54d3f642027da9cc4965067cab6fe62a1f253c00b09282ef466e9b557586c24"
+    }
+  ]
+}

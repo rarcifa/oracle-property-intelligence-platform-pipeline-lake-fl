@@ -92,7 +92,13 @@ for (const bp of BREAKPOINTS) {
         bp.minControlSize,
       );
 
-      for (const id of ["#filter-lat", "#filter-lon", "#filter-radius", "#filter-roof-number"]) {
+      for (const id of [
+        "#filter-lat",
+        "#filter-lon",
+        "#filter-radius",
+        "#filter-roof-number",
+        "#filter-min-open-roofing-days",
+      ]) {
         const control = page.locator(id);
         await expectHitTarget(control, bp.minControlSize, `control ${id}`);
         await expectWithinViewport(page, control, `control ${id}`);
@@ -101,6 +107,33 @@ for (const bp of BREAKPOINTS) {
       const clearRadius = page.getByRole("button", { name: "Clear radius" });
       await expectHitTarget(clearRadius, bp.minControlSize, "clear radius button");
       await expectWithinViewport(page, clearRadius, "clear radius button");
+
+      const roofingHelp = page.locator("#filter-min-open-roofing-days-help");
+      await expect(roofingHelp).toContainText("longest open roofing permit");
+      await expectWithinViewport(page, roofingHelp, "roofing-duration explanation");
+    });
+
+    test("couples the roofing-duration control to the roofing signal", async ({ page }) => {
+      const duration = page.locator("#filter-min-open-roofing-days");
+      const openRoofing = page.getByRole("checkbox", { name: "Open roofing permit" });
+      const filteredRequest = page.waitForRequest((request) => {
+        const url = new URL(request.url());
+        return (
+          url.pathname === "/api/properties" &&
+          url.searchParams.get("hasOpenRoofingPermit") === "true" &&
+          url.searchParams.get("minOpenRoofingPermitDays") === "1825"
+        );
+      });
+
+      await duration.fill("1825");
+      await expect(duration).toHaveValue("1825");
+      await expect(openRoofing).toBeChecked();
+      await filteredRequest;
+
+      await openRoofing.uncheck();
+      await expect(openRoofing).not.toBeChecked();
+      await expect(duration).toHaveValue("");
+      await expectNoHorizontalOverflow(page);
     });
 
     test("gives the map real height and the results their own scroller", async ({ page }) => {

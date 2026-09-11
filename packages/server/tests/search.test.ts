@@ -47,7 +47,14 @@ interface SearchBody {
 function buildRouter(): Router {
   // The config carries no model key and the store is never opened: retrieval
   // depends on neither.
-  const config = loadConfig({ ...process.env, ANTHROPIC_API_KEY: "" });
+  const config = loadConfig({
+    ...process.env,
+    OPENAI_API_KEY: "",
+    ORACLE_DATA_RUN_ID: "",
+    ORACLE_DATA_ROOT_CID: "",
+    ORACLE_PARQUET_PATH: "",
+    ORACLE_PARQUET_URL: "",
+  });
   const store = new OracleDataStore({ source: "/tmp/never-opened.parquet" });
   const router = new Router();
   registerSearchRoutes(router, createContext(config, store));
@@ -87,7 +94,7 @@ describe("GET /api/search", () => {
     expect(body.chunks).toBeGreaterThan(100);
     expect(body.documents).toBeGreaterThan(90);
     expect(body.embedding.model).toBe("lsa-tfidf-svd");
-    expect(body.chunksByDocType.column).toBe(62);
+    expect(body.chunksByDocType.column).toBe(85);
     expect(body.chunksByDocType.jurisdiction).toBe(16);
   });
 });
@@ -106,15 +113,15 @@ describe("POST /api/search", () => {
     expect(body.index.embeddingModel).toBe("lsa-tfidf-svd");
   });
 
-  it("carries the published CID on a chunk generated from a published artifact", async () => {
+  it("labels candidate artifact chunks without borrowing a published CID", async () => {
     const response = await call("POST", "/api/search", {
       query: "what documented limitations does the coverage snapshot record",
       topK: 5,
     });
     const body = json<SearchBody>(response);
-    const published = body.chunks.filter((chunk) => chunk.provenance.artifact !== null);
-    expect(published.length).toBeGreaterThan(0);
-    expect(published[0]?.provenance.ipfsPath).toContain("ipfs://");
+    const artifacts = body.chunks.filter((chunk) => chunk.provenance.artifact !== null);
+    expect(artifacts.length).toBeGreaterThan(0);
+    expect(artifacts[0]?.provenance.ipfsPath).toBeNull();
   });
 
   it("honours topK", async () => {

@@ -253,6 +253,8 @@ export function retrieve(
       chunkCount: raw.chunks.length,
       runId: raw.builtFrom.runId,
       rootCid: raw.builtFrom.rootCid,
+      releaseState: raw.builtFrom.releaseState,
+      snapshotDigest: raw.builtFrom.snapshotDigest,
       embeddingModel: raw.embedding.model,
       embeddingDimension: raw.embedding.dimension,
     },

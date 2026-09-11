@@ -52,10 +52,24 @@ for (const bp of BREAKPOINTS) {
       await expectWithinViewport(page, proofTiles, "gating proof tiles");
 
       await expectTileGrid(bp, page.locator(".tile-grid").nth(1));
+      await expect(page.getByText("Longest open permit (any type)", { exact: true })).toBeVisible();
+      await expect(page.getByText("Longest open roofing permit", { exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
     });
 
     test("keeps the duration chart, its list and the table usable", async ({ page }) => {
+      const roofingSortRequest = page.waitForRequest((request) => {
+        const url = new URL(request.url());
+        return (
+          url.pathname === "/api/properties" &&
+          url.searchParams.get("hasOpenRoofingPermit") === "true" &&
+          url.searchParams.get("sortBy") === "longest_open_roofing_permit_days" &&
+          url.searchParams.get("sortDir") === "desc"
+        );
+      });
+      await page.reload();
+      await roofingSortRequest;
+
       await expectChartScrolls(page, page.locator(".chart").first(), "open-permit duration chart");
 
       const kvList = page.locator(".kv-list").first();
@@ -66,6 +80,12 @@ for (const bp of BREAKPOINTS) {
 
       await expectTableScrollsInItsOwnBox(page, page.locator(".table-scroll"), "contractor table");
       await expectParcelIdOnOneLine(page.locator(".table-scroll"), "contractor table");
+      await expect(page.locator(".table-scroll tbody tr").first()).toContainText("3,424 d");
+      await expect(
+        page.getByText("Ordered by the longest open roofing permit duration, descending.", {
+          exact: true,
+        }),
+      ).toBeVisible();
       await expectWithinViewport(page, page.locator(".table-foot"), "contractor pager");
       await expectNoHorizontalOverflow(page);
     });

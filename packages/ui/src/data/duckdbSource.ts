@@ -21,17 +21,20 @@ import type { Table } from "apache-arrow";
 import {
   boundStatement,
   assertReadOnlySql,
+  assertPermitSchemaMatches,
   assertSchemaMatches,
   buildBusinessByCitySql,
   buildBusinessByTypeSql,
   buildCountSql,
   buildCreateViewSql,
+  buildEmptyPermitTableSql,
   buildDatasetStatsSql,
   buildDescribeSql,
   buildFacetSql,
   buildOwnerPostureSql,
   buildPermitPostureSql,
   buildPropertyDetailSql,
+  buildPropertyPermitsSql,
   buildRoofAgeBandsSql,
   buildSearchSql,
   clampLimit,
@@ -40,6 +43,7 @@ import {
   parquetCandidates,
   gatewayOf,
   parseSourceSystems,
+  PERMITS_VIEW,
   PROPERTIES_VIEW,
   SOURCE_SYSTEM_LABELS,
   type PropertyDetailResponse,
@@ -66,6 +70,7 @@ import {
 
 /** The name the Parquet is registered under inside the WASM filesystem. */
 const REGISTERED_FILE = "query-table.parquet";
+const REGISTERED_PERMIT_FILE = "permit-table.parquet";
 
 /** How long the whole bootstrap gets before we fail over to the server. */
 export const DUCKDB_INIT_TIMEOUT_MS = 20_000;
@@ -238,6 +243,28 @@ export async function createDuckDbSource(options: {
     );
   }
 
+  let permitsAvailable = false;
+  const permitUrl = url.replace(/query-table\.parquet$/, "permit-table.parquet");
+  try {
+    await db.registerFileURL(
+      REGISTERED_PERMIT_FILE,
+      permitUrl,
+      duckdb.DuckDBDataProtocol.HTTP,
+      false,
+    );
+    await connection.query(buildCreateViewSql(REGISTERED_PERMIT_FILE, PERMITS_VIEW));
+    const describedPermits = (await connection.query(
+      buildDescribeSql(PERMITS_VIEW),
+    )) as unknown as Table;
+    const permitColumns = tableToRows(describedPermits)
+      .map((row) => stringCell(row, "column_name"))
+      .filter((name): name is string => typeof name === "string");
+    assertPermitSchemaMatches(permitColumns);
+    permitsAvailable = true;
+  } catch {
+    await connection.query(buildEmptyPermitTableSql(PERMITS_VIEW));
+  }
+
   const teardown = async (): Promise<void> => {
     try {
       await connection.close();
@@ -321,15 +348,18 @@ export async function createDuckDbSource(options: {
 
     async getProperty(parcelId: string): Promise<PropertyDetailResponse> {
       const sql = buildPropertyDetailSql(PROPERTIES_VIEW, parcelId);
-      const row = await runQueryOne(sql);
+      const permitSql = buildPropertyPermitsSql(PERMITS_VIEW, parcelId);
+      const [row, permits] = await Promise.all([runQueryOne(sql), runQuery(permitSql)]);
       if (!row) throw new DataSourceError("Property not found", 404);
       const sourceSystemsValue = typeof row.source_systems === "string" ? row.source_systems : null;
       const enrichment = typeof row.enrichment_status === "string" ? row.enrichment_status : null;
       return {
         property: row,
+        permits: permits as unknown as PropertyDetailResponse["permits"],
+        permitsAvailable,
         sources: parseSourceSystems(sourceSystemsValue),
         gating: parseEnrichmentStatus(enrichment),
-        provenance: provenance(sql, sourceSystemsOf([row])),
+        provenance: provenance(`${sql};\n\n${permitSql}`, sourceSystemsOf([row])),
       };
     },
 

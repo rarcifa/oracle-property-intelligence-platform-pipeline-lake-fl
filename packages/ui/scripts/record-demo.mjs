@@ -10,15 +10,45 @@
  */
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { assertDemoContract } from "./demo-contract.mjs";
 
-const BASE =
-  process.env.DEMO_BASE_URL ??
-  "https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws";
+const BASE = process.env.DEMO_BASE_URL?.replace(/\/$/, "");
 const OUT = process.argv[2] ?? "demo-out";
-const ROOT_CID =
-  process.env.DEMO_ROOT_CID ?? "bafybeibshsx6h6xtbqb65at6oycndtpp3ufdou5i5unahulvtn46n4fr4m";
+const RUN_ID = process.env.DEMO_RUN_ID;
+const ROOT_CID = process.env.DEMO_ROOT_CID;
 const W = 1600,
   H = 900;
+
+if (!BASE || !RUN_ID || !ROOT_CID) {
+  throw new Error(
+    "record-demo requires DEMO_BASE_URL, DEMO_RUN_ID and DEMO_ROOT_CID for one explicit release",
+  );
+}
+
+async function responseJson(path, init) {
+  const response = await globalThis.fetch(`${BASE}${path}`, init);
+  if (!response.ok) throw new Error(`${path} answered HTTP ${response.status}`);
+  return response.json();
+}
+
+// Fail before launching a browser or creating a video if the deployed API is
+// stale, incomplete, or describing a different release than the operator chose.
+const [meta, tools, contractor] = await Promise.all([
+  responseJson("/api/meta/run"),
+  responseJson("/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "demo-contract", method: "tools/list" }),
+  }),
+  responseJson("/api/views/contractor"),
+]);
+const release = assertDemoContract({
+  meta,
+  tools,
+  contractor,
+  expectedRunId: RUN_ID,
+  expectedRootCid: ROOT_CID,
+});
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -115,6 +145,7 @@ const ctx = await b.newContext({
 });
 const page = await ctx.newPage();
 
+let completed = false;
 try {
   // 1 — the run, and the CID it is pinned to
   await go(
@@ -177,15 +208,15 @@ try {
   await go(
     page,
     "/#/contractor",
-    "3 · What the data cannot say",
-    "Contractor of record and BBB ratings are gated at source behind HTTP 403.",
+    "3 · Partial contractor evidence, stated exactly",
+    `Contractor of record is harvested for Clermont permit years ${release.contractorPermitYears[0]}–${release.contractorPermitYears.at(-1)}; the other 14 jurisdictions and BBB remain gated.`,
     5200,
   );
   await wait(5000);
   await caption(
     page,
-    "3 · Published as null, with the reason",
-    "They stay real columns that are empty, each with the gating reason attached. Nothing here is invented to fill a gap.",
+    "3 · One of fifteen jurisdictions — never countywide",
+    `${release.contractorNames.toLocaleString()} parcel rows carry a Clermont contractor name. BBB stays at zero with its HTTP 403 reason; nulls elsewhere are never filled by inference.`,
     8500,
   );
   await reveal(page, 820);
@@ -275,16 +306,18 @@ try {
     page,
     () =>
       /SQL THIS CITATION RAN/i.test(document.body.innerText) &&
+      /contractor/i.test(document.body.innerText) &&
+      /Clermont/i.test(document.body.innerText) &&
       !/Thinking/i.test(document.body.innerText),
-    "the agent to finish answering",
+    "the agent to finish with Clermont-bounded contractor semantics",
     170000,
   );
   await wait(3000);
   await reveal(page, 620);
   await caption(
     page,
-    "6 · It refuses to invent the contractor",
-    "It answers the answerable half with cited figures, and says plainly that contractor identity is gated at source — rather than producing a plausible name.",
+    "6 · Contractor identity stays inside its evidence boundary",
+    "It reports only source-backed Clermont contractor evidence, distinguishes an established absence from a gated null, and never turns one municipality into countywide coverage.",
     11000,
   );
   await reveal(page, 700);
@@ -292,22 +325,27 @@ try {
 
   // 7 — retrieval from a real public gateway
   const cov = `https://ipfs.filebase.io/ipfs/${ROOT_CID}/coverage.json`;
-  await page.goto(cov, { waitUntil: "domcontentloaded", timeout: 120000 });
+  const coverageResponse = await page.goto(cov, {
+    waitUntil: "domcontentloaded",
+    timeout: 120000,
+  });
+  if (!coverageResponse?.ok()) {
+    throw new Error(`public IPFS coverage beat answered HTTP ${coverageResponse?.status() ?? 0}`);
+  }
   await wait(2200);
   await caption(
     page,
     "7 · Fetched from public IPFS, not from the app",
-    "This is the coverage snapshot retrieved by CID from a public gateway — the same bytes the runtime reads. Eight limitations, machine-readable.",
+    "This is the coverage snapshot retrieved by CID from a public gateway — the same bytes the runtime reads, with every limitation machine-readable.",
     9000,
   );
   await reveal(page, 700);
   await wait(6000);
   await reveal(page, 900);
   await wait(6000);
-} catch (err) {
-  console.error("beat failed:", err.message);
+  completed = true;
 } finally {
   await ctx.close();
   await b.close();
-  console.log("raw video written under", OUT);
+  if (completed) console.log("complete release demo written under", OUT);
 }

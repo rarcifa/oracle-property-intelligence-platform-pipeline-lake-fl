@@ -27,6 +27,7 @@ import {
   getDatasetStats,
   getFacets,
   getProperty,
+  getPropertyPermits,
   getTenantView,
   runReadOnlySql,
   searchProperties,
@@ -95,7 +96,10 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
         : {
             ...(bundledDescribesServed ? bundled : {}),
             runId: servedRunId,
-            rootCid: provenance.rootCid ?? bundled?.rootCid ?? null,
+            // A different bundled pointer must never donate a CID to local or
+            // newly resolved bytes. `null` is the honest identity for an
+            // unpublished local candidate.
+            rootCid: provenance.rootCid,
           };
     const [verification, runHistory] = await Promise.all([
       readVerification(context.config, run?.runId ?? provenance.runId),
@@ -110,7 +114,7 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       dataSourceKind: provenance.dataSourceKind,
       gateways: IPFS_GATEWAYS,
       unusableGateways: UNUSABLE_IPFS_GATEWAYS,
-      chatEnabled: context.config.anthropicApiKey !== null,
+      chatEnabled: context.config.openaiApiKey !== null,
       tenureCaveat: TENURE_CAVEAT,
     });
   });
@@ -163,6 +167,13 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       return fail(404, "Property not found", `No published row for parcel ${parcelId}`);
     }
     return json(200, detail);
+  });
+
+  router.get("/api/properties/:parcelId/permits", async (request) => {
+    const parcelId = request.params.parcelId ?? "";
+    if (parcelId.length < 3) return fail(400, "invalid_parcel_id");
+    const provenance = await context.provenance();
+    return json(200, await getPropertyPermits(context.store, provenance, parcelId));
   });
 
   router.get("/api/views/tenant", async () => {

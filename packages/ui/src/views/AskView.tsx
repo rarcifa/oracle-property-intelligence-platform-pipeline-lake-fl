@@ -7,7 +7,7 @@
  * can go and check), and the exact SQL.
  *
  * Chat is the one capability that needs the server: it holds the model key. If
- * `ANTHROPIC_API_KEY` is unset the server answers HTTP 503 `chat_unavailable`,
+ * `OPENAI_API_KEY` is unset the server answers HTTP 503 `chat_unavailable`,
  * and this view says so calmly instead of failing.
  */
 
@@ -85,7 +85,7 @@ export function AskView(): JSX.Element {
           <h3>Ask is not configured on this server</h3>
           <p>
             {error?.detail ??
-              "The server has no ANTHROPIC_API_KEY, so it will not answer natural-language questions."}
+              "The server has no OPENAI_API_KEY, so it will not answer natural-language questions."}
           </p>
           <p>
             Every other view still works against the real published data. The Search, Tenant,

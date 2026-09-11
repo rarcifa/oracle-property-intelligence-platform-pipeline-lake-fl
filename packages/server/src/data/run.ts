@@ -61,6 +61,16 @@ export interface RunIdentity {
 
 /** Best-effort run identity, preferring the published pointer. */
 export async function readRunIdentity(config: ServerConfig): Promise<RunIdentity> {
+  if (config.dataRunId !== null) {
+    return { runId: config.dataRunId, rootCid: config.dataRootCid };
+  }
+  // A local Parquet and its sibling coverage snapshot are one candidate. A
+  // previously published `latest.json` may describe different bytes and must
+  // never donate its run id or root CID to the local table.
+  if (config.parquetSourceKind === "local") {
+    const coverage = await readCoverage(config);
+    if (coverage) return { runId: coverage.runId, rootCid: null };
+  }
   const latest = await readLatest(config);
   if (latest) return { runId: latest.runId, rootCid: latest.rootCid };
   const coverage = await readCoverage(config);

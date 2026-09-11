@@ -1,5 +1,5 @@
 /**
- * Property detail: all 62 published columns for one parcel, grouped.
+ * Property detail: all 63 published columns for one parcel, grouped.
  *
  * The point of this page is that nothing is hidden. Every published column is
  * rendered, including the ones that are always null, and a null never appears
@@ -107,6 +107,7 @@ const GROUPS: readonly { title: string; columns: readonly string[] }[] = [
       "open_permit_count",
       "open_roofing_permit_count",
       "longest_open_permit_days",
+      "longest_open_roofing_permit_days",
       "latest_permit_date",
       "contractor_name",
       "bbb_rating",
@@ -148,7 +149,9 @@ function renderValue(column: string, value: unknown): { text: string; isNull: bo
   if (typeof value === "boolean") return { text: value ? "true" : "false", isNull: false };
   if (typeof value === "number") {
     if (CURRENCY_COLUMNS.has(column)) return { text: formatCurrency(value), isNull: false };
-    if (column === "longest_open_permit_days") return { text: formatDays(value), isNull: false };
+    if (column === "longest_open_permit_days" || column === "longest_open_roofing_permit_days") {
+      return { text: formatDays(value), isNull: false };
+    }
     if (column === "latitude" || column === "longitude") {
       return { text: value.toFixed(6), isNull: false };
     }
@@ -275,6 +278,101 @@ export function PropertyView({ parcelId }: { parcelId: string }): JSX.Element {
             ))}
           </div>
         ) : null}
+      </Panel>
+
+      <Panel
+        title="Permit records"
+        subtitle={
+          data.permitsAvailable
+            ? `${formatCount(data.permits.length)} linked source record${data.permits.length === 1 ? "" : "s"}`
+            : "This legacy published run predates permit-table.parquet."
+        }
+      >
+        {!data.permitsAvailable ? (
+          <div className="notice gated">
+            <h3>Permit-grain artifact unavailable</h3>
+            <p>
+              Property-level permit aggregates remain queryable, but full status, date and
+              contractor rows require a run that publishes permit-table.parquet.
+            </p>
+          </div>
+        ) : data.permits.length === 0 ? (
+          <p className="dim">No permit record in the published sources links to this parcel.</p>
+        ) : (
+          <div className="table-scroll">
+            <table className="data" style={{ minWidth: 1040 }}>
+              <thead>
+                <tr>
+                  <th scope="col">Permit</th>
+                  <th scope="col">Jurisdiction</th>
+                  <th scope="col">Type / description</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Dates</th>
+                  <th scope="col" className="num">
+                    Open duration
+                  </th>
+                  <th scope="col">Contractor / BBB</th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.permits.map((permit) => {
+                  const sourceUrl =
+                    typeof permit.source_url === "string" && /^https?:\/\//.test(permit.source_url)
+                      ? permit.source_url
+                      : null;
+                  return (
+                    <tr key={permit.permit_id}>
+                      <td className="mono">{permit.permit_number ?? permit.permit_id}</td>
+                      <td>{permit.jurisdiction ?? "—"}</td>
+                      <td>
+                        {permit.permit_type ?? "—"}
+                        {permit.permit_description ? (
+                          <div className="micro">{permit.permit_description}</div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {permit.permit_status ?? "—"}
+                        {permit.is_roofing ? <div className="micro">roofing</div> : null}
+                        {permit.is_open ? <div className="micro">open</div> : null}
+                      </td>
+                      <td>
+                        <span className="micro">applied</span>{" "}
+                        {permit.applied_date ? formatDate(permit.applied_date) : "—"}
+                        <br />
+                        <span className="micro">issued</span>{" "}
+                        {permit.issued_date ? formatDate(permit.issued_date) : "—"}
+                        <br />
+                        <span className="micro">completed</span>{" "}
+                        {permit.completed_date ? formatDate(permit.completed_date) : "—"}
+                      </td>
+                      <td className="num">
+                        {permit.days_open === null ? "—" : formatDays(permit.days_open)}
+                      </td>
+                      <td>
+                        {permit.contractor_name ?? "—"}
+                        {permit.contractor_license ? (
+                          <div className="micro">{permit.contractor_license}</div>
+                        ) : null}
+                        <div className="micro">BBB {permit.bbb_rating ?? "unavailable"}</div>
+                      </td>
+                      <td>
+                        {sourceUrl ? (
+                          <a href={sourceUrl} target="_blank" rel="noreferrer">
+                            source record
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                        <div className="micro">{permit.source_system ?? "unknown source"}</div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
 
       {GROUPS.map((group) => (

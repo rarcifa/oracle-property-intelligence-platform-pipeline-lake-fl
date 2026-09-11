@@ -1,0 +1,24 @@
+{
+  "measuredAt": "2026-09-11T08:00:00.000Z",
+  "sampleSize": 20,
+  "terminalRecordsPerHour": 120,
+  "p50RequestLatencyMs": 800,
+  "p95RequestLatencyMs": 1800,
+  "observedErrorRate": 0.05,
+  "safeConcurrency": 2,
+  "averageRawBytesPerRecord": 4096,
+  "expectedByYear": [
+    { "year": 2015, "expectedRecords": 10 },
+    { "year": 2016, "expectedRecords": 10 },
+    { "year": 2017, "expectedRecords": 10 },
+    { "year": 2018, "expectedRecords": 10 },
+    { "year": 2019, "expectedRecords": 10 },
+    { "year": 2020, "expectedRecords": 10 },
+    { "year": 2021, "expectedRecords": 10 },
+    { "year": 2022, "expectedRecords": 10 },
+    { "year": 2023, "expectedRecords": 10 },
+    { "year": 2024, "expectedRecords": 10 },
+    { "year": 2025, "expectedRecords": 20 },
+    { "year": 2026, "expectedRecords": 30 }
+  ]
+}

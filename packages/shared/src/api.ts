@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import type { GatingNotice } from "./honesty.js";
+import type { PermitRow } from "./permits.js";
 import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT } from "./sql.js";
 import { QUERY_TABLE_COLUMN_NAMES } from "./schema.js";
 
@@ -30,7 +31,10 @@ export const propertyFiltersSchema = z.object({
   maxRoofAge: finiteNumber.min(0).max(500).optional(),
   hasPermits: boolish.optional(),
   hasOpenRoofingPermit: boolish.optional(),
+  /** Generic compatibility filter: duration of any open permit. */
   minOpenPermitDays: finiteNumber.min(0).max(100_000).optional(),
+  /** Roofing-specific duration; the SQL contract also requires an open roofing permit. */
+  minOpenRoofingPermitDays: finiteNumber.min(0).max(100_000).optional(),
   ownerOutOfCounty: boolish.optional(),
   ownerOutOfState: boolish.optional(),
   noRecordedSale: boolish.optional(),
@@ -62,7 +66,7 @@ export const readOnlySqlSchema = z.object({
     .min(1)
     .max(20_000)
     .describe(
-      "A single read-only SELECT or WITH statement. The published table is exposed as the view `properties`.",
+      "A single read-only SELECT or WITH statement over the published `properties` or `permits` view.",
     ),
   limit: z.coerce.number().int().min(1).max(MAX_SEARCH_LIMIT).default(200).optional(),
 });
@@ -108,6 +112,10 @@ export interface SearchResponse {
 
 export interface PropertyDetailResponse {
   property: Record<string, unknown>;
+  /** Full source permit rows linked to this parcel. */
+  permits: PermitRow[];
+  /** False only for a legacy publication that predates `permit-table.parquet`. */
+  permitsAvailable: boolean;
   sources: { token: string; label: string }[];
   /**
    * The notices decoded from this row's `enrichment_status`, as
@@ -117,6 +125,14 @@ export interface PropertyDetailResponse {
    * on - so a consumer typed against it could not tell them apart.
    */
   gating: GatingNotice[];
+  provenance: ResponseProvenance;
+}
+
+/** Full permit-grain records for one property. */
+export interface PermitRecordsResponse {
+  parcelId: string;
+  permits: PermitRow[];
+  permitsAvailable: boolean;
   provenance: ResponseProvenance;
 }
 

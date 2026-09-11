@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { QUERY_TABLE_COLUMN_COUNT } from "@oracle-lake/shared";
+import { PERMIT_TABLE_COLUMN_NAMES, QUERY_TABLE_COLUMN_COUNT } from "@oracle-lake/shared";
 import { buildCorpus } from "../src/corpus/build.js";
 import {
   splitSections,
@@ -60,6 +60,7 @@ describe("markdown chunking", () => {
         cid: null,
         rootCid: null,
         ipfsPath: null,
+        releaseState: "repository",
       },
       metadata: {},
       aliases: [],
@@ -87,12 +88,22 @@ describe("corpus construction", () => {
     for (const chunk of chunks) expect(chunk.id).toBe(`${chunk.docId}#${chunk.chunkIndex}`);
   });
 
-  it("describes every published column exactly once", async () => {
+  it("describes every property and permit column exactly once", async () => {
     const { chunks } = await corpusPromise;
     const columnDocs = chunks.filter((chunk) => chunk.docType === "column");
-    expect(columnDocs).toHaveLength(QUERY_TABLE_COLUMN_COUNT);
-    expect(new Set(columnDocs.map((chunk) => chunk.metadata.column)).size).toBe(
+    const propertyColumns = columnDocs.filter(
+      (chunk) => chunk.metadata.table !== "permit-table.parquet",
+    );
+    const permitColumns = columnDocs.filter(
+      (chunk) => chunk.metadata.table === "permit-table.parquet",
+    );
+    expect(propertyColumns).toHaveLength(QUERY_TABLE_COLUMN_COUNT);
+    expect(new Set(propertyColumns.map((chunk) => chunk.metadata.column)).size).toBe(
       QUERY_TABLE_COLUMN_COUNT,
+    );
+    expect(permitColumns).toHaveLength(PERMIT_TABLE_COLUMN_NAMES.length);
+    expect(new Set(permitColumns.map((chunk) => chunk.metadata.column)).size).toBe(
+      PERMIT_TABLE_COLUMN_NAMES.length,
     );
   });
 
@@ -120,13 +131,16 @@ describe("corpus construction", () => {
     }
   });
 
-  it("carries the published CID on documents generated from published artifacts", async () => {
-    const { chunks, rootCid } = await corpusPromise;
-    const published = chunks.filter((chunk) => chunk.provenance.artifact !== null);
-    expect(published.length).toBeGreaterThan(0);
-    for (const chunk of published) {
+  it("does not borrow a public CID for local-candidate artifacts", async () => {
+    const { chunks, rootCid, releaseState } = await corpusPromise;
+    const artifacts = chunks.filter((chunk) => chunk.provenance.artifact !== null);
+    expect(artifacts.length).toBeGreaterThan(0);
+    expect(releaseState).toBe("local_candidate");
+    expect(rootCid).toBeNull();
+    for (const chunk of artifacts) {
       expect(chunk.provenance.rootCid).toBe(rootCid);
-      expect(chunk.provenance.ipfsPath).toContain("ipfs://");
+      expect(chunk.provenance.ipfsPath).toBeNull();
+      expect(chunk.provenance.releaseState).toBe("local_candidate");
     }
   });
 
