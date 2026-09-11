@@ -283,8 +283,13 @@ export async function getContractorView(
   const posture = await store.queryOne(sql);
   return {
     posture: toNumberRecord(posture),
-    // Both gated fields are gated for every row, so the notices from either
-    // enrichment_status variant are the same; this asks for them explicitly.
+    // A county-level view has no row to read an enrichment_status off, so it
+    // asks for the notices of the majority case explicitly. bbb_rating is
+    // gated on every row. contractor_name is gated on every parcel outside
+    // Clermont, whose rows carry contractor_from_clermont_etrakit or
+    // contractor_absent_on_permit instead - which is why the tile beside these
+    // notices states the jurisdiction boundary and counts the column live
+    // rather than letting the notices imply a countywide zero.
     gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
     provenance: provenance(context, sql, []),
     note: "Permit signals come from the Lake County CD Plus permit layer, joined to the DOR roll on Alternate_Key. That layer publishes a rolling 365-day Permit_LastModDate window and covers unincorporated Lake County only, so it is a current-permit source, not a permit archive.",

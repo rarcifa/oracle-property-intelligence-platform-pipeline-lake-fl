@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import type { GatingNotice } from "./honesty.js";
 import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT } from "./sql.js";
 import { QUERY_TABLE_COLUMN_NAMES } from "./schema.js";
 
@@ -108,7 +109,14 @@ export interface SearchResponse {
 export interface PropertyDetailResponse {
   property: Record<string, unknown>;
   sources: { token: string; label: string }[];
-  gating: { token: string; field: string | null; headline: string; detail: string }[];
+  /**
+   * The notices decoded from this row's `enrichment_status`, as
+   * {@link GatingNotice} rather than a narrower copy of its fields. The copy
+   * dropped `severity`, which is the field that separates a column the source
+   * refused from one it answered - the distinction `contractor_name` now turns
+   * on - so a consumer typed against it could not tell them apart.
+   */
+  gating: GatingNotice[];
   provenance: ResponseProvenance;
 }
 

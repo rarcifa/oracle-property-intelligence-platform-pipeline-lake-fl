@@ -20,7 +20,18 @@ function fixture(name: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-/** Captured from `http://127.0.0.1:8791/api/*` against the published Lake run. */
+/**
+ * Captured from `http://127.0.0.1:8791/api/*` against the published Lake run.
+ *
+ * Hand-maintained: nothing generates these files and no spec compares them with
+ * a live server, so they can only drift. Two kinds of content live in them and
+ * they age differently. Copy the code produces - gating notices, the source
+ * labels in `provenance.sourceSystems` - has to be re-edited here whenever that
+ * code changes, or the design lane renders text the app no longer serves.
+ * Counts and `run.json`'s coverage snapshot are a capture of one published run
+ * and are only ever refreshed by re-capturing against a newer one; editing a
+ * number here by hand would invent a run that never existed.
+ */
 export const FIXTURES = {
   run: fixture("run"),
   facets: fixture("facets"),

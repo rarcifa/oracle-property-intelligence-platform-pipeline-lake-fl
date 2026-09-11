@@ -23,6 +23,9 @@ export interface EvalCase {
 export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
   {
     id: "contractor-null",
+    // Asked on the reader's false premise on purpose: the column is empty on
+    // most of the county but not all of it, and the retrieved documents have to
+    // be the ones that correct that rather than confirm it.
     question: "Why is contractor_name empty for every property?",
     expected: ["column:contractor_name", "source:contractor-identity", "access:cloudflare"],
     intent: "The flagship 'why is this field empty' question the SQL tools cannot answer.",
@@ -97,7 +100,7 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
     id: "clermont-contractors",
     question: "Is there any city portal that publishes contractor names?",
     expected: ["jurisdiction:clermont", "source:contractor-identity"],
-    intent: "Question whose answer is a single unharvested opportunity.",
+    intent: "Question whose answer is the one jurisdiction of fifteen that does, and is harvested.",
   },
   {
     id: "cost",

@@ -49,11 +49,19 @@ describe.skipIf(!hasParquet)("REST API", () => {
 
   it("serves the 62-column schema", async () => {
     const response = await request(await getRouterOnce(), "GET", "/api/meta/schema");
-    const body = bodyJson<{ columnCount: number; alwaysNullColumns: Record<string, string> }>(
-      response,
-    );
+    const body = bodyJson<{
+      columnCount: number;
+      alwaysNullColumns: Record<string, string>;
+      partiallyPopulatedColumns: Record<string, string>;
+    }>(response);
     expect(body.columnCount).toBe(62);
-    expect(body.alwaysNullColumns.contractor_name).toContain("403");
+    expect(body.alwaysNullColumns.bbb_rating).toContain("403");
+    // contractor_name moved out of the always-null map when Clermont's eTRAKiT
+    // portal started supplying it. A client that only read that map would now
+    // see nothing at all for the column, so the partial map has to be served
+    // beside it and has to state the boundary, not just the source.
+    expect(body.alwaysNullColumns.contractor_name).toBeUndefined();
+    expect(body.partiallyPopulatedColumns.contractor_name).toContain("Clermont");
   });
 
   it("serves the run pointer, coverage snapshot and gateway posture", async () => {

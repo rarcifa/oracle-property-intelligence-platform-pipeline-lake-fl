@@ -13,6 +13,7 @@ import {
   clampLimit,
   COUNTY,
   IPFS_GATEWAYS,
+  PARTIALLY_POPULATED_COLUMNS,
   QUERY_TABLE_COLUMNS,
   readOnlySqlSchema,
   searchOptionsSchema,
@@ -119,6 +120,10 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       columnCount: QUERY_TABLE_COLUMNS.length,
       columns: QUERY_TABLE_COLUMNS,
       alwaysNullColumns: ALWAYS_NULL_COLUMNS,
+      // Served alongside, never merged into, the always-null map. A consumer
+      // that saw only the always-null map would read contractor_name's absence
+      // from it as "this column has no caveat", which is the opposite of true.
+      partiallyPopulatedColumns: PARTIALLY_POPULATED_COLUMNS,
     }),
   );
 

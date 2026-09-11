@@ -255,19 +255,37 @@ export async function buildCorpus(): Promise<BuiltCorpus> {
   }
 
   // Provenance links from every column document to the source that fills it.
-  const SOURCE_DOC_BY_LABEL: Readonly<Record<string, string>> = {
-    "FL DOR NAL 2026P": "source:nal",
-    "FL GIO parcel centroids 2025": "source:gio",
-    "Lake County CD Plus permit layer": "source:cdplus",
-    "FL DOR SDF 2026P": "source:sdf",
-    "FL DOR TPP 2026P": "source:tpp",
-    "gated at source (HTTP 403)": "source:contractor-identity",
+  //
+  // A label maps to a LIST, not to one document, because a column can draw on
+  // more than one source: the permit aggregates are filled by the county CD
+  // Plus layer for unincorporated Lake and by Clermont's portal for that
+  // municipality, and linking such a column to only one of them would make the
+  // other invisible to anything that walks these edges.
+  const SOURCE_DOCS_BY_LABEL: Readonly<Record<string, readonly string[]>> = {
+    "FL DOR NAL 2026P": ["source:nal"],
+    "FL GIO parcel centroids 2025": ["source:gio"],
+    "Lake County CD Plus permit layer": ["source:cdplus"],
+    "Lake County CD Plus permit layer + Clermont eTRAKiT permits": [
+      "source:cdplus",
+      "jurisdiction:clermont",
+    ],
+    "FL DOR SDF 2026P": ["source:sdf"],
+    "FL DOR TPP 2026P": ["source:tpp"],
+    "gated at source (HTTP 403)": ["source:contractor-identity"],
+    // schema.ts's label for contractor_name, which stopped being the gated one
+    // when Clermont's portal started supplying the column. It keeps the gated
+    // document, because that is where the whole fifteen-jurisdiction picture is
+    // written down, and gains the jurisdiction that actually supplies the value.
+    "Clermont eTRAKiT permits; null elsewhere": [
+      "source:contractor-identity",
+      "jurisdiction:clermont",
+    ],
   };
   for (const chunk of chunks) {
     if (chunk.docType !== "column") continue;
-    const target = SOURCE_DOC_BY_LABEL[chunk.metadata.sourceSystem ?? ""];
-    if (target)
+    for (const target of SOURCE_DOCS_BY_LABEL[chunk.metadata.sourceSystem ?? ""] ?? []) {
       links.push({ sourceDocId: chunk.docId, targetDocId: target, relation: "derived_from" });
+    }
   }
 
   chunks.sort((left, right) => left.id.localeCompare(right.id));

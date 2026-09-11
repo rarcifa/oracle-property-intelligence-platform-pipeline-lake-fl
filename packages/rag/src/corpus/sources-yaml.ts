@@ -381,7 +381,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
         `Roofing permits: ${count(permits.roofing_permit_count)}. Open permits: ${count(permits.open_permit_count)}. Open roofing permits: ${count(permits.open_roofing_permit_count)}.`,
         `Join: the permit layer's Alternate_Key matches the NAL ALT_KEY column; the undashed PARCEL_ID matches the layer's Parcel_ID. Alternate_Key is the better join because it is populated on 100% of permit features.`,
         permits.coverage_finding ? `Two measured limits: ${permits.coverage_finding}` : null,
-        "Contractor of record is NOT exposed by this layer. It lives on the county permit detail pages, which sit behind a Cloudflare managed challenge, so contractor_name is published null.",
+        "Contractor of record is NOT exposed by this layer. For unincorporated Lake County it lives on the county permit detail pages, which sit behind a Cloudflare managed challenge, so contractor_name is published null on every parcel this layer is the only permit source for. Clermont's own portal is the exception and is harvested separately.",
         `Endpoint: ${inventory.permits_unincorporated ?? "Esri MapServer proxy on utility.arcgis.com"}. IN lists longer than about 50 values return HTTP 500, so paging is done by OBJECTID range.`,
       ],
       aliases: [
@@ -412,14 +412,15 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
     entityChunk({
       docId: "source:contractor-identity",
       docType: "source",
-      title: "Data source: contractor of record — GATED, not ingested",
+      title: "Data source: contractor of record — PARTIAL, Clermont only (1 of 15 jurisdictions)",
       lines: [
         `Contractor identity status: ${sources.enrichment?.contractor_identity?.status ?? "gated"}.`,
         sources.enrichment?.contractor_identity?.blocker
           ? `Blocker: ${sources.enrichment.contractor_identity.blocker}`
           : null,
-        "Consequence: contractor_name is a real published column that stays null for every one of the 215,806 rows. A null there means 'the source refuses this request', not 'no contractor worked on this property'.",
-        "The one open route to contractor names anywhere in the county is the Clermont eTRAKiT portal, whose detail pages do expose contractor of record. It is catalogued as discovered but not harvested; an eTRAKiT adapter and a throughput measurement are the missing work.",
+        "Consequence: contractor_name is a real published column that is populated for parcels in Clermont and null on the rest of the county. Clermont is one of fifteen permitting jurisdictions in Lake County, so a contractor count is never countywide coverage and must never be reported as one.",
+        "Clermont's eTRAKiT portal is the one open route to contractor names anywhere in the county: its permit detail pages render the contact grid server-side to plain HTTP, and they are harvested. Every other jurisdiction is blocked, unavailable or manual-only.",
+        "Outside Clermont a null carries enrichment_status contractor_gated_403 and means 'no source covering this parcel publishes a contractor', not 'no contractor worked on this property'. On a Clermont parcel whose permits named nobody the token is contractor_absent_on_permit, which is an established absence - the source does carry contractors and named none.",
         "For unincorporated Lake County, the route to contractor names is a Chapter 119 records request to the Lake County Office of Building Services for the complete CD Plus permit history including contractor of record.",
       ],
       aliases: [
@@ -428,7 +429,10 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
         "who was the contractor",
         "contractor identity",
       ],
-      metadata: { family: "sources", token: "contractor_identity", status: "gated" },
+      // The YAML says supported_partial; "gated" here would contradict the
+      // catalogue this document is built from and would be the wrong answer to
+      // "is contractor data available in Lake County".
+      metadata: { family: "sources", token: "contractor_identity", status: "partial" },
       provenance,
     }),
     entityChunk({

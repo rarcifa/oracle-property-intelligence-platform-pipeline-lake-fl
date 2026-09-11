@@ -3,15 +3,23 @@
  * missing.
  *
  * Contractor identity and BBB reputation are the two things a reader most
- * expects here and the two things the sources will not serve. Rather than
- * hiding the columns, the page leads with the gating notices and then proves
- * the claim with a live count: `contractor_names_present` and
+ * expects here, and for most of Lake County the sources will not serve them.
+ * Rather than hiding the columns, the page leads with the gating notices and
+ * then proves the claim with a live count: `contractor_names_present` and
  * `bbb_ratings_present` are queried out of the same table as everything else,
  * not asserted.
+ *
+ * The two counts no longer mean the same thing. `bbb_ratings_present` is zero
+ * and stays zero. `contractor_names_present` counts the parcels Clermont's
+ * eTRAKiT portal named a contractor on - one jurisdiction of fifteen - so its
+ * tile carries that boundary beside the number. A count queried live is the
+ * only way to keep this page honest in both directions: it cannot overstate
+ * coverage the table does not have, and it cannot go on calling a column empty
+ * once a jurisdiction starts publishing it.
  */
 
 import { useMemo, useState } from "react";
-import type { SearchOptions } from "@oracle-lake/shared";
+import { PARTIALLY_POPULATED_COLUMNS, type SearchOptions } from "@oracle-lake/shared";
 import { BarChart } from "../components/BarChart.js";
 import { Pager } from "../components/Pager.js";
 import { ErrorPanel, Panel, SkeletonRows, StatTile } from "../components/Primitives.js";
@@ -73,8 +81,10 @@ export function ContractorView(): JSX.Element {
           <div className="panel-title">
             <h2>What this view cannot tell you, and why</h2>
             <span className="prose">
-              Two columns in the published table are always null. They are published anyway, because
-              a missing column and an empty column say different things.
+              <code>bbb_rating</code> is null on every row. <code>contractor_name</code> is null
+              everywhere except Clermont, the one jurisdiction of fifteen whose permit portal
+              publishes a contractor of record. Both columns are published anyway, because a missing
+              column and an empty column say different things.
             </span>
           </div>
         </header>
@@ -88,7 +98,12 @@ export function ContractorView(): JSX.Element {
               <h3>{notice.headline}</h3>
               <p>{notice.detail}</p>
               {notice.field ? (
-                <span className="micro">column {notice.field} · stays null</span>
+                <span className="micro">
+                  column {notice.field} ·{" "}
+                  {notice.field in PARTIALLY_POPULATED_COLUMNS
+                    ? "null outside Clermont"
+                    : "stays null"}
+                </span>
               ) : null}
             </div>
           ))}
@@ -101,7 +116,7 @@ export function ContractorView(): JSX.Element {
             value={typeof contractorNames === "number" ? formatCount(contractorNames) : "—"}
             note={
               proofReady
-                ? `out of ${formatCount(totalParcels)} parcels · queried, not asserted`
+                ? `Clermont only (1 of 15 jurisdictions) · out of ${formatCount(totalParcels)} parcels · queried, not asserted`
                 : undefined
             }
             tone="warn"

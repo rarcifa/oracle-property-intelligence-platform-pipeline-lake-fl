@@ -92,7 +92,7 @@ holds no dataset of its own — it reads the same immutable CID the browser read
 | ------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`        | `/api/health`               | `{ ok, county, dataSource, dataSourceKind, runId, rootCid, propertyCount }` — the count is queried, not cached                                                 |
 | `GET`        | `/api/meta/run`             | Published-run pointer, the coverage snapshot (including every documented limitation), the usable gateways and the ones deliberately avoided, and `chatEnabled` |
-| `GET`        | `/api/meta/schema`          | All 59 columns with type, label and upstream source, plus the columns that are permanently null and why                                                        |
+| `GET`        | `/api/meta/schema`          | All 62 columns with type, label and upstream source, plus the always-null columns and the partially-populated ones, each with its reason                       |
 | `GET`        | `/api/meta/facets`          | Distinct cities, property types, roof-age bases and ZIPs with counts                                                                                           |
 | `GET`        | `/api/stats`                | Headline dataset counts and the roof-age band histogram                                                                                                        |
 | `GET`        | `/api/properties`           | Filtered, sorted, paged search + the true matching total                                                                                                       |
@@ -136,16 +136,16 @@ Every data-bearing response carries a `provenance` block:
 `tools/call`, `ping`, `resources/list`, `prompts/list`, notifications (answered with
 `202` and no body) and batches. It is **stateless**: no session id, no SSE.
 
-| Tool                     | Purpose                                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `getPropertyQuerySchema` | The 59 columns with types, labels, sources, and the permanently-null columns with their reasons      |
-| `queryProperties`        | Arbitrary **read-only** `SELECT`/`WITH` against the view `properties`; anything mutating is rejected |
-| `getOracleDatasetInfo`   | Run identity, live counts queried from the Parquet, coverage tables, and every documented limitation |
-| `listOracleProperties`   | Filtered/sorted/paged search with the true matching total                                            |
-| `getOracleProperty`      | One parcel with sources and gating reasons                                                           |
-| `findAgedRoofs`          | Roof age at or above a threshold (default 15 years), with `roof_age_basis` on every row              |
-| `findOpenRoofPermits`    | Parcels with an open roofing permit, longest-open first                                              |
-| `findPropertiesInRadius` | Parcels within a radius of a point, nearest first, with `distance_miles`                             |
+| Tool                     | Purpose                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `getPropertyQuerySchema` | The 62 columns with types, labels, sources, and the null and partially-populated columns with reasons |
+| `queryProperties`        | Arbitrary **read-only** `SELECT`/`WITH` against the view `properties`; anything mutating is rejected  |
+| `getOracleDatasetInfo`   | Run identity, live counts queried from the Parquet, coverage tables, and every documented limitation  |
+| `listOracleProperties`   | Filtered/sorted/paged search with the true matching total                                             |
+| `getOracleProperty`      | One parcel with sources and gating reasons                                                            |
+| `findAgedRoofs`          | Roof age at or above a threshold (default 15 years), with `roof_age_basis` on every row               |
+| `findOpenRoofPermits`    | Parcels with an open roofing permit, longest-open first                                               |
+| `findPropertiesInRadius` | Parcels within a radius of a point, nearest first, with `distance_miles`                              |
 
 Smoke test:
 
@@ -177,17 +177,28 @@ To register it with an MCP client:
 
 ## Honesty guarantees enforced in code
 
-- `contractor_name` and `bbb_rating` are real columns that are null for every row
-  because their sources answer HTTP 403. `/api/stats` and the contractor view report
-  `contractor_names_present` and `bbb_ratings_present` as **queried counts**, so the
-  claim is provable rather than asserted, and every property detail carries the
-  gating reason decoded from `enrichment_status`.
+- `bbb_rating` is a real column that is null for every row because bbb.org answers
+  HTTP 403. `contractor_name` is a real column that is **populated for Clermont
+  parcels only** — one of Lake County's fifteen permitting jurisdictions, and the
+  only one whose permit portal publishes a contractor of record — and null on the
+  rest of the county. `/api/stats` and the contractor view report
+  `contractor_names_present` and `bbb_ratings_present` as **queried counts**, so
+  neither the zero nor the non-zero is asserted, and the contractor tile states the
+  jurisdiction boundary beside the number so a count is never read as countywide
+  coverage.
+- Where `contractor_name` is null, `enrichment_status` says which null it is:
+  `contractor_gated_403` when no source covering the parcel publishes a contractor
+  at all, `contractor_absent_on_permit` when Clermont published the permits and none
+  named anybody. Every property detail renders that reason instead of a blank cell.
+  `/api/meta/schema` serves `alwaysNullColumns` and `partiallyPopulatedColumns`
+  separately for the same reason: a column published for part of the county is not
+  an always-null column, and calling it one understates the data.
 - `no_recorded_sale_in_dor_window` is returned with an explicit tenure caveat: the
   published roll carries only 2025–2026 sales, so it is a lower bound, not tenure.
 - The chat agent's system prompt forbids stating any number not obtained from a tool
   call in that turn, and requires the source systems and parcel ids behind each claim.
 - The consumer-side schema gate (`assertSchemaMatches`) runs at boot: if the opened
-  Parquet does not carry exactly the 59 published columns in order, the process fails
+  Parquet does not carry exactly the 62 published columns in order, the process fails
   to start rather than serving a silently wrong table.
 
 ---

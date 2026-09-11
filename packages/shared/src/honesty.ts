@@ -1,11 +1,14 @@
 /**
  * Honest-completeness helpers.
  *
- * `contractor_name` and `bbb_rating` are real columns that are always null
- * because the sources answer HTTP 403. The UI must never render those as blank
- * cells; it must render the reason. These helpers turn the pipeline's
- * `enrichment_status` tokens into that reason, so the explanation is derived
- * from the row rather than hardcoded in a component.
+ * `bbb_rating` is a real column that is always null because the source answers
+ * HTTP 403. `contractor_name` is the harder case: it is populated for the one
+ * Lake jurisdiction whose permit portal publishes a contractor (Clermont) and
+ * null for the other fourteen, so a blank cell means one of three different
+ * things and the row itself has to say which. The UI must never render any of
+ * them as an empty cell; it must render the reason. These helpers turn the
+ * pipeline's `enrichment_status` tokens into that reason, so the explanation
+ * is derived from the row rather than hardcoded in a component.
  */
 
 export interface GatingNotice {
@@ -36,7 +39,21 @@ const NOTICES: Readonly<Record<string, Omit<GatingNotice, "token">>> = Object.fr
     severity: "gated",
     headline: "Contractor of record is gated at the source",
     detail:
-      "Contractor identity lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, which answers HTTP 403 to every egress tested. contractor_name is a real column that stays null rather than being fabricated.",
+      "No source that covers this parcel publishes a contractor. The CD Plus layer carries no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate that answers HTTP 403 to every egress tested, and thirteen of the fourteen municipalities are blocked, unavailable or manual-only. contractor_name is a real column that stays null rather than being fabricated.",
+  },
+  contractor_from_clermont_etrakit: {
+    field: "contractor_name",
+    severity: "present",
+    headline: "Contractor of record published",
+    detail:
+      "Clermont's eTRAKiT portal names the contractor on its permit detail pages, and this parcel's permits were harvested from it. The name shown is the contractor on the most recently dated permit, not the only contractor who has worked here.",
+  },
+  contractor_absent_on_permit: {
+    field: "contractor_name",
+    severity: "absent",
+    headline: "No contractor named on the permit",
+    detail:
+      "This parcel's permits were harvested from Clermont's eTRAKiT portal, which does publish a contractor of record, and none of them named one - an owner-builder permit, for example. This is an established absence rather than a gated field.",
   },
   bbb_gated_403: {
     field: "bbb_rating",
@@ -74,8 +91,6 @@ export function gatedFieldNotices(status: string | null | undefined): GatingNoti
 
 /** Column-level gating explanations, keyed by column name. */
 export const ALWAYS_NULL_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
-  contractor_name:
-    "Gated at source: county permit detail pages answer HTTP 403 (Cloudflare managed challenge).",
   bbb_rating: "Gated at source: bbb.org answers HTTP 403 to this egress.",
   has_bbb_contractor:
     "Always null: BBB enrichment is gated at source, so absence was never established.",
@@ -83,6 +98,17 @@ export const ALWAYS_NULL_COLUMNS: Readonly<Record<string, string>> = Object.free
     "Always null: Sunbiz corporate data was not ingested, so absence was never established.",
   property_cid:
     "Not populated by this run; the run publishes a single columnar table, not per-property CIDs.",
+});
+
+/**
+ * Columns populated for part of the county and null for the rest, with the
+ * boundary stated. These are NOT in {@link ALWAYS_NULL_COLUMNS}: calling a
+ * partially-populated column "always null" understates it exactly as badly as
+ * calling a gated column "no contractor" overstates it.
+ */
+export const PARTIALLY_POPULATED_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
+  contractor_name:
+    "Populated for Clermont only, the one Lake County jurisdiction of fifteen whose permit portal publishes a contractor of record. Null elsewhere; enrichment_status says whether that null is gated or an established absence.",
 });
 
 /**

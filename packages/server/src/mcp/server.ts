@@ -103,7 +103,7 @@ export async function handleRpcMessage(
         protocolVersion: negotiateProtocolVersion(params.protocolVersion),
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
-        instructions: `Query the published Lake County, Florida property query table (one row per parcel). Call getPropertyQuerySchema first to learn the ${QUERY_TABLE_COLUMN_COUNT} columns, then queryProperties for arbitrary read-only SQL against the view \`properties\`, or the purpose-built tools for aged roofs, open roofing permits and radius search. contractor_name and bbb_rating are real columns that are always null because their sources answer HTTP 403; never present them as absent data without that reason.`,
+        instructions: `Query the published Lake County, Florida property query table (one row per parcel). Call getPropertyQuerySchema first to learn the ${QUERY_TABLE_COLUMN_COUNT} columns, then queryProperties for arbitrary read-only SQL against the view \`properties\`, or the purpose-built tools for aged roofs, open roofing permits and radius search. bbb_rating is a real column that is always null because its source answers HTTP 403. contractor_name is published only for parcels in Clermont, one of the county's fifteen permitting jurisdictions, and is null elsewhere: read the row's enrichment_status to tell a gated null (contractor_gated_403) from an established absence (contractor_absent_on_permit), and never report a contractor count as countywide coverage.`,
       });
     }
 

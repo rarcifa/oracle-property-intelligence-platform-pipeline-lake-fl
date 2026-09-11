@@ -68,7 +68,15 @@ describe("guideline conformance of the LLM path", () => {
   });
 
   it("instructs the model to explain the gated columns rather than inventing them", () => {
-    expect(agentSource).toContain("Never invent one");
+    expect(agentSource).toContain("Never invent a contractor or a rating");
     expect(agentSource).toContain("HTTP 403");
+  });
+
+  it("bounds contractor coverage to the one jurisdiction that publishes it", () => {
+    // The prompt used to say contractor_name was null for every row. Clermont
+    // publishes a contractor of record, so the model now has to be told both
+    // halves: the column has values, and they are one jurisdiction's.
+    expect(agentSource).toContain("Never describe contractor coverage as countywide");
+    expect(agentSource).toContain("contractor_absent_on_permit");
   });
 });

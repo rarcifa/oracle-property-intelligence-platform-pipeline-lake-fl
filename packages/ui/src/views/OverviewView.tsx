@@ -48,7 +48,14 @@ const TILES: readonly {
     label: "TPP account–parcel matches",
     note: "shared addresses counted per parcel",
   },
-  { key: "contractor_names_present", label: "Contractor names present", note: "gated at source" },
+  {
+    // Not "gated at source" any more: Clermont's eTRAKiT portal publishes a
+    // contractor of record and is harvested. The note has to carry the
+    // denominator, or a non-zero count on this page reads as county coverage.
+    key: "contractor_names_present",
+    label: "Contractor names present",
+    note: "Clermont only (1 of 15 jurisdictions)",
+  },
   { key: "bbb_ratings_present", label: "BBB ratings present", note: "gated at source" },
 ];
 

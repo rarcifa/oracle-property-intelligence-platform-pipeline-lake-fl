@@ -45,6 +45,21 @@ describe("CONTRACTOR_VIEW_NOTE", () => {
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/null/);
   });
 
+  it("names the one jurisdiction that publishes a contractor, and its bounds", () => {
+    // The note said both columns were permanently null until Clermont's
+    // eTRAKiT portal was harvested. Naming Clermont without naming the
+    // denominator would trade an understatement for an overstatement.
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/Clermont/);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/fifteen jurisdictions/i);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/never read a non-zero contractor count/i);
+    expect(CONTRACTOR_VIEW_NOTE).not.toMatch(/[Bb]oth columns are published and stay null/);
+  });
+
+  it("distinguishes the two kinds of null contractor_name carries", () => {
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/contractor_gated_403/);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/contractor_absent_on_permit/);
+  });
+
   it("separates the technical block from the policy one", () => {
     // Verified with a real browser: the county permit pages are 403 to every
     // method tried, while a BBB profile loads. BBB is withheld because the

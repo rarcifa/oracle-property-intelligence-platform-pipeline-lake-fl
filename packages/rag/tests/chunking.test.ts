@@ -100,7 +100,16 @@ describe("corpus construction", () => {
     const { chunks } = await corpusPromise;
     const jurisdictions = chunks.filter((chunk) => chunk.docType === "jurisdiction");
     expect(jurisdictions).toHaveLength(16);
-    expect(jurisdictions.filter((chunk) => chunk.metadata.harvested === "true")).toHaveLength(1);
+    // Two are harvested, not one: unincorporated Lake County through the CD
+    // Plus layer, and Clermont through its eTRAKiT portal, which is the only
+    // jurisdiction of the fifteen that publishes a contractor of record. The
+    // other thirteen are blocked, unavailable or manual-only.
+    expect(
+      jurisdictions
+        .filter((chunk) => chunk.metadata.harvested === "true")
+        .map((chunk) => chunk.docId)
+        .sort(),
+    ).toEqual(["jurisdiction:clermont", "jurisdiction:unincorporated"]);
   });
 
   it("carries provenance on every chunk", async () => {
@@ -121,13 +130,24 @@ describe("corpus construction", () => {
     }
   });
 
-  it("states the gated reason on the always-null columns rather than leaving them bare", async () => {
+  it("states the reason a column is empty rather than leaving it bare", async () => {
     const { chunks } = await corpusPromise;
+    const bbb = chunks.find((chunk) => chunk.docId === "column:bbb_rating");
+    expect(bbb?.textForContext).toContain("403");
+    expect(bbb?.textForContext).toContain("empty on every row of the table");
+
+    // contractor_name is the harder document: it has to give the refusal
+    // reason for most of the county AND say which jurisdiction publishes it,
+    // or a reader takes "403" for the whole answer and stops.
     const contractor = chunks.find((chunk) => chunk.docId === "column:contractor_name");
     expect(contractor?.textForContext).toContain("403");
-    expect(contractor?.textForContext).toContain(
-      "never means no contractor worked on the property",
-    );
+    expect(contractor?.textForContext).toContain("never that no contractor worked on the property");
+    expect(contractor?.textForContext).toContain("Clermont");
+    expect(contractor?.textForContext).toContain("fifteen permitting jurisdictions");
+    expect(contractor?.metadata.partiallyPopulated).toBe("true");
+    expect(contractor?.metadata.alwaysNull).toBe("false");
+    // And it must not be described as empty everywhere.
+    expect(contractor?.textForContext).not.toContain("empty on every row of the table");
   });
 
   it("links every column document to the source that fills it", async () => {

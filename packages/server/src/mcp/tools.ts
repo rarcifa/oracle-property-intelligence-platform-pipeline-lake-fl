@@ -21,6 +21,7 @@ import {
   searchOptionsSchema,
   TENURE_CAVEAT,
   ALWAYS_NULL_COLUMNS,
+  PARTIALLY_POPULATED_COLUMNS,
 } from "@oracle-lake/shared";
 import { z } from "zod";
 import type { AppContext } from "../context.js";
@@ -307,6 +308,9 @@ export async function callTool(
           columnCount: QUERY_TABLE_COLUMNS.length,
           columns: QUERY_TABLE_COLUMNS,
           alwaysNullColumns: ALWAYS_NULL_COLUMNS,
+          // contractor_name lives here, not above: an agent told only that a
+          // column is "always null" will stop asking for it, and it is not.
+          partiallyPopulatedColumns: PARTIALLY_POPULATED_COLUMNS,
           tenureCaveat: TENURE_CAVEAT,
           runId: provenance.runId,
           rootCid: provenance.rootCid,

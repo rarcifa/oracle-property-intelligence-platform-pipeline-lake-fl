@@ -42,12 +42,32 @@ const c = (
 
 const NAL = "FL DOR NAL 2026P";
 const GIO = "FL GIO parcel centroids 2025";
-const CDPLUS = "Lake County CD Plus permit layer";
+/**
+ * Permit aggregates draw on BOTH permit sources since Clermont was harvested:
+ * the county CD Plus layer for unincorporated Lake and Clermont's eTRAKiT
+ * portal for that municipality. A parcel's `permit_count` therefore means the
+ * same thing whichever jurisdiction issued the permit, and `source_systems`
+ * on the row names the one that actually contributed. Labelling these CD Plus
+ * alone would have understated every Clermont parcel's permit provenance, and
+ * left no column in the table naming CD Plus on its own - which is why the
+ * CD-Plus-only constant is gone rather than kept beside this one.
+ */
+const PERMITS = "Lake County CD Plus permit layer + Clermont eTRAKiT permits";
 const SDF = "FL DOR SDF 2026P";
 const TPP = "FL DOR TPP 2026P";
 const DERIVED = "derived by the pipeline";
+/**
+ * `contractor_name` is the only partially-populated column in the table.
+ * Clermont's eTRAKiT portal publishes a contractor of record and the other
+ * fourteen Lake jurisdictions do not, so the source label has to name the
+ * jurisdiction that supplies the value and say what the rest of the county
+ * looks like. It read "gated at source (HTTP 403)" until Clermont was
+ * harvested; leaving it that way would now understate the column exactly as
+ * badly as claiming county-wide contractor coverage would overstate it.
+ */
+const CLERMONT = "Clermont eTRAKiT permits; null elsewhere";
 
-/** All 59 published columns, in Parquet column order. */
+/** All 62 published columns, in Parquet column order. */
 export const QUERY_TABLE_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
   c("property_id", "UTF8", false, "Property id", DERIVED),
   c("property_cid", "UTF8", true, "Property CID", DERIVED),
@@ -92,15 +112,15 @@ export const QUERY_TABLE_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
   c("no_recorded_sale_in_dor_window", "BOOLEAN", true, "No sale in DOR window", DERIVED),
   c("roof_age_years", "INT32", true, "Roof age (years)", DERIVED),
   c("roof_age_basis", "UTF8", true, "Roof age basis", DERIVED),
-  c("roof_last_permit_date", "UTF8", true, "Roof permit date used", CDPLUS),
-  c("has_permits", "BOOLEAN", true, "Has permits", CDPLUS),
-  c("permit_count", "INT32", true, "Permits", CDPLUS),
-  c("roofing_permit_count", "INT32", true, "Roofing permits", CDPLUS),
-  c("open_permit_count", "INT32", true, "Open permits", CDPLUS),
-  c("open_roofing_permit_count", "INT32", true, "Open roofing permits", CDPLUS),
-  c("longest_open_permit_days", "INT32", true, "Longest open permit (days)", CDPLUS),
-  c("latest_permit_date", "UTF8", true, "Latest permit date", CDPLUS),
-  c("contractor_name", "UTF8", true, "Contractor of record", "gated at source (HTTP 403)"),
+  c("roof_last_permit_date", "UTF8", true, "Roof permit date used", PERMITS),
+  c("has_permits", "BOOLEAN", true, "Has permits", PERMITS),
+  c("permit_count", "INT32", true, "Permits", PERMITS),
+  c("roofing_permit_count", "INT32", true, "Roofing permits", PERMITS),
+  c("open_permit_count", "INT32", true, "Open permits", PERMITS),
+  c("open_roofing_permit_count", "INT32", true, "Open roofing permits", PERMITS),
+  c("longest_open_permit_days", "INT32", true, "Longest open permit (days)", PERMITS),
+  c("latest_permit_date", "UTF8", true, "Latest permit date", PERMITS),
+  c("contractor_name", "UTF8", true, "Contractor of record", CLERMONT),
   c("bbb_rating", "UTF8", true, "BBB rating", "gated at source (HTTP 403)"),
   c("has_bbb_contractor", "BOOLEAN", true, "Has BBB contractor", "gated at source (HTTP 403)"),
   c("has_sunbiz_tenant", "BOOLEAN", true, "Has Sunbiz tenant", "not ingested for this run"),
@@ -232,6 +252,7 @@ export const SOURCE_SYSTEM_LABELS: Readonly<Record<string, string>> = Object.fre
   lake_cdplus_permits: "Lake County CD Plus permit layer",
   fl_dor_sdf_2026p: "FL DOR SDF 2026 preliminary sales file",
   fl_dor_tpp_2026p: "FL DOR TPP 2026 preliminary tangible personal property roll",
+  lake_clermont_etrakit_permits: "City of Clermont eTRAKiT permit portal",
 });
 
 /** Split the pipe-delimited `source_systems` column into labelled sources. */

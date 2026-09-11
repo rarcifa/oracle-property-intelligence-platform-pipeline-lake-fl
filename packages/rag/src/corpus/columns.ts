@@ -5,14 +5,22 @@
  * returns NULL and stops. Each of these documents states what the column means,
  * which upstream system supplies it, and — the part that matters — exactly what
  * a null in it does and does not mean. The always-null columns get the source's
- * own refusal reason rather than a shrug.
+ * own refusal reason rather than a shrug, and the one column published for part
+ * of the county - `contractor_name`, which Clermont's permit portal supplies and
+ * the other fourteen jurisdictions do not - gets the boundary stated instead of
+ * being filed under either "always null" or "always there".
  *
  * The column list is imported from `@oracle-lake/shared`, which is asserted
  * against the published Parquet by the server's schema gate, so this corpus
  * cannot describe a column the table does not have.
  */
 
-import { ALWAYS_NULL_COLUMNS, QUERY_TABLE_COLUMNS, TENURE_CAVEAT } from "@oracle-lake/shared";
+import {
+  ALWAYS_NULL_COLUMNS,
+  PARTIALLY_POPULATED_COLUMNS,
+  QUERY_TABLE_COLUMNS,
+  TENURE_CAVEAT,
+} from "@oracle-lake/shared";
 import { entityChunk } from "./entity.js";
 import type { CorpusChunk, Provenance } from "../types.js";
 
@@ -132,9 +140,10 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   latest_permit_date: { means: "Most recent permit date on the parcel from the CD Plus layer." },
   contractor_name: {
-    means: "Contractor of record for the parcel's permits.",
+    means:
+      "Contractor of record for the parcel's permits, as published by the permitting jurisdiction. Where a parcel has several permits it is the contractor on the most recently dated one, not the only contractor who has ever worked there.",
     nullWhen:
-      "Null on every one of the 215,806 rows. Contractor identity lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, which answers HTTP 403 to every egress tested. A null here means the source refuses the request; it never means no contractor worked on the property, and it must never be inferred from an owner name. The one open route to contractor names in the county is the Clermont eTRAKiT portal, catalogued as discovered but not harvested; for unincorporated Lake County the route is a Chapter 119 records request to the Lake County Office of Building Services.",
+      "Populated for parcels in Clermont and null on the rest of the county. Clermont is one of Lake County's fifteen permitting jurisdictions and the only one whose permit portal publishes a contractor of record: its eTRAKiT detail pages render the contact grid to plain HTTP and are harvested. Never read a contractor count as countywide coverage. Where the column is null, enrichment_status says which null it is. contractor_gated_403 means no source covering that parcel publishes a contractor at all - the CD Plus layer carries no contractor field, every lakecountyfl.gov permit detail page sits behind a Cloudflare managed challenge answering HTTP 403 to every egress tested, and thirteen of the other fourteen municipalities are blocked, unavailable or manual-only - so the null means the source refuses the request and never that no contractor worked on the property. contractor_absent_on_permit means Clermont did publish this parcel's permits and none of them named anybody, an owner-builder permit for example, which is an established absence. Neither null may be inferred from an owner name. For unincorporated Lake County the route to the rest is a Chapter 119 records request to the Lake County Office of Building Services.",
   },
   bbb_rating: {
     means: "Better Business Bureau rating for the contractor.",
@@ -158,11 +167,11 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   enrichment_status: {
     means:
-      "Semicolon-separated tokens recording what happened during enrichment for this row: permits_loaded, no_permits_in_source, contractor_gated_403, bbb_gated_403. This is the column that carries the reason a gated column is null, so the UI renders an explanation instead of a blank cell.",
+      "Semicolon-separated tokens recording what happened during enrichment for this row: permits_loaded, no_permits_in_source, contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403, bbb_gated_403. This is the column that carries the reason a null column is null, so the UI renders an explanation instead of a blank cell. The three contractor tokens are mutually exclusive and are the only way to tell a contractor that was never obtainable from one the source established was absent.",
   },
   source_systems: {
     means:
-      "Pipe-separated tokens naming every upstream system that contributed to this row: fl_dor_nal_2026p, fl_gio_parcel_centroid_2025, lake_cdplus_permits, fl_dor_sdf_2026p, fl_dor_tpp_2026p. This is per-row provenance, so any answer can name its sources from the row itself.",
+      "Pipe-separated tokens naming every upstream system that contributed to this row: fl_dor_nal_2026p, fl_gio_parcel_centroid_2025, lake_cdplus_permits, lake_clermont_etrakit_permits, fl_dor_sdf_2026p, fl_dor_tpp_2026p. This is per-row provenance, so any answer can name its sources from the row itself, and lake_clermont_etrakit_permits is what distinguishes a parcel whose permits could carry a contractor from one whose permits never could.",
   },
 });
 
@@ -171,9 +180,15 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
   return QUERY_TABLE_COLUMNS.map((column) => {
     const note = NOTES[column.name] ?? {};
     const alwaysNull = ALWAYS_NULL_COLUMNS[column.name];
+    // A column published for part of the county belongs in neither of the two
+    // sentences below that speak about the whole table. It gets its own, which
+    // states the boundary, so a retrieved document can never answer "why is
+    // this empty" with "it is empty everywhere" about a column that is not.
+    const partial = PARTIALLY_POPULATED_COLUMNS[column.name];
     const nullable = column.optional
       ? (note.nullWhen ??
         alwaysNull ??
+        partial ??
         `Null when ${column.source} published no value for that parcel. Nothing else in the pipeline fills it in.`)
       : "Never null: it is required on every published row.";
 
@@ -188,6 +203,7 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
           : `What it means: ${column.label}, as published by ${column.source}.`,
         `When it is null or empty: ${nullable}`,
         alwaysNull ? `This column is empty on every row of the table. Reason: ${alwaysNull}` : null,
+        partial ? `This column is populated for part of the county only: ${partial}` : null,
       ],
       aliases: [column.name, column.name.replace(/_/g, " "), column.label],
       metadata: {
@@ -196,6 +212,7 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
         parquetType: column.type,
         sourceSystem: column.source,
         alwaysNull: String(alwaysNull !== undefined),
+        partiallyPopulated: String(partial !== undefined),
       },
       provenance,
     });

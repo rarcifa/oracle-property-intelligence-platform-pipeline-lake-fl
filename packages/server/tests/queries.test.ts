@@ -28,6 +28,25 @@ const provenance: ProvenanceContext = {
   dataSourceKind: "local",
 };
 
+/**
+ * Rows the pipeline marked as carrying a contractor harvested from Clermont.
+ *
+ * `contractor_name` stopped being an always-null column when Clermont's
+ * eTRAKiT portal was harvested, and the run this suite opens is whichever one
+ * was published last. Asserting a literal count would therefore be either
+ * stale or wrong, so the assertions below compare the published count against
+ * the published tokens: the two have to agree whether the answer is 0, as it
+ * is for every run published before the Clermont harvest lands, or the few
+ * thousand Clermont parcels it will be afterwards.
+ */
+async function clermontContractorRows(store: OracleDataStore): Promise<number> {
+  return Number(
+    await store.queryScalar(
+      `SELECT count(*) FROM ${PROPERTIES_VIEW} WHERE coalesce(enrichment_status, '') LIKE '%contractor_from_clermont_etrakit%'`,
+    ),
+  );
+}
+
 describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
   let store: OracleDataStore;
   let total = 0;
@@ -53,10 +72,31 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     expect(stats.stats.roof_age_known).toBeLessThanOrEqual(total);
   });
 
-  it("proves the gated columns are empty rather than asserting it", async () => {
+  it("proves the gated column is empty rather than asserting it", async () => {
     const stats = await getDatasetStats(store, provenance);
-    expect(stats.stats.contractor_names_present).toBe(0);
     expect(stats.stats.bbb_ratings_present).toBe(0);
+  });
+
+  it("counts contractor names only where a source published one", async () => {
+    const stats = await getDatasetStats(store, provenance);
+    const contractors = stats.stats.contractor_names_present;
+    // Every published contractor must be one the Clermont harvest produced,
+    // and every Clermont-harvested contractor must be counted. Equality
+    // catches both failures a bare `toBe(0)` cannot: a name that arrived
+    // without a token to explain it, and a token claiming a name that is not
+    // there. The count is 0 on runs published before the harvest landed.
+    expect(contractors).toBe(await clermontContractorRows(store));
+    const unexplained = Number(
+      await store.queryScalar(
+        `SELECT count(*) FROM ${PROPERTIES_VIEW}
+         WHERE contractor_name IS NOT NULL
+           AND coalesce(enrichment_status, '') NOT LIKE '%contractor_from_clermont_etrakit%'`,
+      ),
+    );
+    expect(unexplained).toBe(0);
+    // One jurisdiction of fifteen. If this ever approached the whole county,
+    // the column would be claiming coverage no Lake source can supply.
+    expect(contractors).toBeLessThan(total / 2);
   });
 
   it("returns a page no larger than the limit and a true matching total", async () => {
@@ -131,8 +171,23 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     expect(detail).not.toBeNull();
     expect(detail?.property.request_identifier).toBe(parcelId);
     expect(detail?.sources.length).toBeGreaterThan(0);
-    expect(detail?.gating.map((notice) => notice.field)).toEqual(["contractor_name", "bbb_rating"]);
-    expect(detail?.property.contractor_name).toBeNull();
+    // bbb_rating is gated on every row, so it is always a gating notice.
+    // contractor_name is gated only where no source covering the parcel
+    // publishes a contractor, so the expectation is read off this row rather
+    // than hardcoded - the seed parcel is whichever one sorts first, and after
+    // the Clermont harvest that may well be a parcel with a contractor on it.
+    const status = String(detail?.property.enrichment_status ?? "");
+    expect(detail?.gating.map((notice) => notice.field)).toEqual(
+      status.includes("contractor_gated_403") ? ["contractor_name", "bbb_rating"] : ["bbb_rating"],
+    );
+    if (status.includes("contractor_from_clermont_etrakit")) {
+      expect(detail?.property.contractor_name).not.toBeNull();
+    } else {
+      // Gated, or harvested from Clermont and named nobody. Either way the row
+      // carries the reason, which is what stops the blank being read as proof.
+      expect(detail?.property.contractor_name).toBeNull();
+      expect(status).toMatch(/contractor_(gated_403|absent_on_permit)/);
+    }
   });
 
   it("returns null for an unknown parcel rather than throwing", async () => {
@@ -165,8 +220,11 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
   it("summarises the contractor view and names both gated fields", async () => {
     const view = await getContractorView(store, provenance);
     expect(view.posture.properties_with_permits).toBeGreaterThan(0);
-    expect(view.posture.contractor_names_present).toBe(0);
+    expect(view.posture.contractor_names_present).toBe(await clermontContractorRows(store));
     expect(view.posture.bbb_ratings_present).toBe(0);
+    // The view has no row to read a status off, so it asks for the majority
+    // case explicitly: both columns are gated for every parcel outside
+    // Clermont, and the notices say so in the same words a row would.
     expect(view.gating).toHaveLength(2);
     for (const notice of view.gating) {
       expect(notice.detail).toContain("403");
@@ -204,7 +262,9 @@ describe.skipIf(!hasParquet)("contractor view totals", () => {
     // Number(...) and floored to 0, so a number nothing measured sat beside the
     // real counts. Absent is honest; 0 is not.
     expect(view.posture.latest_permit_date).toBeUndefined();
-    expect(view.posture.contractor_names_present).toBe(0);
+    // A real count, published whatever it is. It agrees with the Clermont
+    // tokens on the same rows, so neither a 0 nor a non-zero here is asserted.
+    expect(view.posture.contractor_names_present).toBe(await clermontContractorRows(store));
     expect(view.posture.longest_open_permit_days).toBeGreaterThan(1825);
   }, 120_000);
 });

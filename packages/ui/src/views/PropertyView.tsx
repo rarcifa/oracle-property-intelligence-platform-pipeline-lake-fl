@@ -1,19 +1,25 @@
 /**
- * Property detail: all 59 published columns for one parcel, grouped.
+ * Property detail: all 62 published columns for one parcel, grouped.
  *
  * The point of this page is that nothing is hidden. Every published column is
  * rendered, including the ones that are always null, and a null never appears
- * as an empty cell: it appears as a dash plus the reason, taken from
- * `ALWAYS_NULL_COLUMNS` or from the row's own `enrichment_status` via
- * `gatedFieldNotices`. Any column the pipeline adds later that is not in a
- * group below still shows up, under "Other published columns", so the page
- * cannot silently drop a field.
+ * as an empty cell: it appears as a dash plus the reason, taken from the row's
+ * own `enrichment_status` or, failing that, from `ALWAYS_NULL_COLUMNS` and
+ * `PARTIALLY_POPULATED_COLUMNS`. Any column the pipeline adds later that is
+ * not in a group below still shows up, under "Other published columns", so the
+ * page cannot silently drop a field.
+ *
+ * `contractor_name` is why the reason is looked up in that order. It is
+ * published for Clermont parcels and null for the rest of the county, so the
+ * same column needs three different explanations depending on the row, and
+ * only the row knows which one applies.
  */
 
 import {
   ALWAYS_NULL_COLUMNS,
-  gatedFieldNotices,
   getColumn,
+  PARTIALLY_POPULATED_COLUMNS,
+  parseEnrichmentStatus,
   parseSourceSystems,
   QUERY_TABLE_COLUMN_NAMES,
   ROOF_AGE_BASIS_LABELS,
@@ -190,16 +196,28 @@ export function PropertyView({ parcelId }: { parcelId: string }): JSX.Element {
   const property = data.property;
   const enrichment =
     typeof property.enrichment_status === "string" ? property.enrichment_status : null;
-  const rowGating = gatedFieldNotices(enrichment);
+  const rowNotices = parseEnrichmentStatus(enrichment);
   const sources = parseSourceSystems(
     typeof property.source_systems === "string" ? property.source_systems : null,
   );
 
-  /** The explanation for a null in this column, if the pipeline has one. */
+  /**
+   * The explanation for a null in this column, if the pipeline has one.
+   *
+   * The row wins over the column-level defaults, because only the row can say
+   * whether this parcel's blank `contractor_name` is gated or an absence the
+   * source established. Severity "present" notices are skipped: a row carrying
+   * `contractor_from_clermont_etrakit` has a contractor, and that notice
+   * explains a value rather than a blank. It is never reached for a populated
+   * cell anyway - `DetailRow` renders the reason only when the value is null -
+   * but a "reason" that explains a value would be the wrong string to hold.
+   */
   const reasonFor = (column: string): string | null => {
-    const fromRow = rowGating.find((notice) => notice.field === column);
+    const fromRow = rowNotices.find(
+      (notice) => notice.field === column && notice.severity !== "present",
+    );
     if (fromRow) return fromRow.detail;
-    return ALWAYS_NULL_COLUMNS[column] ?? null;
+    return ALWAYS_NULL_COLUMNS[column] ?? PARTIALLY_POPULATED_COLUMNS[column] ?? null;
   };
 
   return (
@@ -237,10 +255,22 @@ export function PropertyView({ parcelId }: { parcelId: string }): JSX.Element {
         {data.gating.length > 0 ? (
           <div className="stack-sm" style={{ marginTop: 12 }}>
             {data.gating.map((notice) => (
-              <div key={notice.token} className={`notice ${notice.field ? "gated" : "info"}`}>
+              // The browser data path decodes every token, not only the gated
+              // ones, so severity picks the styling: a Clermont row's
+              // "Contractor of record published" notice names a column and
+              // would otherwise be painted as a warning about a missing value.
+              <div
+                key={notice.token}
+                className={`notice ${notice.severity === "gated" ? "gated" : "info"}`}
+              >
                 <h3>{notice.headline}</h3>
                 <p>{notice.detail}</p>
-                {notice.field ? <span className="micro">affects column {notice.field}</span> : null}
+                {notice.field ? (
+                  <span className="micro">
+                    {notice.severity === "present" ? "explains column" : "affects column"}{" "}
+                    {notice.field}
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
