@@ -241,7 +241,7 @@ describe("normalization", () => {
     expect(record.improvement_type).toBe("RESIDENTIAL POOL");
     expect(record.improvement_status).toBe("ISSUED");
     expect(record.permit_issue_date).toBe("2026-09-01");
-    expect(record.source_system).toBe("clermont-etrakit3");
+    expect(record.source_system).toBe("lake_clermont_etrakit_permits");
     expect(record.sourcePayload.contractorOfRecord).toBe("BOWLES CUSTOM POOLS & SPAS INC");
     expect(record.sourcePayload.contractorOfRecordLicense).toBe("CPC1458033");
     expect(record.contractors.map((contractor) => contractor.businessName)).toEqual([

@@ -431,3 +431,113 @@ corrupts the `_npx` cache, and a 30 s default guarantees exactly that kill.
 
 This is a launch-path change only. No kit skill, agent, or the MCP server itself is modified,
 and the server that runs is the same `@elephant-xyz/mcp` v1.12.1 either way.
+
+## 19. A harvest was run before its benchmark, and that is a process failure
+
+`county-permit-adapter` puts a benchmark before any full harvest: "measure permit
+search, list extraction, detail capture, session bootstrap, retry/failure rate, and
+bytes written for a representative sample", then estimate countywide elapsed time
+before scaling. The Clermont harvest was started without it — 2,470 of 4,132 permits
+fetched at concurrency 2 before the portal stopped answering.
+
+This is recorded rather than quietly corrected because the skill's ordering is not a
+formality. The benchmark is what would have set the concurrency and, more to the
+point, what would have found the ceiling that actually bit: not an instantaneous
+concurrency limit but a **cumulative** one, at roughly 2,500 requests over about 80
+minutes. Running first and measuring afterwards found that ceiling by hitting it.
+
+The benchmark has since been run properly (2026-09-11, §7 of
+`docs/lake-county-findings.md`), the failure was diagnosed as load-induced and
+transient per `county-ingest-run` §5 — two unloaded probes returned HTTP 200 in
+about 2.0 s while the harvest was still failing — and the run was resumed at
+concurrency 1 with a 600 ms inter-request delay. The evidence the unplanned run
+produced is used, because it is a real measurement however it was obtained, and it
+is labelled as what it is.
+
+## 20. Prefix enumeration is not a kit harvest pattern
+
+The kit knows two permit-harvest shapes: parcel-keyed dispatch
+(`PermitHarvest.harvestParcel({county, jobId, parcel_id})`) and, for Accela,
+date-window list harvesting with binary splitting. Clermont's primary path here is
+neither: it walks the **permit-number** prefix tree, splitting any prefix the portal
+answers with a pager and stopping at any prefix that fits one page.
+
+**Why the kit's date-window split does not apply.** eTRAKiT's grid caps at 100 rows
+served 20 to a page, and its pager is an ajax-only Telerik command that a plain form
+POST cannot drive — posting `Page$2` re-renders page 1. So a capped result set can
+never be paged, only split, which is the same rule as the Accela cap; the axis is
+different because Clermont's searchable-and-splittable field is `PERMIT_NO BEGINS
+WITH`, not an issue-date range.
+
+**Why it is preferred over the parcel-keyed path here, with numbers.** Both methods
+end at the same detail pages, so they differ only in the search half. Enumeration
+costs 490 prefix searches per permit year. A parcel-keyed pass costs one search per
+candidate parcel, and Lake's only routing signal is mailing city, which over-selects
+Clermont by a wide margin: 50,447 seed parcels carry a CLERMONT mailing city, while
+the portal knows about 2,656 parcels per permit year, because much of south Lake
+posts to a Clermont address from unincorporated county. That is 50,447 searches
+against 490 — a factor of about 103 — most of them spent proving a parcel is not
+Clermont's.
+
+**The parcel-keyed path is implemented and registered anyway**, in
+`src/counties/lake/etrakit-adapter.mjs`, because it is the kit's shape, because it
+is what a single on-demand lookup needs, and because a deviation is only defensible
+next to the thing it deviates from. Both were benchmarked (§7 of the findings): 0.6 h
+for a permit year by enumeration, 5.0 h for a parcel-keyed pass.
+
+## 21. The first modification to a vendored runtime file
+
+Every prior change to `skills/use-oracle/runtime` was an addition — new files under
+`src/counties/lake/` and `scripts/lake/`. Registering the eTRAKiT vendor module
+required editing one that shipped with the kit:
+`src/permits/adapters/index.mjs` gains one import and one registry entry.
+
+The judgement, stated so it can be overruled: `src/counties/permit-profile.mjs` has
+always closed `adapterKey` to `jaxepics`, `click2gov` and **`etrakit`**. The third
+key had no implementation behind it, so any profile naming it failed at dispatch.
+Supplying that implementation is what the enum was already describing, and the
+registry is the extension point — `createPermitAdapter` exists to be extended.
+Nothing else in the file changed, no behaviour changed for the two existing
+adapters, and the county-specific portal knowledge stays in
+`src/counties/lake/`, not in the shared registry.
+
+## 22. A routing table beside the catalog, not a registered permit profile
+
+`county-permit-adapter` says the harvest service "loads the county's sources
+catalog, resolves each parcel's jurisdiction from stored appraisal/seed data (situs
+city), groups by vendor, and dispatches to the matching vendor adapter", and records
+an unmatched jurisdiction as `unrouted`. That is implemented in
+`src/counties/lake/permit-routing.mjs`.
+
+It is **not** implemented as a `permitProfileRegistry` entry, and the reason is the
+one already recorded in §3 above. A profile must contain exactly one
+`defaultForUnmatchedCity` jurisdiction; for Lake that is unincorporated county,
+whose source is a fully harvestable Perconti CD Plus layer with a rolling 365-day
+window. The schema's cross-field rule makes `status: "supported"` require
+`historicalRecords: true`, so unincorporated Lake can only be registered by
+asserting history it does not have, or by declaring a demonstrably harvestable
+source blocked. Registering the profile would have forced one of those two false
+statements into the county's machine-readable identity.
+
+So the routing table carries the same fields, and `tests/lake-permit-routing.test.mjs`
+reads `docs/lake-sources.yaml` and fails if the two drift — the catalog stays the
+record of truth and the table stays a projection of it. The kit change that would
+remove this deviation is still the one §3 names: a `current-window` status, or
+decoupling `historicalRecords` from `supported`.
+
+## 23. A permanent failure that left no artifact was retried forever
+
+Not a deviation from the kit but a defect against it, found while resuming the
+Clermont harvest and fixed. `county-ingest-run` §5 says a DEAD record is recorded
+and never retried, and that the achievable total is `seed − dead − current-invalid`.
+The harvester recorded a permanently unattachable permit — one the portal files
+against no parcel key at all — as a failure entry in the run summary only. Resume
+skipped work by looking for `extracted/<permit>.json`, which a dead permit never
+has, so every pass re-fetched every dead permit, and a completion gate of
+`captured == enumerated` could never be met.
+
+Dead permits now get `dead/<permit>.json` carrying the reason and the enumeration
+row that produced them; resume skips captured **and** dead; and `coverage.json`
+reports `enumeratedPermits`, `deadPermits`, `achievablePermits` and a `complete`
+flag gated on `permitCount >= achievable`, which is the kit's
+`loaded >= achievable` rule rather than an exact-source-count assert.

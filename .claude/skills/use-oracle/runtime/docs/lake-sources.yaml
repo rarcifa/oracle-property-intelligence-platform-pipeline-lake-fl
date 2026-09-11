@@ -110,21 +110,48 @@ permits:
       historical_records: true
       anonymous_access: true
       adapter: etrakit
-      implementation_status: discovered
+      implementation_status: certified
       parcel_search: SITE_APN search labelled "AK NUMBER", which is the NAL ALT_KEY
-      enumeration_status: discovered-open-portal
+      enumeration_status: certified-enumerated
+      history_window_first_permit_year: "15"
+      history_window_evidence: >-
+        Permit-number year roots probed 2026-09-11. 15- and 20- return results (earliest
+        issue date seen 2015-01-02); 90-, 95-, 00-, 05-, 08-, 10- and 12- all return the
+        portal's no-results notice. The searchable history is permit years 15 through 26.
       probe: >-
         Re-probed 2026-09-09: the permit search page returns HTTP 200, 785,477 bytes in 1.9 s
         with no session, no challenge and no login. The parcel field is labelled "AK NUMBER"
         and posts as SITE_APN, which is the NAL ALT_KEY, so the join needs no translation.
         Search is an ASP.NET postback carrying __VIEWSTATE, so an adapter must round-trip the
         form; permit detail is reachable by a plain GET once a permit number is known.
+        Re-probed 2026-09-11 after an outage: HTTP 200 in 2.0 s, unchanged.
+      throughput: >-
+        Benchmarked 2026-09-11 at concurrency 1 and 2, sixty-three requests in total, zero
+        failures. Session bootstrap p50 759 ms and yields a 5,035-entry registered-contractor
+        directory. Parcel search by SITE_APN p50 624 ms, returning a parcel's whole permit
+        history in one response - 8.2 permits per permitted parcel across the ten sampled.
+        Prefix list search p50 672 ms, 20 rows a page and capped at every depth-2 prefix
+        tried. Detail capture p50 1,077 ms at concurrency 1 (0.91 req/s) and p50 1,145 ms,
+        p95 2,585 ms at concurrency 2 (1.55 req/s), at 854 KB a page. Safe concurrency is 2.
+        Separately measured ceiling: a run of roughly 2,500 detail requests at concurrency 2
+        over about 80 minutes ended with the host accepting TCP and never answering, while
+        unloaded probes returned HTTP 200 in 2.0 s throughout - load-induced and transient,
+        so the lever is cumulative request rate, not worker count. Estimated full download,
+        at concurrency 2 and the measured failure rate: 0.6 h for one permit year by prefix
+        enumeration, 8 to 9 h and about 50 GB of raw HTML for the whole 15-26 history, and
+        5.0 h for a parcel-keyed pass over the 50,447 CLERMONT-mailing seed parcels. All
+        three are inside the 48-hour county-ingest-run gate.
+      adapter_module: src/counties/lake/etrakit-adapter.mjs, registered in src/permits/adapters/index.mjs
       known_exclusions: >-
         Detail pages expose contractor names and inspection history, which the county layer
-        does not. Not harvested: an eTRAKiT adapter and a throughput measurement are needed
-        first, and neither was in scope for this run. This is the single most valuable
-        remaining source, because it is the only open route to contractor of record anywhere
-        in the county.
+        does not, and this is the only open route to contractor of record anywhere in Lake
+        County. Harvested for permit year 26 only: 4,132 permits enumerated by prefix walk
+        over 2,656 parcels. Permit years 15 through 25 are reachable and are NOT in this
+        job. Routing by mailing city over-selects heavily - 50,447 seed parcels carry a
+        CLERMONT mailing city while the portal knows about 2,656 a year - so the portal's
+        own answer, not the city string, decides membership. Permits the portal files
+        against no parcel key at all are recorded as dead with their enumeration row rather
+        than dropped or counted as parcels with no permits.
     - jurisdiction: Groveland
       key: groveland
       status: blocked
@@ -460,12 +487,17 @@ enrichment:
       deployment does not have. bbb_rating is published as a real column that stays null,
       with the reason carried in enrichment_status.
   contractor_identity:
-    status: gated
+    status: supported_partial
+    source_access_status: partial
     blocker: >-
-      Contractor of record lives on the county permit detail pages, which are behind the
-      Cloudflare managed challenge on c.lakecountyfl.gov. The Clermont eTRAKiT portal does
-      expose contractor names for that municipality and is open to plain HTTP; it is
-      catalogued as a discovered, not yet harvested, source.
+      Contractor of record is gated for fourteen of fifteen jurisdictions, not for the
+      county as a whole. The county CD Plus layer publishes no contractor field and every
+      lakecountyfl.gov permit detail page sits behind a Cloudflare managed challenge; the
+      thirteen other municipalities are blocked, unavailable or manual-only. Clermont is
+      the exception and is harvested: its eTRAKiT detail pages render the full contact
+      grid server-side to plain HTTP. contractor_name is therefore non-null on the Clermont
+      parcels that join the roll and null everywhere else, with the jurisdictional truth in
+      the coverage snapshot - never as a claim that the county has no contractors.
 
 approved_exceptions:
   - gate: parcel
