@@ -34,6 +34,16 @@
  * `SITE_APN` and holds the NAL `ALT_KEY` that the Lake seed and query table
  * already carry.
  *
+ * **Kit deviation, recorded.** The prefix walk below is not one of the kit's two
+ * permit-harvest shapes. `county-permit-adapter` knows parcel-keyed dispatch and
+ * Accela date-window binary splitting; this splits over permit numbers instead,
+ * because `PERMIT_NO BEGINS WITH` is the only field eTRAKiT will both search and
+ * split on. The parcel-keyed path exists too, registered as a vendor module in
+ * `./etrakit-adapter.mjs`. Both were benchmarked before either was scaled — see
+ * `docs/lake-kit-deviations.md` §20 for the reasoning and §19 for the process
+ * failure that a benchmark-first run would have avoided, and
+ * `docs/lake-county-findings.md` §7 for the measurements.
+ *
  * **Silent partial renders.** Under concurrency the portal sometimes answers a
  * detail request with HTTP 200 and the full page chrome but no record at all.
  * Re-fetching the same URL returns the record. {@link parsePermitDetailHtml}
@@ -61,6 +71,19 @@ import { toText } from "./sources.mjs";
 
 export const COUNTY_KEY = "lake";
 export const JURISDICTION_KEY = "clermont";
+
+/**
+ * `source_system` for every Clermont permit row.
+ *
+ * It has to start with the county's underscore slug. `query-db-loading-matching`
+ * is explicit about why: the permit-table export filters on
+ * `source_system LIKE '<county>_%'`, so a row tagged `clermont_permits` — or,
+ * as this adapter first wrote it, `clermont-etrakit3` — loads without
+ * complaint and then silently vanishes from the published table. The vendor
+ * stays in the name after the slug, so the county filter and the vendor
+ * identity both survive.
+ */
+export const SOURCE_SYSTEM = "lake_clermont_etrakit_permits";
 export const CLERMONT_ETRAKIT_SEARCH_URL = "https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx";
 
 /** Search grid page size, read off the RadGrid client state. */
@@ -529,6 +552,12 @@ export function lakePropertyId(parcelId) {
  * @param {object} [input.row] - The matching {@link permitSearchRowSchema} row, when the permit came from a list.
  * @param {string} input.requestedAlternateKey - NAL `ALT_KEY` the permit is being attached to.
  * @param {string | null} [input.requestedParcelId] - NAL `PARCEL_ID`, when known, used for `property_id`.
+ * @param {string | null} [input.requestedPropertyId] - Property id the caller is binding the permit to.
+ *   Supply this when the caller already holds the id — the shared permit-harvest
+ *   service passes one in from the property row it is harvesting — and it is used
+ *   verbatim. Omit it and the id is derived from `requestedParcelId`. The two must
+ *   not disagree: `normalizedPermitRecordSchema` rejects a record whose
+ *   `property_id` is not the one the caller asked for.
  * @param {Map<string, string>} [input.licenseIndex] - Index from {@link buildContractorLicenseIndex}.
  * @returns {object} A validated `normalizedPermitRecordSchema` record.
  */
@@ -537,6 +566,7 @@ export function normalizeClermontPermit({
   row = undefined,
   requestedAlternateKey,
   requestedParcelId = null,
+  requestedPropertyId = undefined,
   licenseIndex = new Map(),
 }) {
   const alternateKey = toText(requestedAlternateKey);
@@ -553,7 +583,12 @@ export function normalizeClermontPermit({
     );
   }
 
-  const propertyId = requestedParcelId === null ? null : lakePropertyId(requestedParcelId);
+  const propertyId =
+    requestedPropertyId !== undefined
+      ? requestedPropertyId
+      : requestedParcelId === null
+        ? null
+        : lakePropertyId(requestedParcelId);
   const ofRecord = selectContractorOfRecord(detail.contacts);
   const contractors = detail.contacts
     .filter((contact) => !NON_CONTRACTOR_ROLES.includes(contact.role.toUpperCase()))
@@ -590,7 +625,7 @@ export function normalizeClermontPermit({
     completion_date: detail.finaledDate,
     expiration_date: detail.expirationDate,
     opened_date: detail.appliedDate,
-    source_system: "clermont-etrakit3",
+    source_system: SOURCE_SYSTEM,
     county_name: "Lake",
     project_description: detail.description,
     description: row?.description ?? detail.description,
@@ -860,3 +895,217 @@ export function createClermontPermitSession(options = {}) {
     stats: () => ({ ...stats }),
   };
 }
+
+/**
+ * The `county-ingest-run` §2 feasibility gate: a source estimated above this
+ * many hours is not scaled by default — the operator is asked whether to
+ * download it anyway, ingest it, or retrieve it at run time.
+ */
+export const FEASIBILITY_GATE_HOURS = 48;
+
+/**
+ * Summarize a set of latency samples.
+ *
+ * `p95` is the sample at the 95th percentile by position, matching how the
+ * rest of the runtime reports portal latency; with fewer than 20 samples that
+ * is the slowest one, which is the honest reading of a small probe.
+ *
+ * @param {readonly number[]} samplesMs - Latency samples in milliseconds.
+ * @returns {{ count: number, p50Ms: number | null, p95Ms: number | null, meanMs: number | null, minMs: number | null, maxMs: number | null }}
+ *   Latency summary; every field is null for an empty sample.
+ */
+export function summarizeLatencies(samplesMs) {
+  const sorted = [...samplesMs].sort((left, right) => left - right);
+  if (sorted.length === 0) {
+    return { count: 0, p50Ms: null, p95Ms: null, meanMs: null, minMs: null, maxMs: null };
+  }
+  const at = (fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+  return {
+    count: sorted.length,
+    p50Ms: at(0.5),
+    p95Ms: at(0.95),
+    meanMs: Math.round(sorted.reduce((sum, value) => sum + value, 0) / sorted.length),
+    minMs: sorted[0],
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
+/**
+ * Estimate elapsed time for a bounded run of portal requests.
+ *
+ * This is the arithmetic behind the `county-permit-adapter` throughput rule and
+ * the `county-ingest-run` §2 gate: elapsed time comes from the request count,
+ * the measured latency, the safe concurrency, the politeness delay and the
+ * retry overhead implied by the measured failure rate — never from a guess.
+ *
+ * Retries are charged at the same latency as a first attempt, which is
+ * conservative: a failure that times out costs the timeout, not the p50.
+ *
+ * @param {object} params - Estimation inputs.
+ * @param {number} params.requests - Requests the run must issue.
+ * @param {number} params.latencyMs - Measured per-request latency.
+ * @param {number} params.concurrency - Safe concurrency the measurement supports.
+ * @param {number} [params.interRequestDelayMs] - Politeness delay added per request, per worker.
+ * @param {number} [params.failureRate] - Measured failure rate, 0..1.
+ * @param {number} [params.retryAttemptsPerFailure] - Extra attempts each failure costs.
+ * @param {number} [params.fixedOverheadMs] - One-off cost, e.g. session bootstrap or enumeration.
+ * @returns {{ requests: number, effectiveRequests: number, seconds: number, hours: number, requestsPerSecond: number, withinGate: boolean }}
+ *   The estimate, and whether it clears {@link FEASIBILITY_GATE_HOURS}.
+ */
+export function estimateHarvestDuration({
+  requests,
+  latencyMs,
+  concurrency,
+  interRequestDelayMs = 0,
+  failureRate = 0,
+  retryAttemptsPerFailure = 0,
+  fixedOverheadMs = 0,
+}) {
+  if (!Number.isFinite(requests) || requests < 0) throw new Error("requests must be a non-negative number");
+  if (!Number.isFinite(latencyMs) || latencyMs <= 0) throw new Error("latencyMs must be positive");
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("concurrency must be a positive integer");
+  if (failureRate < 0 || failureRate > 1) throw new Error("failureRate must be between 0 and 1");
+
+  const effectiveRequests = requests * (1 + failureRate * retryAttemptsPerFailure);
+  const seconds = (fixedOverheadMs + (effectiveRequests * (latencyMs + interRequestDelayMs)) / concurrency) / 1000;
+  const hours = seconds / 3600;
+  return {
+    requests,
+    effectiveRequests: Number(effectiveRequests.toFixed(1)),
+    seconds: Number(seconds.toFixed(1)),
+    hours: Number(hours.toFixed(2)),
+    requestsPerSecond: seconds > 0 ? Number((effectiveRequests / seconds).toFixed(2)) : 0,
+    withinGate: hours <= FEASIBILITY_GATE_HOURS,
+  };
+}
+
+/**
+ * Size the two harvest strategies Clermont actually admits, in requests.
+ *
+ * - `parcelKeyed` is the kit's default shape: one search per candidate parcel,
+ *   then one detail fetch per permit found. Its cost is driven by how many
+ *   parcels route to the jurisdiction, and in Lake that routing signal is
+ *   mailing city, which over-selects heavily — 50,447 seed parcels carry a
+ *   CLERMONT mailing city while the city's own portal knows roughly 2,656
+ *   parcels per permit year.
+ * - `enumerated` is what this adapter does: walk the permit-number prefix tree
+ *   once per year, then fetch each permit's detail. Its cost is driven by
+ *   permit count, not parcel count.
+ *
+ * Both end at the same detail pages, so the difference is entirely in the
+ * search half.
+ *
+ * @param {object} params - Scope inputs.
+ * @param {number} params.candidateParcels - Parcels a city-based route would send to this portal.
+ * @param {number} params.permitCount - Permits the enumeration found, for the years in scope.
+ * @param {number} params.prefixesSearched - Prefix searches the enumeration cost, for the years in scope.
+ * @returns {{ parcelKeyed: { searches: number, details: number, requests: number }, enumerated: { searches: number, details: number, requests: number } }}
+ *   Request counts per strategy.
+ */
+export function sizeClermontStrategies({ candidateParcels, permitCount, prefixesSearched }) {
+  return {
+    parcelKeyed: {
+      searches: candidateParcels,
+      details: permitCount,
+      requests: candidateParcels + permitCount,
+    },
+    enumerated: {
+      searches: prefixesSearched,
+      details: permitCount,
+      requests: prefixesSearched + permitCount,
+    },
+  };
+}
+
+/**
+ * Clermont permit statuses that mean the permit is still open.
+ *
+ * Measured from 2,646 harvested permits: FINALED (1,458), ISSUED (1,009),
+ * VOID (83), APPROVED (31), PENDING INFORMATION (27), IN REVIEW (18),
+ * EXPIRED (10), REJECTED (5), APPROVED PENDING (4), CLOSED (1). The list below
+ * is the open half of that vocabulary, stated positively for the same reason
+ * `counties/lake/sources` states the CD Plus one positively: a status this
+ * adapter has never seen must not silently become an open permit, because an
+ * invented open permit becomes an invented aged roof downstream.
+ */
+export const CLERMONT_OPEN_STATUSES = Object.freeze([
+  "ISSUED",
+  "APPROVED",
+  "APPROVED PENDING",
+  "IN REVIEW",
+  "PENDING INFORMATION",
+]);
+
+/**
+ * Clermont statuses that end a permit without completing the work. They are
+ * not open, and they are not evidence of a finished job either.
+ */
+export const CLERMONT_TERMINATED_STATUSES = Object.freeze(["VOID", "EXPIRED", "REJECTED"]);
+
+/**
+ * Project a normalized Clermont permit onto the county permit-load row shape.
+ *
+ * The column names are the CD Plus layer's, so both sources land in one
+ * aggregate and a parcel's permit count means the same thing whichever
+ * jurisdiction issued it. Two columns are added rather than substituted:
+ * `source_system`, which keeps the two apart when they are unioned, and
+ * `contractor_name`, which the county layer has never carried.
+ *
+ * @param {object} record - A `normalizedPermitRecordSchema` record.
+ * @param {object} [options] - Options.
+ * @param {number} [options.nowMs] - Clock, for deterministic tests.
+ * @returns {object} One permit-load row.
+ */
+export function clermontPermitLoadRow(record, options = {}) {
+  const status = toText(record.improvement_status).toUpperCase();
+  const isOpen = CLERMONT_OPEN_STATUSES.includes(status);
+  const start = record.permit_issue_date ?? record.application_received_date;
+  const close = record.permit_close_date ?? record.final_inspection_date;
+  let daysOpen = null;
+  if (start !== null) {
+    const startMs = Date.parse(`${start}T00:00:00Z`);
+    const endMs = isOpen ? (options.nowMs ?? Date.now()) : close === null ? NaN : Date.parse(`${close}T00:00:00Z`);
+    const elapsed = endMs - startMs;
+    if (Number.isFinite(elapsed) && elapsed >= 0) daysOpen = Math.floor(elapsed / 86_400_000);
+  }
+  return {
+    permit_number: record.permit_number,
+    alternate_key: record.parcel_identifier,
+    parcel_id: "",
+    permit_type: toText(record.improvement_type).toUpperCase(),
+    permit_desc: record.project_description ?? record.description,
+    permit_status: status,
+    applied_date: record.application_received_date,
+    approved_date: record.sourcePayload?.approvedDate ?? null,
+    issued_date: record.permit_issue_date,
+    co_date: close,
+    last_modified: null,
+    permit_url: record.sourceUrl,
+    is_roofing: record.isRoofPermit,
+    is_open: isOpen,
+    days_open: daysOpen,
+    source_system: record.source_system,
+    contractor_name: record.sourcePayload?.contractorOfRecord ?? null,
+    contractor_license: record.sourcePayload?.contractorOfRecordLicense ?? null,
+  };
+}
+
+/** Column order of the Clermont permit-load CSV, and of {@link clermontPermitLoadRow}. */
+export const CLERMONT_PERMIT_LOAD_COLUMNS = Object.freeze(Object.keys(
+  clermontPermitLoadRow({
+    permit_number: "",
+    parcel_identifier: "",
+    improvement_type: "",
+    improvement_status: "",
+    project_description: null,
+    description: null,
+    application_received_date: null,
+    permit_issue_date: null,
+    permit_close_date: null,
+    final_inspection_date: null,
+    sourceUrl: "",
+    isRoofPermit: false,
+    source_system: "",
+    sourcePayload: {},
+  }),
+));

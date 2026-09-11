@@ -57,6 +57,13 @@ municipal systems.
   withholds. The other 13 are blocked by login, captcha, bot protection or TLS failure, or
   have no online search at all. Each has a named records-request route in
   `docs/lake-sources.yaml`.
+- **Clermont is harvested.** A registered `etrakit` vendor module
+  (`src/counties/lake/etrakit-adapter.mjs`) now backs the adapter key
+  `src/counties/permit-profile.mjs` has always admitted, and permit year 26 is captured:
+  4,132 permits enumerated over 2,656 parcels, benchmarked in §7. This is the only source
+  of contractor of record anywhere in the county, and it covers one jurisdiction of
+  fifteen — see the coverage snapshot, not this sentence, for what that means per
+  jurisdiction.
 
 **Permit linkage.** Of 17,671 distinct permits, 17,457 join an assessed parcel by
 `ALT_KEY` and **214 do not**, across 119 distinct parcel keys absent from the roll. Those
@@ -107,13 +114,66 @@ treats as permit-eligible.
 
 ## 7. Source feasibility
 
-Every source used is a bulk download or a bounded Esri page walk, so the full county
-acquires in **under a minute of network time**, far inside the 48-hour gate. Nothing needed
-the distributed-harvest decision.
+Every bulk source is a download or a bounded Esri page walk, so the roll, the centroids,
+the sales, the business accounts and the county permit layer together acquire in **under a
+minute of network time**, far inside the 48-hour gate. Nothing there needed the
+distributed-harvest decision.
 
-The one source that would need a real harvest is Clermont's eTRAKiT, at roughly one request
-per parcel. That is catalogued as discovered but unharvested, with its throughput
-unmeasured, rather than claimed.
+Clermont's eTRAKiT is the one source that needs a real harvest, and it is now measured.
+
+### Clermont eTRAKiT 3 — benchmark, 2026-09-11
+
+Sixty-three requests at concurrency 1 and 2, zero failures. `measure` writes the full
+record to `data/artifacts/permits/lake/<jobId>/throughput.json`.
+
+| Phase | p50 | p95 | Failures | Notes |
+|---|---|---|---|---|
+| Session bootstrap | 759 ms | 2,085 ms | 0/3 | Yields the 5,035-entry registered-contractor directory |
+| Permit search by parcel (`SITE_APN`) | 624 ms | 2,088 ms | 0/10 | 8.2 permits per permitted parcel, whole history in one response |
+| Permit list by number prefix | 672 ms | 1,193 ms | 0/10 | 20 rows a page; every depth-2 prefix came back capped |
+| Permit detail, concurrency 1 | 1,077 ms | 1,257 ms | 0/20 | 0.91 req/s, 854 KB a page |
+| Permit detail, concurrency 2 | 1,145 ms | 2,585 ms | 0/20 | 1.55 req/s, 854 KB a page |
+
+**Safe concurrency: 2.** Nothing degraded at 2, and 3 and 4 were not tried — this is a
+municipal server and concurrency here is a politeness control, not a throughput knob.
+
+**There is a second ceiling, and it is cumulative rather than instantaneous.** A harvest
+pass of roughly 2,500 detail requests at concurrency 2, over about 80 minutes, ended with
+the host accepting the TCP connection and never sending an HTTP response. Two unloaded
+probes during and after that window returned HTTP 200 in about 2.0 s, which by
+`county-ingest-run` §5 makes it load-induced and RETRYABLE, not a source-side defect: the
+right response is to back off and resume, which is what the resume pass did at concurrency
+1 with a 600 ms inter-request delay. The lever that stays inside this ceiling is the gap
+between requests, not the worker count.
+
+**History window, measured.** Permit-number year roots `15-` and `20-` return results
+(earliest issue date observed 2015-01-02); `90-`, `95-`, `00-`, `05-`, `08-`, `10-` and
+`12-` all return the portal's no-results notice. The searchable history is permit years
+15 through 26 — twelve years, not an open-ended archive.
+
+### Estimated full download
+
+At concurrency 2 and the measured failure rate, one retry charged per failure:
+
+| Scope | Requests | Estimate | Storage |
+|---|---|---|---|
+| Permit year 26, prefix enumeration + detail | 4,622 | **0.6 h** | ~3.6 GB raw HTML |
+| Permit years 15–26, same method | ~66,000 | **8–9 h** | **~50 GB raw HTML** |
+| Parcel-keyed over the 50,447 CLERMONT-mailing seed parcels | 54,579 | **5.0 h** | as above |
+
+All three are **inside the 48-hour gate**, so `county-ingest-run` §2 does not require an
+operator decision on time. The number that does deserve one is storage: 854 KB of raw HTML
+per permit means the full twelve-year history costs about 50 GB on disk, and that, not
+elapsed time, is what would bound a full-history run.
+
+**Recommended mode: bulk artifact download, by prefix enumeration.** Both methods end at
+the same detail pages, so they differ only in the search half — 490 prefix searches a year
+against 50,447 parcel searches, a factor of about 103. Mailing city is not a jurisdiction
+signal in Lake (§3), so a parcel-keyed pass would spend most of those 50,447 searches
+proving that an unincorporated parcel is not Clermont's. Enumeration asks the portal what
+it has instead of asking it about parcels it has never heard of. The parcel-keyed path is
+implemented and registered all the same — it is the kit's shape, it is what a single
+on-demand lookup needs, and it is measured above.
 
 ## 8. Risks
 
