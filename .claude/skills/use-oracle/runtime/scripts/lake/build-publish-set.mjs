@@ -230,6 +230,18 @@ export async function buildPublishSet({ runId, parquetPath }) {
     "utf8",
   );
 
+  /**
+   * Rewrite a locally-run query so it reads as the published artifact.
+   *
+   * @param {string} sql - SQL as executed, naming a local Parquet path.
+   * @returns {string} SQL naming `query-table.parquet`, whitespace collapsed.
+   */
+  const publishedSql = (sql) =>
+    sql
+      .replace(/'[^']*query-table\.parquet'/g, "'query-table.parquet'")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const samples = {
     "aged-roofs.json": `SELECT request_identifier, address_street, address_city, address_zip, latitude, longitude,
         roof_age_years, roof_age_basis, built_year, owner_name
@@ -248,7 +260,21 @@ export async function buildPublishSet({ runId, parquetPath }) {
     const rows = await query(sql);
     await writeFile(
       path.join(runDir, "samples", name),
-      `${JSON.stringify({ query: sql.replace(/\s+/g, " ").trim(), rowCount: rows.length, rows }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          // The recorded SQL is provenance a reader re-runs, so it must name the
+          // published artifact rather than whichever machine built it. It used to
+          // carry the builder's absolute path, which then travelled into an
+          // immutable public artifact — the same class of leak as the
+          // `carBuildPath` field removed from the manifest, surviving in a
+          // place nobody thought to look.
+          query: publishedSql(sql),
+          rowCount: rows.length,
+          rows,
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
   }
