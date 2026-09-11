@@ -19,10 +19,21 @@
  *   carry only `CO_NO` and `PARCEL_ID` (measured on the 2010 Lake file:
  *   178,377 records, exactly 2 attributes). Ten-year tenure cannot be proven
  *   from any published Lake source, so the column says what is true.
- * - `contractor_name` and `bbb_rating` exist and stay null, with
- *   `enrichment_status` naming the reason. The permit detail pages that
- *   carry contractor identity, and bbb.org, both answer HTTP 403 to every
- *   egress tested. Fabricating either would violate the use-oracle contract.
+ * - `contractor_name` is populated **only where a source publishes it**, which
+ *   in Lake means Clermont and nowhere else. The county's own permit detail
+ *   pages carry contractor identity and answer HTTP 403 from every egress
+ *   tested, and thirteen of the other fourteen municipalities are blocked
+ *   outright, so the column is non-null on Clermont parcels that join the roll
+ *   and null on the rest of the county. `enrichment_status` distinguishes the
+ *   three cases that a bare null cannot — harvested and named, harvested and
+ *   the permit named nobody, and never obtainable — because a gated field read
+ *   as an established absence is the exact failure the use-oracle contract
+ *   exists to prevent. There is no per-jurisdiction column: the schema is
+ *   deliberately stable across counties, and the jurisdictional truth lives in
+ *   the coverage snapshot.
+ * - `bbb_rating` exists and stays null, with `enrichment_status` naming the
+ *   reason. bbb.org answers HTTP 403 to every egress tested. Fabricating it
+ *   would violate the use-oracle contract.
  *
  * @module counties/lake/query-table
  */
@@ -251,7 +262,9 @@ export function parseOwnerNames(ownName) {
  * @typedef {object} LakeJoinedRecord
  * @property {Record<string, unknown>} nal - DOR NAL row for the parcel.
  * @property {{ latitude?: unknown, longitude?: unknown } | null} [centroid] - GIO centroid.
- * @property {readonly Record<string, unknown>[]} [permits] - Normalized CD Plus permits for the parcel.
+ * @property {readonly Record<string, unknown>[]} [permits] - Normalized permits for the parcel,
+ *   from either permit source. A row's `source_system` says which, and only the Clermont
+ *   eTRAKiT source carries `contractor_name`.
  * @property {readonly Record<string, unknown>[]} [sales] - SDF sale rows for the parcel.
  * @property {number} [businessAccountCount] - DOR TPP accounts at this situs address.
  * @property {Set<string>} [inCountyCities] - In-county city vocabulary.
@@ -296,6 +309,7 @@ export function mapJoinedRecordToQueryTableRow(record) {
 
   const lotSqft = toNumber(nal.LND_SQFOOT);
   const businessAccounts = record.businessAccountCount ?? 0;
+  const contractor = resolveContractorOfRecord(permits);
 
   return {
     property_id: lakePropertyId(parcelId),
@@ -349,7 +363,7 @@ export function mapJoinedRecordToQueryTableRow(record) {
     open_roofing_permit_count: openRoofing.length,
     longest_open_permit_days: openDurations.length > 0 ? Math.max(...openDurations) : null,
     latest_permit_date: permitDates.length > 0 ? permitDates[permitDates.length - 1] : null,
-    contractor_name: null,
+    contractor_name: contractor.name,
     bbb_rating: null,
     // Null, not false. Neither was checked: BBB is 403-gated and Sunbiz was
     // not ingested, so `false` would assert an absence nobody established.
@@ -361,9 +375,47 @@ export function mapJoinedRecordToQueryTableRow(record) {
     business_naics_codes: record.businessNaicsCodes ?? null,
     business_names: record.businessNames ?? null,
     roofing_business_count: record.roofingBusinessCount ?? 0,
-    enrichment_status: buildEnrichmentStatus(permits.length > 0),
+    enrichment_status: buildEnrichmentStatus(permits.length > 0, contractor.state),
     source_systems: buildSourceSystems(record),
   };
+}
+
+/** `source_system` of the countywide CD Plus permit layer. */
+export const CDPLUS_SOURCE_SYSTEM = "lake_cdplus_permits";
+
+/** `source_system` of the Clermont eTRAKiT permits. */
+export const CLERMONT_SOURCE_SYSTEM = "lake_clermont_etrakit_permits";
+
+/**
+ * Resolve the contractor of record for a parcel, and say which of three states
+ * produced it.
+ *
+ * A null contractor has never meant one thing here, and collapsing the three
+ * cases into "null" is how a gated field gets read as an established absence.
+ * The states are: a contractor was published and harvested; a permit was
+ * harvested from a source that carries contractors and this one named none;
+ * or every permit on the parcel came from a source that does not publish
+ * contractors at all.
+ *
+ * The name kept is the one on the most recently dated permit, so the column
+ * answers "who worked here last".
+ *
+ * @param {readonly Record<string, unknown>[]} permits - Permits for the parcel.
+ * @returns {{ name: string | null, state: "from_clermont" | "absent_on_permit" | "gated" }}
+ *   Contractor of record and the reason behind it.
+ */
+export function resolveContractorOfRecord(permits) {
+  const carriers = permits.filter((permit) => asString(permit.source_system) === CLERMONT_SOURCE_SYSTEM);
+  if (carriers.length === 0) return { name: null, state: "gated" };
+  const named = carriers
+    .filter((permit) => asString(permit.contractor_name).length > 0)
+    .sort((left, right) => {
+      const leftDate = asString(left.issued_date) || asString(left.applied_date);
+      const rightDate = asString(right.issued_date) || asString(right.applied_date);
+      return leftDate.localeCompare(rightDate);
+    });
+  if (named.length === 0) return { name: null, state: "absent_on_permit" };
+  return { name: asString(named[named.length - 1].contractor_name), state: "from_clermont" };
 }
 
 /**
@@ -371,12 +423,16 @@ export function mapJoinedRecordToQueryTableRow(record) {
  * a null contractor column is never mistaken for "no contractor exists".
  *
  * @param {boolean} hasPermits - Whether the parcel has permits.
+ * @param {"from_clermont" | "absent_on_permit" | "gated"} [contractorState] - Contractor state.
  * @returns {string} A stable status token.
  */
-export function buildEnrichmentStatus(hasPermits) {
-  return hasPermits
-    ? "permits_loaded;contractor_gated_403;bbb_gated_403"
-    : "no_permits_in_source;contractor_gated_403;bbb_gated_403";
+export function buildEnrichmentStatus(hasPermits, contractorState = "gated") {
+  const contractor = {
+    from_clermont: "contractor_from_clermont_etrakit",
+    absent_on_permit: "contractor_absent_on_permit",
+    gated: "contractor_gated_403",
+  }[contractorState];
+  return [hasPermits ? "permits_loaded" : "no_permits_in_source", contractor, "bbb_gated_403"].join(";");
 }
 
 /**
@@ -391,7 +447,13 @@ export function buildSourceSystems(record) {
   if (record.centroid && record.centroid.latitude !== undefined && record.centroid.latitude !== null) {
     systems.push("fl_gio_parcel_centroid_2025");
   }
-  if ((record.permits ?? []).length > 0) systems.push("lake_cdplus_permits");
+  const permits = record.permits ?? [];
+  if (permits.some((permit) => asString(permit.source_system) !== CLERMONT_SOURCE_SYSTEM)) {
+    systems.push(CDPLUS_SOURCE_SYSTEM);
+  }
+  if (permits.some((permit) => asString(permit.source_system) === CLERMONT_SOURCE_SYSTEM)) {
+    systems.push(CLERMONT_SOURCE_SYSTEM);
+  }
   if ((record.sales ?? []).length > 0) systems.push("fl_dor_sdf_2026p");
   if ((record.businessAccountCount ?? 0) > 0) systems.push("fl_dor_tpp_2026p");
   return systems.join("|");

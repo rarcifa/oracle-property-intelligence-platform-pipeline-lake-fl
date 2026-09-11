@@ -733,6 +733,19 @@ export function buildTableAccounting(coverage, deltas, previousRun) {
   const business = coverage.tables.businessAccounts;
   // Published only since the coverage snapshot carried it; absent on older runs.
   if (business) tables.push(counted("businessAccounts", business.matchedToParcel));
+  // Contractors are accounted but deliberately NOT in `coverageTableRows`, so a
+  // collapse here is recorded in run history rather than refused at publish.
+  //
+  // The reason is that zero is a legitimate value for this table and not always
+  // a truncation: the Clermont export is scraped data, so it is git-ignored, so
+  // a scheduled run on a fresh checkout genuinely has none and says so in its
+  // coverage snapshot. Putting it in the shrink gate would turn every such run
+  // red. Leaving it out of the accounting entirely would make the loss
+  // invisible, which is worse. Whether a run that drops contractor coverage
+  // should be allowed to publish at all is an operator decision, and this
+  // records the movement so that decision can be made on evidence.
+  const contractors = coverage.tables.contractors;
+  if (contractors) tables.push(counted("contractors", contractors.rows));
   return tables;
 }
 

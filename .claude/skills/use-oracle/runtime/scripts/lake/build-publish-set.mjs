@@ -19,7 +19,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, writeFile, stat, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, stat, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -62,15 +62,19 @@ function log(message, fields = {}) {
  *
  * @param {Record<string, unknown>} linkage - Permit-to-parcel linkage counts.
  * @param {Record<string, unknown>} business - TPP-to-parcel match counts.
+ * @param {Record<string, unknown>} clermont - Clermont eTRAKiT permit and contractor counts.
  * @returns {string[]} Limitations, one plain sentence group each.
  */
-export function buildLimitations(linkage, business) {
+export function buildLimitations(linkage, business, clermont) {
   const matched = Number(business.matched_accounts);
   const accounts = Number(business.total_accounts);
+  const clermontParcels = Number(clermont.linked_parcels);
+  const rollParcels = Number(clermont.roll_parcels);
   return [
     "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
     "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
-    "Contractor of record is not published. It lives on county permit detail pages behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate. contractor_name is a real column that stays null.",
+    `Contractor of record is published for ONE jurisdiction of fifteen. Clermont's eTRAKiT portal names the contractor on its permit detail pages and is harvested: ${Number(clermont.permits)} permits over ${Number(clermont.parcels)} parcel keys, ${Number(clermont.permits_with_contractor)} of them naming a contractor and ${Number(clermont.distinct_contractors)} distinct businesses. Everywhere else contractor_name is null and stays null: the county CD Plus layer publishes no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, and the other thirteen municipalities are blocked, unavailable or manual-only. enrichment_status distinguishes the three cases - contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403 - because a bare null cannot.`,
+    `Clermont's permits cover ${clermontParcels} parcels, ${((clermontParcels / rollParcels) * 100).toFixed(1)}% of the ${rollParcels}-parcel roll, and only permit year ${String(clermont.permit_years)}. The portal holds permit years 15 through 26 and the rest are not in this run; ${Number(clermont.dead_permits)} enumerated permits are filed against no parcel key at all and are recorded as dead rather than dropped. A parcel with no Clermont permit is not a parcel with no permits - it is a parcel outside the one municipality whose permits can be read.`,
     "BBB ratings are not published. bbb.org answers 403 to this egress and the kit requires BBB browser work on approved AWS remote compute, which this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null.",
     "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
     "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
@@ -116,15 +120,64 @@ export async function buildPublishSet({ runId, parquetPath }) {
   // valid-unlinked counts separately, so a permit whose parcel is absent from
   // the roll is never silently converted into "no permits".
   const permitsCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "permits.csv");
+  const clermontCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "clermont-permits.csv");
   const nalCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "NAL45P202601.csv");
+  // Permit numbers are unique only within a source, so every DISTINCT below is
+  // taken over source_system plus permit_number — the same rule the
+  // consolidation SQL applies. Counting on permit_number alone would silently
+  // collapse a county permit and a Clermont permit that happen to share a
+  // number into one record.
+  const permitUnion = `
+    SELECT permit_number, alternate_key, 'lake_cdplus_permits' AS source_system
+    FROM read_csv_auto('${permitsCsv}', header=true, all_varchar=true)
+    UNION ALL
+    SELECT permit_number, alternate_key, source_system
+    FROM read_csv_auto('${clermontCsv}', header=true, all_varchar=true)`;
   const [linkage] = await query(`
-    SELECT count(DISTINCT p.permit_number) AS total_permits,
-           count(DISTINCT CASE WHEN n.ALT_KEY IS NOT NULL THEN p.permit_number END) AS linked_permits,
-           count(DISTINCT CASE WHEN n.ALT_KEY IS NULL THEN p.permit_number END) AS valid_unlinked_permits,
-           count(DISTINCT CASE WHEN n.ALT_KEY IS NULL THEN p.alternate_key END) AS unmatched_parcel_keys
-    FROM read_csv_auto('${permitsCsv}', header=true, all_varchar=true) p
+    WITH p AS (${permitUnion})
+    SELECT count(DISTINCT concat_ws(':', p.source_system, p.permit_number)) AS total_permits,
+           count(DISTINCT CASE WHEN n.ALT_KEY IS NOT NULL
+                 THEN concat_ws(':', p.source_system, p.permit_number) END) AS linked_permits,
+           count(DISTINCT CASE WHEN n.ALT_KEY IS NULL
+                 THEN concat_ws(':', p.source_system, p.permit_number) END) AS valid_unlinked_permits,
+           count(DISTINCT CASE WHEN n.ALT_KEY IS NULL THEN p.alternate_key END) AS unmatched_parcel_keys,
+           count(DISTINCT CASE WHEN p.source_system = 'lake_cdplus_permits'
+                 THEN concat_ws(':', p.source_system, p.permit_number) END) AS cdplus_permits,
+           count(DISTINCT CASE WHEN p.source_system <> 'lake_cdplus_permits'
+                 THEN concat_ws(':', p.source_system, p.permit_number) END) AS municipal_permits
+    FROM p
     LEFT JOIN read_csv_auto('${nalCsv}', header=true, all_varchar=true) n
       ON n.ALT_KEY = p.alternate_key;`);
+
+  // Clermont is reported on its own as well as inside the permit total, because
+  // it is the only source of contractor identity in the county and a reader has
+  // to be able to see exactly how much of the county that covers.
+  const [clermont] = await query(`
+    WITH c AS (SELECT * FROM read_csv_auto('${clermontCsv}', header=true, all_varchar=true)),
+         n AS (SELECT * FROM read_csv_auto('${nalCsv}', header=true, all_varchar=true))
+    SELECT (SELECT count(DISTINCT permit_number) FROM c)                          AS permits,
+           (SELECT count(DISTINCT alternate_key) FROM c)                          AS parcels,
+           (SELECT count(DISTINCT permit_number) FROM c
+              WHERE contractor_name IS NOT NULL AND contractor_name <> '')        AS permits_with_contractor,
+           (SELECT count(DISTINCT contractor_name) FROM c
+              WHERE contractor_name IS NOT NULL AND contractor_name <> '')        AS distinct_contractors,
+           (SELECT count(DISTINCT contractor_license) FROM c
+              WHERE contractor_license IS NOT NULL AND contractor_license <> '')  AS distinct_licenses,
+           (SELECT count(DISTINCT c.alternate_key) FROM c
+              JOIN n ON n.ALT_KEY = c.alternate_key)                              AS linked_parcels,
+           (SELECT count(*) FROM n)                                               AS roll_parcels;`);
+
+  // Everything the portal HAD, not only what loaded. A dead permit leaves no
+  // row in the CSV, so the enumerated and dead totals travel beside it in a
+  // sidecar the export writes; a checkout that has never run the Clermont
+  // harvest gets zeroes and an empty year list, which is the truth for it.
+  const clermontMeta = await readFile(clermontCsv.replace(/\.csv$/, ".meta.json"), "utf8")
+    .then((text) => JSON.parse(text))
+    .catch(() => ({ permitYears: [], enumeratedPermits: 0, deadPermits: 0, achievablePermits: 0 }));
+  clermont.permit_years = clermontMeta.permitYears.length > 0 ? clermontMeta.permitYears.join(", ") : "none";
+  clermont.dead_permits = Number(clermontMeta.deadPermits);
+  clermont.enumerated_permits = Number(clermontMeta.enumeratedPermits);
+  clermont.achievable_permits = Number(clermontMeta.achievablePermits);
 
   // Business coverage is reported the same way permit linkage is, because it
   // has the same two failure modes and neither is visible from the query table
@@ -325,7 +378,33 @@ export async function buildPublishSet({ runId, parquetPath }) {
         validUnlinked: Number(linkage.valid_unlinked_permits),
         unmatchedParcelKeys: Number(linkage.unmatched_parcel_keys),
         linkedPermitRecordsOnProperties: Number(totals.permit_records),
-        source: "Lake County CD Plus permit layer",
+        bySource: {
+          lake_cdplus_permits: Number(linkage.cdplus_permits),
+          lake_clermont_etrakit_permits: Number(linkage.municipal_permits),
+        },
+        source: "Lake County CD Plus permit layer and Clermont eTRAKiT 3",
+      },
+      // Availability is typed, per the use-oracle coverage publish contract.
+      // One jurisdiction of fifteen is harvestable for contractor identity, so
+      // this is supported_partial and says so in a field, not only in prose.
+      contractors: {
+        availability: "supported_partial",
+        rows: Number(clermont.permits_with_contractor),
+        distinctContractors: Number(clermont.distinct_contractors),
+        distinctLicenses: Number(clermont.distinct_licenses),
+        propertiesCovered: Number(clermont.linked_parcels),
+        countyParcels: Number(clermont.roll_parcels),
+        jurisdictionsCovered: 1,
+        jurisdictionsInCounty: 15,
+        permitYears: clermontMeta.permitYears,
+        // Completion is judged against achievable - enumerated minus dead -
+        // never against an exact source count, which a dead tail makes
+        // unreachable forever.
+        enumeratedPermits: Number(clermontMeta.enumeratedPermits),
+        deadPermits: Number(clermontMeta.deadPermits),
+        achievablePermits: Number(clermontMeta.achievablePermits),
+        complete: Number(clermont.permits) >= Number(clermontMeta.achievablePermits),
+        source: "Clermont eTRAKiT 3 permit detail pages",
       },
       coordinates: { rows: Number(totals.with_coordinates), source: "FL GIO parcel centroids 2025" },
       businessAccounts: {
@@ -351,7 +430,7 @@ export async function buildPublishSet({ runId, parquetPath }) {
       distinctOwners: Number(totals.distinct_owners),
       propertiesWithBusinessAccount: Number(totals.with_business_account),
     },
-    limitations: buildLimitations(linkage, business),
+    limitations: buildLimitations(linkage, business, clermont),
   };
   await writeFile(path.join(runDir, "coverage.json"), `${JSON.stringify(coverage, null, 2)}\n`, "utf8");
 

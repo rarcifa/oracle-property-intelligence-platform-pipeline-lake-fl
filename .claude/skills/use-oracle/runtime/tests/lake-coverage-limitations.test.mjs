@@ -27,15 +27,28 @@ const business = {
   shared_address_groups: 90,
 };
 
+/** Measured from the Clermont eTRAKiT harvest, permit year 26. */
+const clermont = {
+  permits: 4078,
+  parcels: 2634,
+  permits_with_contractor: 3651,
+  distinct_contractors: 1204,
+  distinct_licenses: 988,
+  linked_parcels: 2589,
+  roll_parcels: 215806,
+  permit_years: "26",
+  dead_permits: 54,
+};
+
 describe("published limitations", () => {
   it("covers every source boundary the dataset has", () => {
-    const limitations = buildLimitations(linkage, business);
-    expect(limitations).toHaveLength(8);
+    const limitations = buildLimitations(linkage, business, clermont);
+    expect(limitations).toHaveLength(9);
     for (const limitation of limitations) expect(limitation.trim().length).toBeGreaterThan(80);
   });
 
   it("declares the business coverage gap and the double count in figures", () => {
-    const stated = buildLimitations(linkage, business).find((entry) =>
+    const stated = buildLimitations(linkage, business, clermont).find((entry) =>
       entry.startsWith("Business coverage"),
     );
     expect(stated).toBeDefined();
@@ -49,19 +62,66 @@ describe("published limitations", () => {
   });
 
   it("recomputes the business figures per run rather than hardcoding them", () => {
-    const changed = buildLimitations(linkage, {
-      ...business,
-      matched_accounts: 3000,
-      attributed_accounts: 6000,
-    }).find((entry) => entry.startsWith("Business coverage"));
+    const changed = buildLimitations(
+      linkage,
+      { ...business, matched_accounts: 3000, attributed_accounts: 6000 },
+      clermont,
+    ).find((entry) => entry.startsWith("Business coverage"));
     expect(changed).toContain("3000 match a parcel (9.0%)");
     expect(changed).toContain("yields 6000 rather than 3000");
   });
 
   it("keeps valid unlinked permits stated rather than dropped", () => {
-    const permits = buildLimitations(linkage, business).find((entry) =>
+    const permits = buildLimitations(linkage, business, clermont).find((entry) =>
       entry.includes("absent from the assessed roll"),
     );
     expect(permits).toContain("214 of 17671 permits");
+  });
+});
+
+describe("contractor coverage is stated as partial, never as gated everywhere", () => {
+  it("names the one jurisdiction that publishes a contractor and the figures behind it", () => {
+    const stated = buildLimitations(linkage, business, clermont).find((entry) =>
+      entry.startsWith("Contractor of record"),
+    );
+    expect(stated).toBeDefined();
+    expect(stated).toContain("ONE jurisdiction of fifteen");
+    expect(stated).toContain("4078 permits over 2634 parcel keys");
+    expect(stated).toContain("3651 of them naming a contractor");
+    expect(stated).toContain("1204 distinct businesses");
+    // The three enrichment_status tokens have to be discoverable from the
+    // coverage snapshot alone, or a consumer reading a null cannot tell which
+    // of them it is.
+    expect(stated).toContain("contractor_from_clermont_etrakit");
+    expect(stated).toContain("contractor_absent_on_permit");
+    expect(stated).toContain("contractor_gated_403");
+  });
+
+  it("states the share of the county Clermont actually covers, and does not round it up", () => {
+    const stated = buildLimitations(linkage, business, clermont).find((entry) =>
+      entry.startsWith("Clermont's permits cover"),
+    );
+    expect(stated).toBeDefined();
+    // 2,589 of 215,806 is 1.2%, and the sentence has to say so rather than
+    // leaving "Clermont is covered" to be read as county coverage.
+    expect(stated).toContain("2589 parcels, 1.2% of the 215806-parcel roll");
+    expect(stated).toContain("only permit year 26");
+    expect(stated).toContain("54 enumerated permits are filed against no parcel key");
+    expect(stated).toContain("is not a parcel with no permits");
+  });
+
+  it("recomputes the contractor figures per run rather than hardcoding them", () => {
+    const changed = buildLimitations(linkage, business, {
+      ...clermont,
+      permits_with_contractor: 10,
+      distinct_contractors: 4,
+      linked_parcels: 21580,
+    });
+    const contractor = changed.find((entry) => entry.startsWith("Contractor of record"));
+    expect(contractor).toContain("10 of them naming a contractor");
+    expect(contractor).toContain("4 distinct businesses");
+    expect(changed.find((entry) => entry.startsWith("Clermont's permits cover"))).toContain(
+      "21580 parcels, 10.0% of the",
+    );
   });
 });

@@ -200,15 +200,67 @@ describe("query-table row mapping", () => {
   });
 
   it("publishes gated enrichment as null columns that say why", () => {
-    const row = mapJoinedRecordToQueryTableRow({ nal: NAL_ROW, permits: [{ is_roofing: false, is_open: false }] });
+    const row = mapJoinedRecordToQueryTableRow({
+      nal: NAL_ROW,
+      permits: [{ is_roofing: false, is_open: false, source_system: "lake_cdplus_permits" }],
+    });
     expect(row.contractor_name).toBeNull();
     expect(row.bbb_rating).toBeNull();
     // Null, not false: neither absence was ever established, so a boolean would
     // assert something no source checked. The test name has always said null.
     expect(row.has_bbb_contractor).toBeNull();
     expect(row.has_sunbiz_tenant).toBeNull();
+    // The county permit layer does not publish a contractor field at all, so
+    // this parcel's null is "never obtainable", not "nobody was named".
     expect(row.enrichment_status).toContain("contractor_gated_403");
     expect(row.enrichment_status).toContain("bbb_gated_403");
+  });
+
+  it("publishes the contractor where one jurisdiction actually carries it", () => {
+    const row = mapJoinedRecordToQueryTableRow({
+      nal: NAL_ROW,
+      permits: [
+        {
+          is_roofing: true,
+          is_open: false,
+          source_system: "lake_clermont_etrakit_permits",
+          contractor_name: "OLD ROOFING CO",
+          issued_date: "2022-04-01",
+        },
+        {
+          is_roofing: false,
+          is_open: false,
+          source_system: "lake_clermont_etrakit_permits",
+          contractor_name: "RECENT PLUMBING LLC",
+          issued_date: "2026-02-01",
+        },
+      ],
+    });
+    // Most recently dated permit wins, so the column answers "who worked here last".
+    expect(row.contractor_name).toBe("RECENT PLUMBING LLC");
+    expect(row.enrichment_status).toContain("contractor_from_clermont_etrakit");
+    expect(row.enrichment_status).not.toContain("contractor_gated_403");
+  });
+
+  it("separates a harvested permit that named nobody from a source that cannot name anybody", () => {
+    const namedNobody = mapJoinedRecordToQueryTableRow({
+      nal: NAL_ROW,
+      permits: [{ is_roofing: false, is_open: false, source_system: "lake_clermont_etrakit_permits" }],
+    });
+    expect(namedNobody.contractor_name).toBeNull();
+    expect(namedNobody.enrichment_status).toContain("contractor_absent_on_permit");
+
+    const neverObtainable = mapJoinedRecordToQueryTableRow({
+      nal: NAL_ROW,
+      permits: [{ is_roofing: false, is_open: false, source_system: "lake_cdplus_permits" }],
+    });
+    expect(neverObtainable.contractor_name).toBeNull();
+    expect(neverObtainable.enrichment_status).toContain("contractor_gated_403");
+
+    // A parcel with no permits at all has never been looked at either.
+    expect(mapJoinedRecordToQueryTableRow({ nal: NAL_ROW }).enrichment_status).toContain(
+      "contractor_gated_403",
+    );
   });
 
   it("names only the sources that actually contributed", () => {
@@ -224,9 +276,25 @@ describe("query-table row mapping", () => {
     ).toBe("fl_dor_nal_2026p|fl_gio_parcel_centroid_2025|lake_cdplus_permits|fl_dor_sdf_2026p|fl_dor_tpp_2026p");
   });
 
+  it("names both permit sources when both contributed, and only the one that did otherwise", () => {
+    const clermontOnly = buildSourceSystems({
+      nal: NAL_ROW,
+      permits: [{ source_system: "lake_clermont_etrakit_permits" }],
+    });
+    expect(clermontOnly).toBe("fl_dor_nal_2026p|lake_clermont_etrakit_permits");
+    const both = buildSourceSystems({
+      nal: NAL_ROW,
+      permits: [{ source_system: "lake_cdplus_permits" }, { source_system: "lake_clermont_etrakit_permits" }],
+    });
+    expect(both).toBe("fl_dor_nal_2026p|lake_cdplus_permits|lake_clermont_etrakit_permits");
+  });
+
   it("states the enrichment status differently when no permits exist", () => {
     expect(buildEnrichmentStatus(false)).toContain("no_permits_in_source");
     expect(buildEnrichmentStatus(true)).toContain("permits_loaded");
+    expect(buildEnrichmentStatus(true)).toContain("contractor_gated_403");
+    expect(buildEnrichmentStatus(true, "from_clermont")).toContain("contractor_from_clermont_etrakit");
+    expect(buildEnrichmentStatus(true, "absent_on_permit")).toContain("contractor_absent_on_permit");
   });
 
   it("emits exactly the declared schema columns", () => {

@@ -771,6 +771,7 @@ export async function walkPermitPrefixes({ rootPrefixes, search, maxDepth = 4, o
  *   searchByPermitPrefix: (prefix: string) => Promise<object>,
  *   fetchPermitDetail: (permitNumber: string) => Promise<{ detail: object, html: string }>,
  *   loadContractorLicenseIndex: () => Promise<Map<string, string>>,
+ *   bootstrapHtml: () => string | null,
  *   stats: () => { requests: number, retries: number, bootstraps: number }
  * }} Session handle.
  */
@@ -892,6 +893,17 @@ export function createClermontPermitSession(options = {}) {
       if (bootstrapHtml === null) await ensureFormState();
       return buildContractorLicenseIndex(parseContractorLicenseDirectory(/** @type {string} */ (bootstrapHtml)));
     },
+    /**
+     * The bootstrap page as served, once one has been fetched.
+     *
+     * A harvest saves it so a later offline re-normalization can rebuild the
+     * contractor-licence index from the same bytes the run used, instead of
+     * re-fetching the portal or quietly resolving fewer licences than the
+     * original pass did.
+     *
+     * @returns {string | null} Bootstrap HTML, or null before the first request.
+     */
+    bootstrapHtml: () => bootstrapHtml,
     stats: () => ({ ...stats }),
   };
 }

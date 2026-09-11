@@ -204,6 +204,39 @@ jobs:
           cp "$D/permits.csv" "$D/permits-base.csv"
           wc -l < "$D/permits.csv"
 
+      # Clermont's eTRAKiT permits are deliberately NOT harvested here.
+      #
+      # It is a single municipal server, the harvest is thousands of requests
+      # over hours, and its measured ceiling is cumulative request volume rather
+      # than concurrency (docs/lake-county-findings.md section 7). Pointing a
+      # scheduled job on shared datacenter egress at it is the impoliteness
+      # `county-permit-adapter` warns about, and a CI runner cannot back off and
+      # resume the way an operator can. The harvest is run deliberately from a
+      # workstation (docs/runbook.md step 2b).
+      #
+      # Its export is NOT committed: `use-oracle` forbids committing scraped
+      # data, and `data/downloads/` is git-ignored. The honest consequence,
+      # stated rather than hidden: a scheduled run on a fresh checkout has no
+      # Clermont export and publishes with no contractor of record, and its
+      # coverage snapshot reports zero Clermont permits and zero contractors
+      # for that run. A run that is meant to carry contractors has to be
+      # published from a workstation that holds the export.
+      #
+      # The consolidation reads the file unconditionally, so a checkout without
+      # one gets an empty header. DuckDB's read_csv_auto has no "may be absent"
+      # mode, and a silently-skipped permit source would publish the county as
+      # having no contractors at all.
+      - name: Ensure a Clermont permit export exists
+        run: |
+          D="$PWD/data/downloads/lake"
+          if [ ! -f "$D/clermont-permits.csv" ]; then
+            printf 'permit_number,alternate_key,parcel_id,permit_type,permit_desc,permit_status,applied_date,approved_date,issued_date,co_date,last_modified,permit_url,is_roofing,is_open,days_open,source_system,contractor_name,contractor_license\n' \
+              > "$D/clermont-permits.csv"
+            echo "::notice::no Clermont permit export in this checkout — consolidating without contractor of record"
+          else
+            echo "::notice::Clermont permit export present: $(( $(wc -l < "$D/clermont-permits.csv") - 1 )) permits"
+          fi
+
       - name: Consolidate the query table
         run: |
           D="$PWD/data/downloads/lake"

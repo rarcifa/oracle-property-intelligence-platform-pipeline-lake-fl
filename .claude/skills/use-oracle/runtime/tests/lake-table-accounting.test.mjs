@@ -131,3 +131,36 @@ describe("appending a run after the schema grew a field", () => {
     expect(written.runs[1]).toEqual(prior);
   });
 });
+
+describe("contractor accounting", () => {
+  it("records a contractor table when the run published one, and omits it otherwise", () => {
+    const base = coverage(17671);
+    const withContractors = buildTableAccounting(
+      { tables: { ...base.tables, contractors: { rows: 3651 } } },
+      DELTAS,
+      null,
+    );
+    const row = withContractors.find((table) => table.name === "contractors");
+    expect(row).toMatchObject({ rows: 3651, basis: "row-count" });
+    expect(row.previousRows).toBeUndefined();
+
+    expect(
+      buildTableAccounting(coverage(17671), DELTAS, null).some((table) => table.name === "contractors"),
+    ).toBe(false);
+  });
+
+  it("makes a contractor collapse visible as a delta instead of hiding it", () => {
+    // A run with no Clermont export publishes zero contractors. That is a legal
+    // value, not necessarily a defect — but it must never be invisible.
+    const accounting = buildTableAccounting(
+      { tables: { ...coverage(17671).tables, contractors: { rows: 0 } } },
+      DELTAS,
+      { tables: [{ name: "contractors", rows: 3651 }] },
+    );
+    expect(accounting.find((table) => table.name === "contractors")).toMatchObject({
+      rows: 0,
+      previousRows: 3651,
+      rowsDelta: -3651,
+    });
+  });
+});

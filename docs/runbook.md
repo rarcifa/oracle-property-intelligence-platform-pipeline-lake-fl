@@ -43,8 +43,31 @@ node scripts/lake/fetch-sources.mjs
 # 2. Build the seed CSV, the input of record for every later stage
 node --max-old-space-size=6144 scripts/lake/build-seed.mjs
 
+# 2b. Clermont permits: the county's only open source of contractor of record.
+#     The export is git-ignored (use-oracle forbids committing scraped data),
+#     so a run that should carry contractors must be published from a machine
+#     that has run this step. CI has no export and publishes without it, and
+#     says so in its coverage snapshot.
+#     Benchmark BEFORE harvesting - county-permit-adapter requires it, and this
+#     harvest was once run without it (docs/lake-kit-deviations.md section 19).
+#     Concurrency is a politeness control on a municipal server: stay at or
+#     below 2, and prefer a delay over a second worker.
+JOBID=$(date -u +clermont-%Y%m%d)
+node scripts/lake/clermont-permits.mjs enumerate --job-id "$JOBID" --years 26
+node scripts/lake/clermont-permits.mjs measure   --job-id "$JOBID" --concurrency 1,2
+node scripts/lake/clermont-permits.mjs harvest   --job-id "$JOBID" --concurrency 1 --delay-ms 600
+node scripts/lake/clermont-permits.mjs coverage  --job-id "$JOBID"
+node scripts/lake/clermont-permits.mjs export    --job-id "$JOBID"
+
+# 2c. The consolidation reads clermont-permits.csv unconditionally, so a
+#     checkout that skipped 2b needs an empty one. DuckDB's read_csv_auto has
+#     no "file may be absent" mode, and a silently-missing permit source is
+#     exactly the failure that would publish a county as having no contractors.
+D="$PWD/data/downloads/lake"
+[ -f "$D/clermont-permits.csv" ] || printf 'permit_number,alternate_key,parcel_id,permit_type,permit_desc,permit_status,applied_date,approved_date,issued_date,co_date,last_modified,permit_url,is_roofing,is_open,days_open,source_system,contractor_name,contractor_license\n' > "$D/clermont-permits.csv"
+
 # 3. Consolidate to the query table
-D="$PWD/data/downloads/lake"; O="$PWD/data/artifacts/publish/lake/query-table.parquet"
+O="$PWD/data/artifacts/publish/lake/query-table.parquet"
 sed -e "s|\$DOWNLOAD_DIR|$D|g" -e "s|\$OUT_PARQUET|$O|g" -e "s|\$AS_OF_YEAR|$(date -u +%Y)|g" \
   scripts/lake/build-query-table.sql > /tmp/lake-qt.sql
 duckdb -c ".read /tmp/lake-qt.sql"

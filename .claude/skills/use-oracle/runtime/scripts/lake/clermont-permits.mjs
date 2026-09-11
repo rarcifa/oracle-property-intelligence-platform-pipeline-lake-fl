@@ -13,6 +13,7 @@
  *     extracted/<permit>.json                   normalized permit record
  *     dead/<permit>.json                        permanently unattachable permit, recorded not retried
  *     status/<alt_key>.json                     per-parcel completion status
+ *     license-directory.html                    the page the licence index is built from
  *     throughput.json                           measured source performance
  *     coverage.json                             honest per-jurisdiction coverage
  *
@@ -504,7 +505,12 @@ export async function harvestPermits({
   const seed = await loadSeedIndex();
   const session = createClermontPermitSession({ maxAttempts: 4 });
   const licenseIndex = await session.loadContractorLicenseIndex();
-  log("harvest.license-directory", { entries: licenseIndex.size });
+  // Saved so `renormalize` can rebuild the same index from the same bytes.
+  // Without it an offline re-normalization resolves whatever licences the
+  // previous records happen to carry, which can only ever be a subset.
+  const bootstrapHtml = session.bootstrapHtml();
+  if (bootstrapHtml !== null) await writeFile(path.join(root, "license-directory.html"), bootstrapHtml);
+  log("harvest.license-directory", { entries: licenseIndex.size, saved: bootstrapHtml !== null });
 
   const queue = index.permits
     .filter((row) => !onlyRoofing || /roof/i.test(String(row.permitType ?? "")))
