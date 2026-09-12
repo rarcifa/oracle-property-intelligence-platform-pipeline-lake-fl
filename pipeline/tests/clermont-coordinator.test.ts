@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { clermontRunRequestSchema } from "../src/batch/clermont-contracts.js";
+import {
+  clermontAuthorizationScopeDigest,
+  clermontRunRequestSchema,
+} from "../src/batch/clermont-contracts.js";
 import {
   acquireClermontWorkerLease,
+  buildClermontCostBoundingPlan,
   buildClermontRefreshPlan,
+  clermontEnumerationPrefixBound,
   completeClermontStage,
   createClermontWorkerState,
   evaluateClermontCostGate,
@@ -24,16 +29,17 @@ import {
 const NOW = "2026-09-11T09:00:00.000Z";
 
 describe("Clermont refresh planning and cost gate", () => {
-  it("reuses closed old years, refreshes their open records, and fully refreshes recent years", () => {
+  it("reuses immutable old years only when no open record needs a lossless full refresh", () => {
     const baseline = syntheticClermontBaseline({ openYears: [2020, 2026] });
     const request = syntheticClermontRequest({ baseline });
     const plan = buildClermontRefreshPlan({ request, baseline });
 
     expect(plan.partitions.find(({ year }) => year === 2019)?.action).toBe("reuse-immutable");
     expect(plan.partitions.find(({ year }) => year === 2020)).toMatchObject({
-      action: "open-records",
-      expectedRecords: 1,
-      stableIds: ["lake:clermont:etrakit:2020-0001"],
+      action: "full-year",
+      expectedRecords: request.benchmark.expectedByYear.find(({ year }) => year === 2020)!
+        .expectedRecords,
+      stableIds: [],
     });
     expect(plan.partitions.find(({ year }) => year === 2025)?.action).toBe("recent-year");
     expect(plan.partitions.find(({ year }) => year === 2026)?.action).toBe("recent-year");
@@ -43,7 +49,7 @@ describe("Clermont refresh planning and cost gate", () => {
     const baseline = syntheticClermontBaseline();
     const request = syntheticClermontRequest({
       baseline,
-      terminalRecordsPerHour: 1,
+      terminalRecordsPerHour: 5,
       costCeilingUsd: 100,
     });
     const estimate = evaluateClermontCostGate({ request, now: NOW }).estimate;
@@ -60,7 +66,13 @@ describe("Clermont refresh planning and cost gate", () => {
     const authorized = clermontRunRequestSchema.parse({
       ...request,
       authorization: {
+        authorizationId: "authorization-coordinator-duration",
+        runId: request.runId,
+        requestScopeSha256: clermontAuthorizationScopeDigest(request),
+        provenanceSha256: "a".repeat(64),
         estimateSha256: estimate.estimateSha256,
+        maxExecutionHours: estimate.estimatedHours,
+        maxCostUsd: estimate.estimatedCostUsd,
         approvedBy: "synthetic-operator",
         approvedAt: "2026-09-11T08:55:00.000Z",
         expiresAt: "2026-09-11T10:00:00.000Z",
@@ -108,6 +120,51 @@ describe("Clermont refresh planning and cost gate", () => {
     expect(estimate.estimatedHours).toBeLessThan(48);
     expect(estimate.authorizationReasons).toContain("cost");
     expect(estimate.requiresManualAuthorization).toBe(true);
+  });
+
+  it("charges bounded prefix searches, internal request attempts, and outer redrives", () => {
+    const request = syntheticClermontRequest({ refreshMode: "full" });
+    const estimate = estimateClermontRun(request, buildClermontCostBoundingPlan(request));
+    const expectedRecords = request.benchmark.expectedByYear.reduce(
+      (sum, year) => sum + year.expectedRecords,
+      0,
+    );
+
+    // Every synthetic year is below the portal's 100-row cap, so only its ten
+    // YY-N roots are searched. Two enumeration sessions plus harvest bootstrap.
+    expect(estimate.expectedEnumerationPrefixes).toBe(12 * 11_111);
+    expect(estimate.recordInformedEnumerationPrefixes).toBe(120);
+    expect(estimate.expectedBootstrapOperations).toBe(12 * 11_111 + 12);
+    expect(estimate.expectedPortalOperations).toBe(
+      expectedRecords + 12 * 11_111 + estimate.expectedBootstrapOperations,
+    );
+    expect(estimate.requestAttemptsPerOperation).toBe(4);
+    expect(estimate.outerAttempts).toBe(request.limits.maxAttempts);
+    expect(estimate.expectedRequests).toBe(
+      estimate.expectedPortalOperations *
+        request.limits.requestAttemptsPerOperation *
+        request.limits.maxAttempts,
+    );
+    expect(() =>
+      clermontRunRequestSchema.parse({
+        ...request,
+        limits: { ...request.limits, requestAttemptsPerOperation: 3 },
+      }),
+    ).toThrow();
+    expect(
+      clermontEnumerationPrefixBound({
+        expectedRecords: 100,
+        resultCap: 100,
+        absoluteMaximum: 11_111,
+      }),
+    ).toBe(10);
+    expect(
+      clermontEnumerationPrefixBound({
+        expectedRecords: 101,
+        resultCap: 100,
+        absoluteMaximum: 11_111,
+      }),
+    ).toBe(40);
   });
 
   it("fails closed on missing, stale, or incompatible incremental baselines", () => {
@@ -168,6 +225,15 @@ describe("Clermont local coordinator stage machine", () => {
     expect(state.state).toBe("COMPLETE");
     expect(state.nextAutomaticTransition).toBeNull();
     expect(state.stages["publication-readiness"].status).toBe("complete");
+  });
+
+  it("rejects lifecycle timestamps that move behind durable coordinator state", () => {
+    const baseline = syntheticClermontBaseline();
+    const request = syntheticClermontRequest({ baseline });
+    const state = prepareClermontCoordinator({ request, baseline, now: NOW });
+    expect(() => startClermontStage(state, "enumeration", "2026-09-11T08:59:59.999Z")).toThrow(
+      /cannot move backwards/,
+    );
   });
 });
 

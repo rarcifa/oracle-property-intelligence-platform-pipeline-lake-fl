@@ -33,7 +33,7 @@ async function responseJson(path, init) {
 
 // Fail before launching a browser or creating a video if the deployed API is
 // stale, incomplete, or describing a different release than the operator chose.
-const [meta, tools, contractor] = await Promise.all([
+const [meta, tools, contractor, business] = await Promise.all([
   responseJson("/api/meta/run"),
   responseJson("/mcp", {
     method: "POST",
@@ -41,11 +41,13 @@ const [meta, tools, contractor] = await Promise.all([
     body: JSON.stringify({ jsonrpc: "2.0", id: "demo-contract", method: "tools/list" }),
   }),
   responseJson("/api/views/contractor"),
+  responseJson("/api/views/business"),
 ]);
 const release = assertDemoContract({
   meta,
   tools,
   contractor,
+  business,
   expectedRunId: RUN_ID,
   expectedRootCid: ROOT_CID,
 });
@@ -227,14 +229,14 @@ try {
     page,
     "/#/business",
     "4 · Business view",
-    "33,346 TPP accounts in the source roll; 2,060 match a parcel by street and ZIP, because the roll carries no parcel key.",
+    `${release.business.sourceAccounts.toLocaleString()} TPP accounts in this release's source roll; ${release.business.matchedToParcel.toLocaleString()} match a parcel by street and ZIP, because the roll carries no parcel key.`,
     5200,
   );
   await wait(5500);
   await caption(
     page,
     "4 · The double count, declared",
-    "Summing per-parcel counts gives 4,451 across 2,726 parcels — 90 shared-address groups are attributed to every parcel at that address. That is published, not hidden.",
+    `Summing per-parcel counts gives ${release.business.attributedAcrossParcels.toLocaleString()} across ${release.business.propertiesWithAccount.toLocaleString()} parcels — ${release.business.sharedAddressGroups.toLocaleString()} shared-address groups are attributed to every parcel at that address. These values came from the selected run, not the script.`,
     9000,
   );
   await reveal(page, 900);
@@ -295,7 +297,7 @@ try {
   await caption(
     page,
     "6 · Answering from the published run",
-    "Note the second half of that question: it asks for something the data does not contain.",
+    "The second half crosses an evidence boundary: contractor names may exist for Clermont permits, while the other jurisdictions and BBB remain gated.",
     3000,
   );
   // Wait for the answer itself. A take captioned "it refuses to invent the

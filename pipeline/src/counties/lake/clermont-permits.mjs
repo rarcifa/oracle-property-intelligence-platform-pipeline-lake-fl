@@ -65,7 +65,11 @@ import {
   normalizedPermitRecordSchema,
   PERMIT_RECORD_SCHEMA_VERSION,
 } from "../../permits/contracts.mjs";
-import { PermitSourceError, assertUsableResponse, classifyPermitError } from "../../permits/errors.mjs";
+import {
+  PermitSourceError,
+  assertUsableResponse,
+  classifyPermitError,
+} from "../../permits/errors.mjs";
 import { isRoofPermit, parsePortalDate } from "../../permits/normalization.mjs";
 import { toText } from "./sources.mjs";
 
@@ -84,7 +88,8 @@ export const JURISDICTION_KEY = "clermont";
  * identity both survive.
  */
 export const SOURCE_SYSTEM = "lake_clermont_etrakit_permits";
-export const CLERMONT_ETRAKIT_SEARCH_URL = "https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx";
+export const CLERMONT_ETRAKIT_SEARCH_URL =
+  "https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx";
 
 /** Search grid page size, read off the RadGrid client state. */
 export const SEARCH_PAGE_SIZE = 20;
@@ -209,7 +214,10 @@ export function buildPermitSearchBody(formState, { searchBy, operator, value }) 
 export const permitSearchRowSchema = z
   .object({
     permitNumber: z.string().trim().min(1),
-    issuedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    issuedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
     permitType: z.string().trim().min(1).nullable(),
     alternateKey: z.string().trim().min(1).nullable(),
     siteAddress: z.string().trim().min(1).nullable(),
@@ -270,10 +278,13 @@ export function parsePermitSearchResults(html) {
   const noResults = rows.length === 0 && /there were no results/i.test($.root().text());
 
   if (rows.length === 0 && !noResults) {
-    throw new PermitSourceError("eTRAKiT search response had neither results nor a no-results notice", {
-      classification: "transient",
-      code: "etrakit_search_shape_unrecognised",
-    });
+    throw new PermitSourceError(
+      "eTRAKiT search response had neither results nor a no-results notice",
+      {
+        classification: "transient",
+        code: "etrakit_search_shape_unrecognised",
+      },
+    );
   }
 
   return permitSearchResultSchema.parse({
@@ -292,10 +303,11 @@ export function parsePermitSearchResults(html) {
  */
 export function permitDetailUrl(permitNumber) {
   const number = toText(permitNumber);
-  if (number === "") throw new PermitSourceError("permitNumber is required", {
-    classification: "permanent",
-    code: "missing_permit_number",
-  });
+  if (number === "")
+    throw new PermitSourceError("permitNumber is required", {
+      classification: "permanent",
+      code: "missing_permit_number",
+    });
   return `${CLERMONT_ETRAKIT_SEARCH_URL}?activityNo=${encodeURIComponent(number)}`;
 }
 
@@ -315,8 +327,14 @@ export const permitInspectionSchema = z
     inspectionType: z.string().trim().min(1),
     sequence: z.string().trim().min(1).nullable(),
     result: z.string().trim().min(1).nullable(),
-    requestedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    inspectionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    requestedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    inspectionDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
   })
   .strict();
 
@@ -328,11 +346,26 @@ export const permitDetailSchema = z
     status: z.string().trim().min(1).nullable(),
     description: z.string().trim().min(1).nullable(),
     notes: z.string().trim().min(1).nullable(),
-    appliedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    approvedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    issuedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    finaledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    expirationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    appliedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    approvedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    issuedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    finaledDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    expirationDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
     alternateKey: z.string().trim().min(1).nullable(),
     siteAddress: z.string().trim().min(1).nullable(),
     siteCityStateZip: z.string().trim().min(1).nullable(),
@@ -362,11 +395,13 @@ function labelText($, suffix) {
  * @param {string} [options.expectedPermitNumber] - Permit number that was requested.
  * @returns {object} A {@link permitDetailSchema} record.
  * @throws {PermitSourceError} `transient` when the portal returned a chrome-only
- *   partial render, `permanent` when the page describes a different permit.
+ *   partial render or a different permit. Identity disagreements are retried and
+ *   remain non-terminal until an operator can establish a reproducible source defect.
  */
 export function parsePermitDetailHtml(html, options = {}) {
   const $ = cheerio.load(html);
-  const permitNumber = cleanCell($('[id$="_lblPermitNo"]').first().text()) ?? cleanCell(options.expectedPermitNumber);
+  const permitNumber =
+    cleanCell($('[id$="_lblPermitNo"]').first().text()) ?? cleanCell(options.expectedPermitNumber);
   const permitType = labelText($, "_lblPermitType");
 
   if (permitNumber === null || permitType === null) {
@@ -378,7 +413,7 @@ export function parsePermitDetailHtml(html, options = {}) {
   if (options.expectedPermitNumber && permitNumber !== toText(options.expectedPermitNumber)) {
     throw new PermitSourceError(
       `eTRAKiT served permit ${permitNumber} for requested permit ${toText(options.expectedPermitNumber)}`,
-      { classification: "permanent", code: "etrakit_detail_permit_mismatch" },
+      { classification: "transient", code: "etrakit_detail_permit_mismatch" },
     );
   }
 
@@ -386,7 +421,12 @@ export function parsePermitDetailHtml(html, options = {}) {
     .first()
     .find("tbody > tr")
     .toArray()
-    .map((element) => $(element).find("> td").toArray().map((cell) => cleanCell($(cell).text())))
+    .map((element) =>
+      $(element)
+        .find("> td")
+        .toArray()
+        .map((cell) => cleanCell($(cell).text())),
+    )
     .filter((cells) => cells.length >= 2 && cells[0] !== null && cells[1] !== null)
     .map((cells) => ({
       role: /** @type {string} */ (cells[0]).toUpperCase(),
@@ -401,7 +441,12 @@ export function parsePermitDetailHtml(html, options = {}) {
     .first()
     .find("tbody > tr")
     .toArray()
-    .map((element) => $(element).find("> td").toArray().map((cell) => cleanCell($(cell).text())))
+    .map((element) =>
+      $(element)
+        .find("> td")
+        .toArray()
+        .map((cell) => cleanCell($(cell).text())),
+    )
     .filter((cells) => cells.length >= 2 && cells[0] !== null)
     .map((cells) => ({
       inspectionType: /** @type {string} */ (cells[0]),
@@ -550,7 +595,7 @@ export function lakePropertyId(parcelId) {
  * @param {object} input - Normalization input.
  * @param {object} input.detail - A {@link permitDetailSchema} record.
  * @param {object} [input.row] - The matching {@link permitSearchRowSchema} row, when the permit came from a list.
- * @param {string} input.requestedAlternateKey - NAL `ALT_KEY` the permit is being attached to.
+ * @param {string | null} input.requestedAlternateKey - NAL `ALT_KEY`, or null for a valid unlinked permit.
  * @param {string | null} [input.requestedParcelId] - NAL `PARCEL_ID`, when known, used for `property_id`.
  * @param {string | null} [input.requestedPropertyId] - Property id the caller is binding the permit to.
  *   Supply this when the caller already holds the id — the shared permit-harvest
@@ -559,6 +604,7 @@ export function lakePropertyId(parcelId) {
  *   not disagree: `normalizedPermitRecordSchema` rejects a record whose
  *   `property_id` is not the one the caller asked for.
  * @param {Map<string, string>} [input.licenseIndex] - Index from {@link buildContractorLicenseIndex}.
+ * @param {string | null} [input.licenseDirectorySha256] - Digest of the exact job-wide directory used for license resolution.
  * @returns {object} A validated `normalizedPermitRecordSchema` record.
  */
 export function normalizeClermontPermit({
@@ -568,21 +614,36 @@ export function normalizeClermontPermit({
   requestedParcelId = null,
   requestedPropertyId = undefined,
   licenseIndex = new Map(),
+  licenseDirectorySha256 = null,
 }) {
-  const alternateKey = toText(requestedAlternateKey);
-  if (alternateKey === "") {
-    throw new PermitSourceError("requestedAlternateKey is required", {
-      classification: "permanent",
-      code: "missing_requested_parcel",
-    });
+  if (licenseDirectorySha256 !== null && !/^[a-f0-9]{64}$/.test(licenseDirectorySha256)) {
+    throw new Error("licenseDirectorySha256 must be a SHA-256 hex digest");
   }
-  if (detail.alternateKey !== null && detail.alternateKey !== alternateKey) {
+  const requestedKey = toText(requestedAlternateKey);
+  const alternateKey = requestedKey === "" ? (detail.alternateKey ?? null) : requestedKey;
+  if (row?.permitNumber && detail.permitNumber !== toText(row.permitNumber)) {
+    throw new PermitSourceError(
+      `eTRAKiT detail permit ${detail.permitNumber} does not match search row ${toText(row.permitNumber)}`,
+      { classification: "transient", code: "etrakit_detail_permit_mismatch" },
+    );
+  }
+  if (
+    alternateKey !== null &&
+    detail.alternateKey !== null &&
+    detail.alternateKey !== alternateKey
+  ) {
     throw new PermitSourceError(
       `Permit ${detail.permitNumber} is filed against parcel ${detail.alternateKey}, not requested parcel ${alternateKey}`,
-      { classification: "permanent", code: "etrakit_detail_parcel_mismatch" },
+      { classification: "transient", code: "etrakit_detail_parcel_mismatch" },
     );
   }
 
+  if (alternateKey === null && (requestedParcelId !== null || requestedPropertyId != null)) {
+    throw new PermitSourceError("An unlinked permit cannot claim a requested property", {
+      classification: "blocked",
+      code: "unlinked_permit_property_mismatch",
+    });
+  }
   const propertyId =
     requestedPropertyId !== undefined
       ? requestedPropertyId
@@ -636,7 +697,12 @@ export function normalizeClermontPermit({
     requestedParcelIdentifier: alternateKey,
     requestedPropertyId: propertyId,
     workAddress: detail.siteAddress,
-    isRoofPermit: isRoofPermit(detail.permitType, detail.permitSubtype, detail.description, row?.description),
+    isRoofPermit: isRoofPermit(
+      detail.permitType,
+      detail.permitSubtype,
+      detail.description,
+      row?.description,
+    ),
     contractors,
     inspections: detail.inspections.map((inspection) => ({
       inspectionType: inspection.inspectionType,
@@ -650,7 +716,9 @@ export function normalizeClermontPermit({
       contractorOfRecordLicense:
         ofRecord === null
           ? null
-          : (licenseFromName(ofRecord.name) ?? licenseIndex.get(contractorMatchKey(ofRecord.name)) ?? null),
+          : (licenseFromName(ofRecord.name) ??
+            licenseIndex.get(contractorMatchKey(ofRecord.name)) ??
+            null),
       approvedDate: detail.approvedDate,
       notes: detail.notes,
       subdivision: detail.subdivision,
@@ -660,6 +728,7 @@ export function normalizeClermontPermit({
       siteCityStateZip: detail.siteCityStateZip,
       contacts: detail.contacts,
       searchRow: row ?? null,
+      licenseDirectorySha256,
     },
   });
 }
@@ -709,7 +778,12 @@ export function permitYearPrefixes(years) {
  *   only if the portal still reported a pager at `maxDepth`, which would mean
  *   the numbering assumption changed — the caller must treat that as a gap.
  */
-export async function walkPermitPrefixes({ rootPrefixes, search, maxDepth = 4, onPrefix = () => {} }) {
+export async function walkPermitPrefixes({
+  rootPrefixes,
+  search,
+  maxDepth = 4,
+  onPrefix = () => {},
+}) {
   /** @type {Map<string, object>} */
   const rows = new Map();
   /** @type {string[]} */
@@ -744,7 +818,9 @@ export async function walkPermitPrefixes({ rootPrefixes, search, maxDepth = 4, o
   for (const root of rootPrefixes) await visit(root, 0);
 
   return {
-    rows: [...rows.values()].sort((left, right) => left.permitNumber.localeCompare(right.permitNumber)),
+    rows: [...rows.values()].sort((left, right) =>
+      left.permitNumber.localeCompare(right.permitNumber),
+    ),
     prefixesSearched,
     terminalPrefixes,
     unresolvedPrefixes,
@@ -808,11 +884,15 @@ export function createClermontPermitSession(options = {}) {
    */
   async function request(url, body, parse = /** @type {(text: string) => T} */ ((text) => text)) {
     let lastError = null;
+    /** @type {Array<{ attempt: number, maxAttempts: number, observedAt: string, requestUrl: string, requestMethod: "GET" | "POST", httpStatus: number | null, responseSha256: string | null, classification: string, errorCode: string }>} */
+    const attemptEvidence = [];
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (attempt > 1) {
         stats.retries += 1;
         await sleep(Math.min(1000 * 2 ** (attempt - 2), 8000));
       }
+      /** @type {{ status: number, body: string, sha256: string } | null} */
+      let responseEvidence = null;
       try {
         stats.requests += 1;
         const response = await fetchImpl(url, {
@@ -820,16 +900,46 @@ export function createClermontPermitSession(options = {}) {
           headers: {
             "User-Agent": userAgent,
             Accept: "text/html,application/xhtml+xml",
-            ...(body === null ? {} : { "Content-Type": "application/x-www-form-urlencoded", Referer: baseUrl }),
+            ...(body === null
+              ? {}
+              : { "Content-Type": "application/x-www-form-urlencoded", Referer: baseUrl }),
           },
           ...(body === null ? {} : { body: body.toString() }),
           signal: AbortSignal.timeout(timeoutMs),
         });
         const text = await response.text();
+        responseEvidence = {
+          status: response.status,
+          body: text,
+          sha256: createHash("sha256").update(text).digest("hex"),
+        };
         assertUsableResponse(response, text);
         return { text, parsed: parse(text) };
       } catch (error) {
         const classified = classifyPermitError(error);
+        const observedAt = new Date().toISOString();
+        attemptEvidence.push({
+          attempt,
+          maxAttempts,
+          observedAt,
+          requestUrl: url,
+          requestMethod: body === null ? "GET" : "POST",
+          httpStatus: responseEvidence?.status ?? classified.status ?? null,
+          responseSha256: responseEvidence?.sha256 ?? null,
+          classification: classified.classification,
+          errorCode: classified.code,
+        });
+        classified.attemptEvidence = [...attemptEvidence];
+        if (classified.classification === "permanent" && responseEvidence !== null) {
+          classified.sourceProof = {
+            requestUrl: url,
+            requestMethod: body === null ? "GET" : "POST",
+            httpStatus: responseEvidence.status,
+            responseSha256: responseEvidence.sha256,
+            responseBody: responseEvidence.body,
+            observedAt,
+          };
+        }
         if (classified.classification !== "transient") throw classified;
         lastError = classified;
         formState = null;
@@ -891,7 +1001,9 @@ export function createClermontPermitSession(options = {}) {
     },
     async loadContractorLicenseIndex() {
       if (bootstrapHtml === null) await ensureFormState();
-      return buildContractorLicenseIndex(parseContractorLicenseDirectory(/** @type {string} */ (bootstrapHtml)));
+      return buildContractorLicenseIndex(
+        parseContractorLicenseDirectory(/** @type {string} */ (bootstrapHtml)),
+      );
     },
     /**
      * The bootstrap page as served, once one has been fetched.
@@ -931,7 +1043,8 @@ export function summarizeLatencies(samplesMs) {
   if (sorted.length === 0) {
     return { count: 0, p50Ms: null, p95Ms: null, meanMs: null, minMs: null, maxMs: null };
   }
-  const at = (fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+  const at = (fraction) =>
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
   return {
     count: sorted.length,
     p50Ms: at(0.5),
@@ -973,13 +1086,17 @@ export function estimateHarvestDuration({
   retryAttemptsPerFailure = 0,
   fixedOverheadMs = 0,
 }) {
-  if (!Number.isFinite(requests) || requests < 0) throw new Error("requests must be a non-negative number");
+  if (!Number.isFinite(requests) || requests < 0)
+    throw new Error("requests must be a non-negative number");
   if (!Number.isFinite(latencyMs) || latencyMs <= 0) throw new Error("latencyMs must be positive");
-  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("concurrency must be a positive integer");
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new Error("concurrency must be a positive integer");
   if (failureRate < 0 || failureRate > 1) throw new Error("failureRate must be between 0 and 1");
 
   const effectiveRequests = requests * (1 + failureRate * retryAttemptsPerFailure);
-  const seconds = (fixedOverheadMs + (effectiveRequests * (latencyMs + interRequestDelayMs)) / concurrency) / 1000;
+  const seconds =
+    (fixedOverheadMs + (effectiveRequests * (latencyMs + interRequestDelayMs)) / concurrency) /
+    1000;
   const hours = seconds / 3600;
   return {
     requests,
@@ -1076,7 +1193,11 @@ export function clermontPermitLoadRow(record, options = {}) {
   let daysOpen = null;
   if (start !== null) {
     const startMs = Date.parse(`${start}T00:00:00Z`);
-    const endMs = isOpen ? (options.nowMs ?? Date.now()) : close === null ? NaN : Date.parse(`${close}T00:00:00Z`);
+    const endMs = isOpen
+      ? (options.nowMs ?? Date.now())
+      : close === null
+        ? NaN
+        : Date.parse(`${close}T00:00:00Z`);
     const elapsed = endMs - startMs;
     if (Number.isFinite(elapsed) && elapsed >= 0) daysOpen = Math.floor(elapsed / 86_400_000);
   }
@@ -1103,21 +1224,23 @@ export function clermontPermitLoadRow(record, options = {}) {
 }
 
 /** Column order of the Clermont permit-load CSV, and of {@link clermontPermitLoadRow}. */
-export const CLERMONT_PERMIT_LOAD_COLUMNS = Object.freeze(Object.keys(
-  clermontPermitLoadRow({
-    permit_number: "",
-    parcel_identifier: "",
-    improvement_type: "",
-    improvement_status: "",
-    project_description: null,
-    description: null,
-    application_received_date: null,
-    permit_issue_date: null,
-    permit_close_date: null,
-    final_inspection_date: null,
-    sourceUrl: "",
-    isRoofPermit: false,
-    source_system: "",
-    sourcePayload: {},
-  }),
-));
+export const CLERMONT_PERMIT_LOAD_COLUMNS = Object.freeze(
+  Object.keys(
+    clermontPermitLoadRow({
+      permit_number: "",
+      parcel_identifier: "",
+      improvement_type: "",
+      improvement_status: "",
+      project_description: null,
+      description: null,
+      application_received_date: null,
+      permit_issue_date: null,
+      permit_close_date: null,
+      final_inspection_date: null,
+      sourceUrl: "",
+      isRoofPermit: false,
+      source_system: "",
+      sourcePayload: {},
+    }),
+  ),
+);

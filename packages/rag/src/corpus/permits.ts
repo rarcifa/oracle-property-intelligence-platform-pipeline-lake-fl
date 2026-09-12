@@ -68,7 +68,7 @@ export function buildPermitDocs(coverage: Coverage, provenance: Provenance): Cor
       docType: "coverage",
       title: "Permit table grain, linkage and source-backed detail fields",
       lines: [
-        `permit-table.parquet has one row per permit, not one row per property: ${count(rows)} total permit records in candidate run ${coverage.runId}.`,
+        `permit-table.parquet has one row per permit, not one row per property: ${count(rows)} total permit records in selected run ${coverage.runId}.`,
         `${count(linked)} records link to the current assessed-property roll. ${count(validUnlinked)} valid permit records over ${count(unmatchedKeys)} source parcel keys do not; they remain queryable in the permit table and do not create fake property rows.`,
         "The companion property table keeps one row per parcel and carries aggregates. Use the permit table for permit number, jurisdiction, type, description, status, lifecycle dates, roofing/open flags, days open, contractor identity, source URL, source system and linkage status.",
         "A five-year open-roofing lead requires is_roofing = true, is_open = true and days_open >= 1825 on a permit row. The property shortcut is longest_open_roofing_permit_days >= 1825; longest_open_permit_days is broader and must not be substituted.",
@@ -97,7 +97,7 @@ export function buildPermitDocs(coverage: Coverage, provenance: Provenance): Cor
       docType: "coverage",
       title: "Measured Clermont contractor coverage and its county boundary",
       lines: [
-        `Candidate run ${coverage.runId} has ${count(contractorRows)} permit rows naming a contractor, ${count(distinctContractors)} distinct contractor names and ${count(contractorProperties)} covered property rows.`,
+        `Selected run ${coverage.runId} has ${count(contractorRows)} permit rows naming a contractor, ${count(distinctContractors)} distinct contractor names and ${count(contractorProperties)} covered property rows.`,
         `This evidence covers ${count(coveredJurisdictions)} of ${count(countyJurisdictions)} Lake County permit jurisdictions: Clermont only. The loaded permit-year tokens are ${permitYears}.`,
         "These counts are not countywide contractor coverage. Outside Clermont, a null means the loaded source does not publish contractor identity; it must not be interpreted as proof that no contractor worked on the property.",
         "BBB rating is a separate gated enrichment and remains null; contractor presence does not imply a BBB record or rating.",

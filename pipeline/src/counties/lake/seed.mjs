@@ -5,8 +5,8 @@
  * Modelled on `counties/duval/seed.mjs`, with one deliberate difference:
  * Duval's seed row is a *request descriptor* for a per-parcel appraiser page
  * capture, so its `url`/`multiValueQueryString` columns drive an HTTP fetch.
- * Lake's appraiser portal answers 403 to every egress tested, so Lake's
- * record of origin is the published DOR roll itself. The seed row therefore
+ * Lake's appraiser portal was reachable but deliberately unused because the
+ * bulk DOR roll is the approved record of origin. The seed row therefore
  * points at the roll snapshot rather than a per-parcel page, and the
  * `url`/`method` columns are retained only so the shared CSV contract and
  * downstream tooling keep working.

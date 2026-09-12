@@ -25,6 +25,9 @@ import { canonicalJson } from "./coverage-publication.mjs";
 
 export const PUBLISH_AUTHORIZATION_SCHEMA_VERSION = "elephant.publish-authorization.v2";
 export const PUBLICATION_LEDGER_SCHEMA_VERSION = "elephant.publication-attempt-ledger.v1";
+export const PINATA_SECONDARY_PIN_API_BASE = "https://api.pinata.cloud/psa";
+export const PINATA_SECONDARY_PIN_API_ORIGIN = "https://api.pinata.cloud";
+export const PINATA_SECONDARY_PIN_API_PATH = "/psa/pins";
 
 export const REQUIRED_PUBLISH_ACTIONS = Object.freeze([
   "upload-root-car",
@@ -55,6 +58,7 @@ const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const COUNTY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const WORKFLOW_RUN_ID_PATTERN = /^(?:local|[1-9][0-9]{0,19})$/;
+const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
 const CID_PATTERN = /^b[a-z2-7]{20,}$/;
 const IPNS_PATTERN = /^k[a-z0-9]{20,}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
@@ -71,7 +75,234 @@ const LEGACY_PUBLISH_ACTIONS = Object.freeze([
   "repoint-ipns",
 ]);
 
+const immutablePrimaryCarSchema = z
+  .object({
+    key: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine(
+        (value) =>
+          !value.startsWith("/") &&
+          !value.endsWith("/") &&
+          !value.split("/").some((part) => part === "" || part === "." || part === ".."),
+        "must be a canonical relative object key",
+      ),
+    bytes: z.number().int().positive(),
+    sha256: digest,
+    cid: z.string().regex(CID_PATTERN),
+  })
+  .strict();
+
+const secondaryPinTargetSchema = z
+  .object({
+    provider: z.literal("pinata"),
+    apiBase: z.literal(PINATA_SECONDARY_PIN_API_BASE),
+    apiOrigin: z.literal(PINATA_SECONDARY_PIN_API_ORIGIN),
+    apiPath: z.literal(PINATA_SECONDARY_PIN_API_PATH),
+    rootPinName: z.string().min(1),
+    manifestPinName: z.string().min(1),
+  })
+  .strict();
+
+const ipnsPredecessorSchema = z
+  .object({
+    cid: z.string().regex(CID_PATTERN),
+    sequence: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const publicationTargetSchema = z
+  .object({
+    county: z.string().regex(COUNTY_PATTERN),
+    runId: z.string().regex(RUN_ID_PATTERN),
+    mode: z.enum(["full", "incremental"]),
+    candidateWorkflowRunId: z.string().regex(WORKFLOW_RUN_ID_PATTERN),
+    candidateCommit: z.string().regex(COMMIT_PATTERN),
+    rootCid: z.string().regex(CID_PATTERN),
+    manifestDigest: digest,
+    provenanceDigest: digest,
+    bucket: z.string().trim().min(1),
+    primaryCars: z
+      .object({
+        root: immutablePrimaryCarSchema,
+        manifest: immutablePrimaryCarSchema,
+      })
+      .strict(),
+    secondaryPin: secondaryPinTargetSchema,
+    ipnsLabel: z.string().trim().min(1),
+    ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
+    ipnsPredecessor: ipnsPredecessorSchema,
+    actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)).length(REQUIRED_PUBLISH_ACTIONS.length),
+  })
+  .strict()
+  .superRefine((target, context) => {
+    if (canonicalJson(target.actions) !== canonicalJson(REQUIRED_PUBLISH_ACTIONS)) {
+      context.addIssue({
+        code: "custom",
+        path: ["actions"],
+        message: "must equal the required ordered publication actions",
+      });
+    }
+    if (target.ipnsLabel !== `oracle-open-data-${target.county}`) {
+      context.addIssue({
+        code: "custom",
+        path: ["ipnsLabel"],
+        message: "must be derived from county",
+      });
+    }
+    if (
+      target.primaryCars.root.key !== `runs/${target.runId}/root.car` ||
+      target.primaryCars.manifest.key !== `runs/${target.runId}/manifest.car`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars"],
+        message: "keys must be the immutable run-specific root and manifest CAR keys",
+      });
+    }
+    if (target.primaryCars.root.cid !== target.rootCid) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "root", "cid"],
+        message: "root CAR CID must match the publication root",
+      });
+    }
+    if (
+      target.secondaryPin.rootPinName !== `${target.ipnsLabel}/${target.runId}/root` ||
+      target.secondaryPin.manifestPinName !== `${target.ipnsLabel}/${target.runId}/manifest`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["secondaryPin"],
+        message: "pin names must be the deterministic root and manifest names for this run",
+      });
+    }
+  });
+
+// Attempts built before the exact secondary provider and IPNS predecessor
+// joined the signed target remain readable as audit evidence. They cannot be
+// authorized because the old signature could be replayed against a different
+// pin service or a later pointer sequence.
+const preSecondaryPinPublicationTargetSchema = z
+  .object({
+    county: z.string().regex(COUNTY_PATTERN),
+    runId: z.string().regex(RUN_ID_PATTERN),
+    mode: z.enum(["full", "incremental"]),
+    candidateWorkflowRunId: z.string().regex(WORKFLOW_RUN_ID_PATTERN),
+    candidateCommit: z.string().regex(COMMIT_PATTERN),
+    rootCid: z.string().regex(CID_PATTERN),
+    manifestDigest: digest,
+    provenanceDigest: digest,
+    bucket: z.string().trim().min(1),
+    primaryCars: z
+      .object({
+        root: immutablePrimaryCarSchema,
+        manifest: immutablePrimaryCarSchema,
+      })
+      .strict(),
+    ipnsLabel: z.string().trim().min(1),
+    ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
+    actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)).length(REQUIRED_PUBLISH_ACTIONS.length),
+  })
+  .strict()
+  .superRefine((target, context) => {
+    if (canonicalJson(target.actions) !== canonicalJson(REQUIRED_PUBLISH_ACTIONS)) {
+      context.addIssue({
+        code: "custom",
+        path: ["actions"],
+        message: "invalid pre-secondary-pin actions",
+      });
+    }
+    if (target.ipnsLabel !== `oracle-open-data-${target.county}`) {
+      context.addIssue({
+        code: "custom",
+        path: ["ipnsLabel"],
+        message: "must be derived from county",
+      });
+    }
+    if (
+      target.primaryCars.root.key !== `runs/${target.runId}/root.car` ||
+      target.primaryCars.manifest.key !== `runs/${target.runId}/manifest.car`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars"],
+        message: "keys must be the immutable run-specific root and manifest CAR keys",
+      });
+    }
+    if (target.primaryCars.root.cid !== target.rootCid) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "root", "cid"],
+        message: "root CAR CID must match the publication root",
+      });
+    }
+  });
+
+// Attempts frozen before the exact source commit joined the signed target stay
+// readable as audit evidence. They cannot be authorized: a provenance digest
+// without an immutable commit permits a workflow-ref change to redefine which
+// tree that digest is supposed to cover.
+const preCommitPublicationTargetSchema = z
+  .object({
+    county: z.string().regex(COUNTY_PATTERN),
+    runId: z.string().regex(RUN_ID_PATTERN),
+    mode: z.enum(["full", "incremental"]),
+    candidateWorkflowRunId: z.string().regex(WORKFLOW_RUN_ID_PATTERN),
+    rootCid: z.string().regex(CID_PATTERN),
+    manifestDigest: digest,
+    provenanceDigest: digest,
+    bucket: z.string().trim().min(1),
+    primaryCars: z
+      .object({
+        root: immutablePrimaryCarSchema,
+        manifest: immutablePrimaryCarSchema,
+      })
+      .strict(),
+    ipnsLabel: z.string().trim().min(1),
+    ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
+    actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)).length(REQUIRED_PUBLISH_ACTIONS.length),
+  })
+  .strict()
+  .superRefine((target, context) => {
+    if (canonicalJson(target.actions) !== canonicalJson(REQUIRED_PUBLISH_ACTIONS)) {
+      context.addIssue({
+        code: "custom",
+        path: ["actions"],
+        message: "invalid pre-commit actions",
+      });
+    }
+    if (target.ipnsLabel !== `oracle-open-data-${target.county}`) {
+      context.addIssue({
+        code: "custom",
+        path: ["ipnsLabel"],
+        message: "must be derived from county",
+      });
+    }
+    if (
+      target.primaryCars.root.key !== `runs/${target.runId}/root.car` ||
+      target.primaryCars.manifest.key !== `runs/${target.runId}/manifest.car`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars"],
+        message: "keys must be the immutable run-specific root and manifest CAR keys",
+      });
+    }
+    if (target.primaryCars.root.cid !== target.rootCid) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "root", "cid"],
+        message: "root CAR CID must match the publication root",
+      });
+    }
+  });
+
+// Attempts built before immutable primary CAR keys and byte digests were part
+// of the signed target remain readable. They cannot receive new authorization:
+// retries must prepare a target that binds both non-overwritable object keys.
+const preImmutableCarPublicationTargetSchema = z
   .object({
     county: z.string().regex(COUNTY_PATTERN),
     runId: z.string().regex(RUN_ID_PATTERN),
@@ -91,7 +322,7 @@ export const publicationTargetSchema = z
       context.addIssue({
         code: "custom",
         path: ["actions"],
-        message: "must equal the required ordered publication actions",
+        message: "invalid pre-immutable-CAR actions",
       });
     }
     if (target.ipnsLabel !== `oracle-open-data-${target.county}`) {
@@ -172,6 +403,9 @@ export const publishAuthorizationPayloadSchema = z
     kind: z.literal("oracle-open-data-publication"),
     target: z.union([
       publicationTargetSchema,
+      preSecondaryPinPublicationTargetSchema,
+      preCommitPublicationTargetSchema,
+      preImmutableCarPublicationTargetSchema,
       preIdentityPublicationTargetSchema,
       legacyPublicationTargetSchema,
     ]),
@@ -213,6 +447,9 @@ const attemptSchema = z
     attemptId: digest,
     target: z.union([
       publicationTargetSchema,
+      preSecondaryPinPublicationTargetSchema,
+      preCommitPublicationTargetSchema,
+      preImmutableCarPublicationTargetSchema,
       preIdentityPublicationTargetSchema,
       legacyPublicationTargetSchema,
     ]),
@@ -653,7 +890,7 @@ export async function authorizePublicationAttempt(
   if (!attempt) throw new Error(`Unknown publication attempt ${attemptId}`);
   if (!publicationTargetSchema.safeParse(attempt.target).success) {
     throw new Error(
-      "publication attempt predates signed mode/workflow identity and cannot be authorized; prepare a new candidate",
+      "publication attempt predates the current signed commit/provider/predecessor contract and cannot be authorized; prepare a new candidate",
     );
   }
   const verified = verifyPublishAuthorization(authorization, publicKeyPem, attempt.target, options);
@@ -802,7 +1039,7 @@ export async function consumePublicationAuthorization(
  *
  * @param {string} ledgerPath
  * @param {string} attemptId
- * @param {{ networkKey?: string, cid?: string } | null} readback
+ * @param {{ networkKey?: string, cid?: string, sequence?: number } | null} readback
  * @param {{ at?: string }} [options]
  */
 export async function recordVerifiedIpnsReadback(ledgerPath, attemptId, readback, options = {}) {
@@ -812,7 +1049,8 @@ export async function recordVerifiedIpnsReadback(ledgerPath, attemptId, readback
   if (
     readback === null ||
     readback.networkKey !== attempt.target.ipnsNetworkKey ||
-    readback.cid !== attempt.target.rootCid
+    readback.cid !== attempt.target.rootCid ||
+    readback.sequence !== attempt.target.ipnsPredecessor.sequence + 1
   ) {
     throw new Error("IPNS readback is missing or does not match the authorized target");
   }
@@ -820,7 +1058,7 @@ export async function recordVerifiedIpnsReadback(ledgerPath, attemptId, readback
     ledgerPath,
     attemptId,
     "IPNS_VERIFIED",
-    { networkKey: readback.networkKey, cid: readback.cid },
+    { networkKey: readback.networkKey, cid: readback.cid, sequence: readback.sequence },
     options,
   );
 }

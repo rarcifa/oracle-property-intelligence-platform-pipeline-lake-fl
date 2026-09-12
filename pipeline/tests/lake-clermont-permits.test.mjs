@@ -28,7 +28,10 @@ import {
  * @returns {string} Fixture HTML.
  */
 function fixture(name) {
-  return readFileSync(fileURLToPath(new URL(`./fixtures/lake-clermont/${name}`, import.meta.url)), "utf8");
+  return readFileSync(
+    fileURLToPath(new URL(`./fixtures/lake-clermont/${name}`, import.meta.url)),
+    "utf8",
+  );
 }
 
 const BOOTSTRAP = fixture("permit-search-bootstrap.html");
@@ -56,7 +59,9 @@ describe("ASP.NET form round-trip", () => {
   });
 
   it("fails closed rather than posting a search with no viewstate", () => {
-    expect(() => parseAspNetFormState("<html><body>no form</body></html>")).toThrow(/no __VIEWSTATE/);
+    expect(() => parseAspNetFormState("<html><body>no form</body></html>")).toThrow(
+      /no __VIEWSTATE/,
+    );
   });
 
   it("builds a search body that keeps the viewstate and drops the contractor login select", () => {
@@ -158,9 +163,9 @@ describe("permit detail parsing", () => {
   });
 
   it("treats a chrome-only partial render as retryable, never as 'no contractor'", () => {
-    expect(() => parsePermitDetailHtml(DETAIL_PARTIAL, { expectedPermitNumber: "24-0006" })).toThrow(
-      /no permit record/,
-    );
+    expect(() =>
+      parsePermitDetailHtml(DETAIL_PARTIAL, { expectedPermitNumber: "24-0006" }),
+    ).toThrow(/no permit record/);
     try {
       parsePermitDetailHtml(DETAIL_PARTIAL, { expectedPermitNumber: "24-0006" });
     } catch (error) {
@@ -173,6 +178,14 @@ describe("permit detail parsing", () => {
     expect(() => parsePermitDetailHtml(DETAIL_POOL, { expectedPermitNumber: "26-9999" })).toThrow(
       /served permit 26-3627 for requested permit 26-9999/,
     );
+    try {
+      parsePermitDetailHtml(DETAIL_POOL, { expectedPermitNumber: "26-9999" });
+    } catch (error) {
+      expect(error).toMatchObject({
+        classification: "transient",
+        code: "etrakit_detail_permit_mismatch",
+      });
+    }
   });
 
   it("builds an https detail URL", () => {
@@ -185,7 +198,10 @@ describe("permit detail parsing", () => {
 describe("contractor licence resolution", () => {
   it("reads the registered-contractor directory eTRAKiT renders inline", () => {
     const entries = parseContractorLicenseDirectory(BOOTSTRAP);
-    expect(entries).toContainEqual({ name: "#1 GOOD GUYS GARAGE DOORS INC", licenseNumber: "21360" });
+    expect(entries).toContainEqual({
+      name: "#1 GOOD GUYS GARAGE DOORS INC",
+      licenseNumber: "21360",
+    });
     expect(entries.every((entry) => entry.name.length > 0)).toBe(true);
   });
 
@@ -207,7 +223,9 @@ describe("contractor licence resolution", () => {
   it("never promotes an owner or applicant to contractor of record", () => {
     expect(selectContractorOfRecord([{ role: "OWNER", name: "SMITH JOHN" }])).toBeNull();
     expect(selectContractorOfRecord([{ role: "APPLICANT", name: "SMITH JOHN" }])).toBeNull();
-    expect(selectContractorOfRecord([{ role: "PRIVATE PROVIDER", name: "SOME INSPECTIONS LLC" }])).toBeNull();
+    expect(
+      selectContractorOfRecord([{ role: "PRIVATE PROVIDER", name: "SOME INSPECTIONS LLC" }]),
+    ).toBeNull();
     expect(
       selectContractorOfRecord([
         { role: "EL SUB", name: "AYALA ELECTRIC, INC" },
@@ -262,18 +280,53 @@ describe("normalization", () => {
     expect(record.final_inspection_date).toBe("2024-03-12");
   });
 
+  it("preserves a public permit as valid-unlinked when no parcel key exists", () => {
+    const detail = {
+      ...parsePermitDetailHtml(DETAIL_ROOF, { expectedPermitNumber: "24-0009" }),
+      alternateKey: null,
+    };
+    const record = normalizeClermontPermit({ detail, requestedAlternateKey: null });
+    expect(record.permit_number).toBe("24-0009");
+    expect(record.parcel_identifier).toBeNull();
+    expect(record.requestedParcelIdentifier).toBeNull();
+    expect(record.property_id).toBeNull();
+  });
+
   it("refuses to attach a permit to a parcel the portal does not agree with", () => {
     const detail = parsePermitDetailHtml(DETAIL_POOL, { expectedPermitNumber: "26-3627" });
-    expect(() => normalizeClermontPermit({ detail, requestedAlternateKey: "9999999" })).toThrow(
-      /filed against parcel 3925114, not requested parcel 9999999/,
-    );
+    try {
+      normalizeClermontPermit({ detail, requestedAlternateKey: "9999999" });
+      throw new Error("expected a parcel mismatch");
+    } catch (error) {
+      expect(error).toMatchObject({
+        classification: "transient",
+        code: "etrakit_detail_parcel_mismatch",
+      });
+    }
+  });
+
+  it("refuses a detail page whose permit number differs from its search row", () => {
+    const detail = parsePermitDetailHtml(DETAIL_POOL, { expectedPermitNumber: "26-3627" });
+    const row = { ...parsePermitSearchResults(PARCEL).rows.at(-1), permitNumber: "26-9999" };
+    expect(() =>
+      normalizeClermontPermit({ detail, row, requestedAlternateKey: "3925114" }),
+    ).toThrow(/detail permit 26-3627 does not match search row 26-9999/);
   });
 });
 
 describe("prefix walk", () => {
   it("expands prefixes and year roots", () => {
     expect(expandPermitPrefix("26-1")).toEqual([
-      "26-10", "26-11", "26-12", "26-13", "26-14", "26-15", "26-16", "26-17", "26-18", "26-19",
+      "26-10",
+      "26-11",
+      "26-12",
+      "26-13",
+      "26-14",
+      "26-15",
+      "26-16",
+      "26-17",
+      "26-18",
+      "26-19",
     ]);
     expect(permitYearPrefixes([25, "26"])).toEqual(["25-", "26-"]);
   });
@@ -282,13 +335,18 @@ describe("prefix walk", () => {
     /** @type {Record<string, { rows: object[], capped: boolean, noResults: boolean }>} */
     const portal = {
       "26-": { rows: [], capped: true, noResults: false },
-      "26-0": { rows: [{ permitNumber: "26-0001" }, { permitNumber: "26-0002" }], capped: false, noResults: false },
+      "26-0": {
+        rows: [{ permitNumber: "26-0001" }, { permitNumber: "26-0002" }],
+        capped: false,
+        noResults: false,
+      },
       "26-1": { rows: [{ permitNumber: "26-1000" }], capped: true, noResults: false },
     };
     for (const digit of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
-      portal[`26-1${digit}`] = digit === 5
-        ? { rows: [{ permitNumber: "26-1500" }], capped: false, noResults: false }
-        : { rows: [], capped: false, noResults: true };
+      portal[`26-1${digit}`] =
+        digit === 5
+          ? { rows: [{ permitNumber: "26-1500" }], capped: false, noResults: false }
+          : { rows: [], capped: false, noResults: true };
     }
     for (const digit of [2, 3, 4, 5, 6, 7, 8, 9]) {
       portal[`26-${digit}`] = { rows: [], capped: false, noResults: true };
@@ -370,6 +428,26 @@ describe("session", () => {
     expect(attempt).toBe(2);
   });
 
+  it("keeps a detail identity mismatch retryable through the bounded attempt ceiling", async () => {
+    let calls = 0;
+    const session = createClermontPermitSession({
+      maxAttempts: 4,
+      sleep: async () => {},
+      fetchImpl: async () => {
+        calls += 1;
+        return response(200, DETAIL_POOL);
+      },
+    });
+    await expect(session.fetchPermitDetail("26-9999")).rejects.toMatchObject({
+      classification: "transient",
+      code: "etrakit_detail_permit_mismatch",
+      attemptEvidence: expect.arrayContaining([
+        expect.objectContaining({ attempt: 4, maxAttempts: 4, httpStatus: 200 }),
+      ]),
+    });
+    expect(calls).toBe(4);
+  });
+
   it("gives up on a blocked response instead of hammering the portal", async () => {
     let calls = 0;
     const session = createClermontPermitSession({
@@ -386,6 +464,30 @@ describe("session", () => {
     expect(calls).toBe(1);
   });
 
+  it("accepts only explicit 404/410 responses as permanent source outcomes", async () => {
+    const notFound = createClermontPermitSession({
+      sleep: async () => {},
+      fetchImpl: async () => response(404, "<html>not found</html>"),
+    });
+    await expect(notFound.fetchPermitDetail("26-9999")).rejects.toMatchObject({
+      classification: "permanent",
+      code: "source_record_not_found",
+      status: 404,
+      attemptEvidence: [expect.objectContaining({ attempt: 1, httpStatus: 404 })],
+      sourceProof: expect.objectContaining({ responseBody: "<html>not found</html>" }),
+    });
+
+    const rejected = createClermontPermitSession({
+      sleep: async () => {},
+      fetchImpl: async () => response(422, "invalid request"),
+    });
+    await expect(rejected.fetchPermitDetail("26-9999")).rejects.toMatchObject({
+      classification: "blocked",
+      code: "source_request_rejected",
+      status: 422,
+    });
+  });
+
   it("stops after the attempt budget on a permanently sick endpoint", async () => {
     let calls = 0;
     const session = createClermontPermitSession({
@@ -396,7 +498,9 @@ describe("session", () => {
         return response(502, "<html><body>Bad Gateway</body></html>");
       },
     });
-    await expect(session.fetchPermitDetail("26-3627")).rejects.toMatchObject({ classification: "transient" });
+    await expect(session.fetchPermitDetail("26-3627")).rejects.toMatchObject({
+      classification: "transient",
+    });
     expect(calls).toBe(3);
   });
 });

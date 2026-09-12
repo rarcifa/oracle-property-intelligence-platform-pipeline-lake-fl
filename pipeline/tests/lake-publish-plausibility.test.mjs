@@ -18,6 +18,10 @@ import {
 const publicationTarget = {
   rootCid: "bafybeinewrootcid000000000000000000000000000000000000000000",
   ipnsNetworkKey: "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+  ipnsPredecessor: {
+    cid: "bafybeipriorrootcid0000000000000000000000000000000000000000",
+    sequence: 7,
+  },
 };
 
 const previous = {
@@ -57,21 +61,29 @@ describe("publish plausibility gate", () => {
   });
 
   it("allows a healthy run through untouched", () => {
-    expect(() => assertTablesPlausible(coverageTableRows(coverage(17671)), previous, {})).not.toThrow();
+    expect(() =>
+      assertTablesPlausible(coverageTableRows(coverage(17671)), previous, {}),
+    ).not.toThrow();
   });
 
   it("allows growth, which is the normal incremental case", () => {
-    expect(() => assertTablesPlausible(coverageTableRows(coverage(18500)), previous, {})).not.toThrow();
+    expect(() =>
+      assertTablesPlausible(coverageTableRows(coverage(18500)), previous, {}),
+    ).not.toThrow();
   });
 
   it("allows a modest contraction — permits are voided, parcels are combined", () => {
     const modest = Math.ceil(17671 * (MINIMUM_TABLE_RETENTION + 0.2));
-    expect(() => assertTablesPlausible(coverageTableRows(coverage(modest)), previous, {})).not.toThrow();
+    expect(() =>
+      assertTablesPlausible(coverageTableRows(coverage(modest)), previous, {}),
+    ).not.toThrow();
   });
 
   it("publishes a genuine contraction only when the operator says so explicitly", () => {
     const env = { ORACLE_ALLOW_TABLE_SHRINK: "1" };
-    expect(() => assertTablesPlausible(coverageTableRows(coverage(281)), previous, env)).not.toThrow();
+    expect(() =>
+      assertTablesPlausible(coverageTableRows(coverage(281)), previous, env),
+    ).not.toThrow();
   });
 
   it("has nothing to compare on a first run, and does not invent a baseline", () => {
@@ -106,7 +118,11 @@ describe("publication predecessor fence", () => {
     expect(
       assertPublicationPredecessor(
         prior,
-        { networkKey: publicationTarget.ipnsNetworkKey, cid: prior.rootCid },
+        {
+          networkKey: publicationTarget.ipnsNetworkKey,
+          cid: prior.rootCid,
+          sequence: publicationTarget.ipnsPredecessor.sequence,
+        },
         publicationTarget,
         "AUTHORIZED",
       ),
@@ -114,7 +130,11 @@ describe("publication predecessor fence", () => {
     expect(() =>
       assertPublicationPredecessor(
         prior,
-        { networkKey: publicationTarget.ipnsNetworkKey, cid: "bafybeistale" },
+        {
+          networkKey: publicationTarget.ipnsNetworkKey,
+          cid: "bafybeistale",
+          sequence: publicationTarget.ipnsPredecessor.sequence,
+        },
         publicationTarget,
         "AUTHORIZED",
       ),
@@ -125,13 +145,14 @@ describe("publication predecessor fence", () => {
     const readback = {
       networkKey: publicationTarget.ipnsNetworkKey,
       cid: publicationTarget.rootCid,
+      sequence: publicationTarget.ipnsPredecessor.sequence + 1,
     };
     expect(
       assertPublicationPredecessor(prior, readback, publicationTarget, "HISTORY_RECORDED"),
     ).toBe("target-already-applied");
     expect(() =>
       assertPublicationPredecessor(prior, readback, publicationTarget, "AUTHORIZED"),
-    ).toThrow(/not the recorded predecessor/);
+    ).toThrow(/not the signed predecessor/);
   });
 
   it("fails closed on a missing or wrong-name pointer", () => {
@@ -141,7 +162,11 @@ describe("publication predecessor fence", () => {
     expect(() =>
       assertPublicationPredecessor(
         prior,
-        { networkKey: "k51wrong", cid: prior.rootCid },
+        {
+          networkKey: "k51wrong",
+          cid: prior.rootCid,
+          sequence: publicationTarget.ipnsPredecessor.sequence,
+        },
         publicationTarget,
         "AUTHORIZED",
       ),

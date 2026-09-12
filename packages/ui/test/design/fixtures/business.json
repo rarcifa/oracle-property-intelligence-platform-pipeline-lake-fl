@@ -220,11 +220,11 @@
       "FL GIO parcel centroids 2025",
       "Lake County CD Plus permit layer",
       "derived by the pipeline",
-      "gated at source (HTTP 403)",
+      "BBB policy/API gate (default route HTTP 403)",
       "not ingested for this run"
     ],
     "runId": "20260909T185056Z",
     "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q"
   },
-  "note": "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory and it carries no business name in the published file. has_sunbiz_tenant stays false for every row because Sunbiz search is gated at the source and was not ingested for this run."
+  "note": "business_account_count comes from the FL DOR 2026 preliminary tangible personal property roll, matched to the situs address. A TPP account is evidence of business activity at that address for tax purposes; it is not a business directory. has_sunbiz_tenant stays null, meaning unknown rather than false, because Sunbiz corporate registration was not ingested. The bulk data-download portal is Cloudflare-challenged from this egress; Sunbiz name search is reachable but is not the approved bulk ingest channel."
 }

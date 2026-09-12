@@ -41,6 +41,10 @@ export type ClermontStageStatus =
 export interface ClermontCostEstimate {
   schemaVersion: typeof CLERMONT_COST_ESTIMATE_SCHEMA_VERSION;
   expectedRecords: number;
+  expectedEnumerationPrefixes: number;
+  recordInformedEnumerationPrefixes: number;
+  expectedBootstrapOperations: number;
+  expectedPortalOperations: number;
   expectedRequests: number;
   expectedRawBytes: number;
   estimatedHours: number;
@@ -48,13 +52,14 @@ export interface ClermontCostEstimate {
   costCeilingUsd: number;
   maxAutomaticHours: 48;
   safeConcurrency: number;
+  requestAttemptsPerOperation: number;
+  outerAttempts: number;
   requiresManualAuthorization: boolean;
   authorizationReasons: Array<"duration" | "cost">;
   estimateSha256: string;
 }
 
-export type ClermontRefreshAction =
-  "full-year" | "recent-year" | "open-records" | "reuse-immutable";
+export type ClermontRefreshAction = "full-year" | "recent-year" | "reuse-immutable";
 
 export interface ClermontRefreshPartition {
   year: number;
@@ -101,6 +106,22 @@ export class ClermontBaselinePreconditionError extends Error {
 
 function rounded(value: number): number {
   return Number(value.toFixed(4));
+}
+
+export function clermontEnumerationPrefixBound(options: {
+  expectedRecords: number;
+  resultCap: number;
+  absoluteMaximum: number;
+}): number {
+  // The production walk begins at the ten YY-N roots. A capped prefix contains
+  // at least resultCap + 1 records; capped prefixes at the same depth are
+  // disjoint, and each one admits exactly ten children through YY-NNNN.
+  const cappedPerDepth = Math.floor(options.expectedRecords / (options.resultCap + 1));
+  const cappedNodes = [1, 2, 3].reduce(
+    (sum, depth) => sum + Math.min(10 ** depth, cappedPerDepth),
+    0,
+  );
+  return Math.min(options.absoluteMaximum, 10 + 10 * cappedNodes);
 }
 
 function assertExactSignatures(actual: ClermontSignatureSet, expected: ClermontSignatureSet): void {
@@ -191,9 +212,9 @@ export function buildClermontRefreshPlan(options: {
       return {
         year,
         partitionId: clermontPartitionId(year),
-        action: "open-records" as const,
-        expectedRecords: prior.openPermitStableIds.length,
-        stableIds: [...prior.openPermitStableIds],
+        action: "full-year" as const,
+        expectedRecords: expectedByYear.get(year) ?? 0,
+        stableIds: [],
       };
     }
     return {
@@ -245,13 +266,48 @@ export function estimateClermontRun(
     (sum, partition) => sum + partition.expectedRecords,
     0,
   );
-  const retryMultiplier = 1 + request.benchmark.observedErrorRate;
-  const estimatedHours = rounded(
-    (expectedRecords / request.benchmark.terminalRecordsPerHour) * retryMultiplier,
+  const enumeratedPartitions = refreshPlan.partitions.filter(
+    ({ action }) => action !== "reuse-immutable",
+  ).length;
+  const expectedEnumerationPrefixes =
+    enumeratedPartitions * request.limits.maxEnumerationPrefixesPerYear;
+  const recordInformedEnumerationPrefixes = refreshPlan.partitions.reduce(
+    (sum, partition) =>
+      partition.action === "reuse-immutable"
+        ? sum
+        : sum +
+          clermontEnumerationPrefixBound({
+            expectedRecords: partition.expectedRecords,
+            resultCap: request.limits.enumerationResultCap,
+            absoluteMaximum: request.limits.maxEnumerationPrefixesPerYear,
+          }),
+    0,
   );
-  // One list/enumeration request and one detail request per expected terminal
-  // record is deliberately conservative for a prefix-partitioned source.
-  const expectedRequests = Math.ceil(expectedRecords * 2 * retryMultiplier);
+  // A valid search result can still lack reusable ASP.NET form state, forcing
+  // the next prefix to bootstrap. Cost therefore reserves one enumeration
+  // bootstrap per prefix, plus one contractor-directory bootstrap per year.
+  const expectedBootstrapOperations = expectedEnumerationPrefixes + enumeratedPartitions;
+  // Elapsed-time prediction uses the measured healthy-session path; the hard
+  // wall-time budget below the gate still caps pathological bootstrap churn.
+  const recordInformedBootstrapOperations =
+    enumeratedPartitions * (request.benchmark.safeConcurrency + 1);
+  const expectedPortalOperations =
+    expectedEnumerationPrefixes + expectedRecords + expectedBootstrapOperations;
+  const requestAttemptsPerOperation = request.limits.requestAttemptsPerOperation;
+  const outerAttempts = request.limits.maxAttempts;
+  const maximumRequestMultiplier = requestAttemptsPerOperation * outerAttempts;
+  const observedRequestMultiplier =
+    1 + request.benchmark.observedErrorRate * (requestAttemptsPerOperation - 1);
+  const enumerationHours =
+    ((recordInformedEnumerationPrefixes + recordInformedBootstrapOperations) *
+      request.benchmark.p95RequestLatencyMs) /
+    (request.benchmark.safeConcurrency * 60 * 60 * 1_000);
+  const estimatedHours = rounded(
+    (expectedRecords / request.benchmark.terminalRecordsPerHour + enumerationHours) *
+      observedRequestMultiplier *
+      outerAttempts,
+  );
+  const expectedRequests = Math.ceil(expectedPortalOperations * maximumRequestMultiplier);
   const expectedRawBytes = expectedRecords * request.benchmark.averageRawBytesPerRecord;
   const estimatedCostUsd = rounded(
     estimatedHours * request.limits.runnerHourlyUsd +
@@ -268,6 +324,10 @@ export function estimateClermontRun(
   const unsigned: Omit<ClermontCostEstimate, "estimateSha256"> = {
     schemaVersion: CLERMONT_COST_ESTIMATE_SCHEMA_VERSION,
     expectedRecords,
+    expectedEnumerationPrefixes,
+    recordInformedEnumerationPrefixes,
+    expectedBootstrapOperations,
+    expectedPortalOperations,
     expectedRequests,
     expectedRawBytes,
     estimatedHours,
@@ -275,6 +335,8 @@ export function estimateClermontRun(
     costCeilingUsd: request.limits.costCeilingUsd,
     maxAutomaticHours: request.limits.maxAutomaticHours,
     safeConcurrency: request.benchmark.safeConcurrency,
+    requestAttemptsPerOperation,
+    outerAttempts,
     requiresManualAuthorization: authorizationReasons.length > 0,
     authorizationReasons,
   };
@@ -296,6 +358,8 @@ export function hasValidEstimateAuthorization(options: {
   return (
     Number.isFinite(nowMs) &&
     authorization.estimateSha256 === options.estimate.estimateSha256 &&
+    authorization.maxExecutionHours >= options.estimate.estimatedHours &&
+    authorization.maxCostUsd >= options.estimate.estimatedCostUsd &&
     Date.parse(authorization.approvedAt) <= nowMs &&
     Date.parse(authorization.expiresAt) > nowMs
   );
@@ -325,7 +389,23 @@ function newStageState(
   now: string,
   evidenceSha256: string | null = null,
 ): ClermontStageState {
+  if (!Number.isFinite(Date.parse(now))) {
+    throw new Error("Coordinator stage timestamp must be ISO-8601");
+  }
   return { status, attempt: 0, evidenceSha256, updatedAt: now };
+}
+
+function assertCoordinatorTimeMonotonic(state: ClermontCoordinatorState, now: string): void {
+  const nextMs = Date.parse(now);
+  if (!Number.isFinite(nextMs)) {
+    throw new Error("Coordinator stage timestamp must be ISO-8601");
+  }
+  const latestMs = Math.max(
+    ...Object.values(state.stages).map(({ updatedAt }) => Date.parse(updatedAt)),
+  );
+  if (nextMs < latestMs) {
+    throw new Error("Coordinator stage timestamp cannot move backwards");
+  }
 }
 
 export function prepareClermontCoordinator(options: {
@@ -446,6 +526,7 @@ export function startClermontStage(
   stage: ClermontStageName,
   now: string,
 ): ClermontCoordinatorState {
+  assertCoordinatorTimeMonotonic(state, now);
   assertStageDependenciesComplete(state, stage);
   if (
     !(["ready", "pending", "cooling_down"] as ClermontStageStatus[]).includes(
@@ -476,6 +557,7 @@ export function completeClermontStage(
   evidenceSha256: string,
   now: string,
 ): ClermontCoordinatorState {
+  assertCoordinatorTimeMonotonic(state, now);
   if (!/^[a-f0-9]{64}$/.test(evidenceSha256)) {
     throw new Error("Stage evidence digest must be a SHA-256 hex digest");
   }
@@ -510,6 +592,7 @@ export function deferClermontStage(
   evidenceSha256: string,
   now: string,
 ): ClermontCoordinatorState {
+  assertCoordinatorTimeMonotonic(state, now);
   if (state.stages[stage].status !== "running") {
     throw new Error(`Stage ${stage} is not running`);
   }
@@ -625,6 +708,10 @@ export function acquireClermontWorkerLease(options: {
   const request = clermontRunRequestSchema.parse(options.request);
   assertExactSignatures(options.worker.signatures, request.signatures);
   const nowMs = Date.parse(options.now);
+  if (!Number.isFinite(nowMs)) throw new Error("Worker lease time must be ISO-8601");
+  if (options.worker.heartbeatAt !== null && Date.parse(options.worker.heartbeatAt) > nowMs) {
+    throw new Error("Worker lease acquisition cannot predate its prior heartbeat");
+  }
   const leaseLive =
     options.worker.leaseExpiresAt !== null && Date.parse(options.worker.leaseExpiresAt) > nowMs;
   if (leaseLive) throw new Error("Partition already has an unexpired lease");
@@ -654,6 +741,8 @@ function assertLease(
   fencingToken: number,
   now: string,
 ): void {
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(nowMs)) throw new Error("Worker lease time must be ISO-8601");
   if (
     worker.status !== "running" ||
     worker.leaseOwner !== owner ||
@@ -661,7 +750,10 @@ function assertLease(
   ) {
     throw new Error("Worker lease owner or fencing token is stale");
   }
-  if (worker.leaseExpiresAt === null || Date.parse(worker.leaseExpiresAt) <= Date.parse(now)) {
+  if (worker.heartbeatAt !== null && Date.parse(worker.heartbeatAt) > nowMs) {
+    throw new Error("Worker heartbeat timestamp cannot move backwards");
+  }
+  if (worker.leaseExpiresAt === null || Date.parse(worker.leaseExpiresAt) <= nowMs) {
     throw new Error("Worker lease has expired");
   }
 }

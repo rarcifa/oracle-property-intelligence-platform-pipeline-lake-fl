@@ -446,7 +446,7 @@ export async function createDuckDbSource(options: {
       return {
         posture: rowToNumberRecord(row),
         gating: parseEnrichmentStatus(GATED_ENRICHMENT_TOKENS),
-        provenance: provenance(sql, ["lake_cdplus_permits"]),
+        provenance: provenance(sql, ["lake_cdplus_permits", "lake_clermont_etrakit_permits"]),
         note: CONTRACTOR_VIEW_NOTE,
       };
     },

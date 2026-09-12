@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CfnOutput, Duration, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, RemovalPolicy, Stack, Tags, type StackProps } from "aws-cdk-lib";
 import {
   Architecture,
   Code,
@@ -19,13 +19,20 @@ import {
   Runtime,
   Tracing,
 } from "aws-cdk-lib/aws-lambda";
-import { Alarm, ComparisonOperator, Metric, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import {
+  Alarm,
+  ComparisonOperator,
+  Dashboard,
+  GraphWidget,
+  Metric,
+  TreatMissingData,
+} from "aws-cdk-lib/aws-cloudwatch";
 import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
 import { Topic } from "aws-cdk-lib/aws-sns";
-import { EmailSubscription, UrlSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { SubscriptionProtocol } from "aws-cdk-lib/aws-sns";
+import { EmailSubscription, LambdaSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Construct } from "constructs";
 
 /**
@@ -64,20 +71,43 @@ function openaiKeyEnvironment(): Record<string, string> {
  * The engineering guidelines make paging on-call non-negotiable for critical
  * failures, and they are specific about the shape: rate signals come from one
  * self-resolving CloudWatch alarm per failure mode, fanned out to an SNS topic
- * that every channel subscribes to — email, chat, and PagerDuty's CloudWatch
- * integration URL, which maps `ALARM -> trigger` and `OK -> resolve` so an
- * incident closes itself when the condition clears.
+ * that every channel subscribes to. A typed, secret-backed PagerDuty subscriber
+ * maps `ALARM -> trigger` and `OK -> resolve` so an incident closes itself when
+ * the condition clears.
  *
- * Every value is supplied by the deploying environment. No routing key, no
- * integration URL and no address is committed, and the PagerDuty subscription
- * is added only when the deploy is declared production — a non-prod deploy must
- * never wake on-call. What is absent is absent loudly: `AlertingConfigured` is
- * a stack output naming exactly which channels this deploy wired.
+ * Every value is supplied by the deploying environment. No routing key or
+ * address is committed, and the PagerDuty subscription is added only when the
+ * deploy is declared production — a non-prod deploy must never wake on-call.
+ * What is absent is absent loudly: `AlertingConfigured` is a stack output naming
+ * exactly which channels this deploy wired.
  */
-const ALERT_EMAIL = process.env.ORACLE_ALERT_EMAIL ?? "";
-const PAGERDUTY_CLOUDWATCH_URL = process.env.ORACLE_PAGERDUTY_CLOUDWATCH_URL ?? "";
-const PAGERDUTY_SECRET_NAME = process.env.ORACLE_PAGERDUTY_SECRET_NAME ?? "";
-const ALERT_ENVIRONMENT = process.env.ORACLE_ALERT_ENVIRONMENT ?? "";
+export const LAKE_RUNTIME_ACCOUNT = "122610508924";
+export const LAKE_RUNTIME_REGION = "us-east-2";
+
+function alertConfiguration(environment: NodeJS.ProcessEnv): {
+  alertEmail: string;
+  alertEnvironment: string;
+  pagerDutySecretArn: string | null;
+} {
+  const alertEnvironment = environment.ORACLE_ALERT_ENVIRONMENT ?? "";
+  const pagerDutySecretArn = environment.ORACLE_PAGERDUTY_SECRET_ARN?.trim() ?? "";
+  const pattern = new RegExp(
+    `^arn:aws:secretsmanager:${LAKE_RUNTIME_REGION}:${LAKE_RUNTIME_ACCOUNT}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$`,
+  );
+  if (alertEnvironment === "production" && !pattern.test(pagerDutySecretArn)) {
+    throw new Error(
+      `Production runtime alerting requires one exact Secrets Manager secret ARN in ${LAKE_RUNTIME_ACCOUNT}/${LAKE_RUNTIME_REGION}`,
+    );
+  }
+  if (pagerDutySecretArn.length > 0 && alertEnvironment !== "production") {
+    throw new Error("A PagerDuty secret ARN may be configured only for production alerting");
+  }
+  return {
+    alertEmail: environment.ORACLE_ALERT_EMAIL?.trim() ?? "",
+    alertEnvironment,
+    pagerDutySecretArn: pagerDutySecretArn.length > 0 ? pagerDutySecretArn : null,
+  };
+}
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /**
@@ -134,6 +164,18 @@ function parquetOverride(): Record<string, string> {
 export class LakeRuntimeStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+    if (this.account !== LAKE_RUNTIME_ACCOUNT || this.region !== LAKE_RUNTIME_REGION) {
+      throw new Error(
+        `LakeRuntimeStack is pinned to AWS account ${LAKE_RUNTIME_ACCOUNT} in ${LAKE_RUNTIME_REGION}`,
+      );
+    }
+    Tags.of(this).add("project_name", "oracle-lake-fl");
+    const alertsConfiguration = alertConfiguration(process.env);
+
+    const runtimeLogGroup = new LogGroup(this, "RuntimeLogs", {
+      retention: RetentionDays.THREE_MONTHS,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
 
     const runtime = new LambdaFunction(this, "Runtime", {
       code: Code.fromAsset(BUNDLE_DIR),
@@ -170,11 +212,16 @@ export class LakeRuntimeStack extends Stack {
         ORACLE_DUCKDB_EXTENSION_DIR: "/var/task/duckdb-extensions",
         // Paging is gated on this being exactly "production", so a non-prod
         // deploy cannot wake on-call even with a routing key in place. The
-        // routing key itself is never an environment value — only the id of
-        // the secret holding it, which the function reads at runtime.
-        ...(ALERT_ENVIRONMENT.length > 0 ? { ORACLE_ALERT_ENVIRONMENT: ALERT_ENVIRONMENT } : {}),
-        ...(PAGERDUTY_SECRET_NAME.length > 0
-          ? { ORACLE_PAGERDUTY_SECRET_ID: PAGERDUTY_SECRET_NAME }
+        // routing key itself is never an environment value — only the complete
+        // ARN of the one secret holding it, which the function reads at runtime.
+        ...(alertsConfiguration.alertEnvironment.length > 0
+          ? { ORACLE_ALERT_ENVIRONMENT: alertsConfiguration.alertEnvironment }
+          : {}),
+        ...(alertsConfiguration.pagerDutySecretArn !== null
+          ? {
+              ORACLE_ALERT_ACCOUNT_ID: LAKE_RUNTIME_ACCOUNT,
+              ORACLE_PAGERDUTY_SECRET_ARN: alertsConfiguration.pagerDutySecretArn,
+            }
           : {}),
         ...openaiKeyEnvironment(),
       },
@@ -189,7 +236,7 @@ export class LakeRuntimeStack extends Stack {
       // not recorded as a deviation either.
       tracing: Tracing.ACTIVE,
       loggingFormat: LoggingFormat.JSON,
-      logRetention: RetentionDays.THREE_MONTHS,
+      logGroup: runtimeLogGroup,
     });
 
     // Least privilege: read that one secret, nothing else. This is the only IAM
@@ -198,13 +245,17 @@ export class LakeRuntimeStack extends Stack {
       Secret.fromSecretNameV2(this, "OpenAIKey", OPENAI_SECRET_NAME).grantRead(runtime);
     }
 
-    // The routing key the function pages with. Least privilege: read that one
-    // secret, nothing else.
-    if (PAGERDUTY_SECRET_NAME.length > 0) {
-      Secret.fromSecretNameV2(this, "PagerDutyRoutingKey", PAGERDUTY_SECRET_NAME).grantRead(
-        runtime,
-      );
-    }
+    // The exact secret ARN the functions page with. Least privilege: read that
+    // one secret, nothing else.
+    const pagerDutySecret =
+      alertsConfiguration.pagerDutySecretArn === null
+        ? null
+        : Secret.fromSecretCompleteArn(
+            this,
+            "PagerDutyRoutingKey",
+            alertsConfiguration.pagerDutySecretArn,
+          );
+    pagerDutySecret?.grantRead(runtime);
 
     // One topic, every channel. The alarms below drive it on both transitions,
     // so PagerDuty triggers on ALARM and resolves on OK without anyone
@@ -214,17 +265,38 @@ export class LakeRuntimeStack extends Stack {
       displayName: "Lake County runtime alerts",
     });
     const channels: string[] = [];
-    if (ALERT_EMAIL.length > 0) {
-      alerts.addSubscription(new EmailSubscription(ALERT_EMAIL));
+    if (alertsConfiguration.alertEmail.length > 0) {
+      alerts.addSubscription(new EmailSubscription(alertsConfiguration.alertEmail));
       channels.push("email");
     }
-    if (PAGERDUTY_CLOUDWATCH_URL.length > 0 && ALERT_ENVIRONMENT === "production") {
-      // PagerDuty's CloudWatch integration endpoint maps ALARM -> trigger and
-      // OK -> resolve, so it is one subscriber to the alarm's lifecycle rather
-      // than a second mechanism with its own state.
-      alerts.addSubscription(
-        new UrlSubscription(PAGERDUTY_CLOUDWATCH_URL, { protocol: SubscriptionProtocol.HTTPS }),
-      );
+    if (pagerDutySecret !== null) {
+      const translatorLogGroup = new LogGroup(this, "PagerDutyAlarmTranslatorLogs", {
+        retention: RetentionDays.THREE_MONTHS,
+        removalPolicy: RemovalPolicy.RETAIN,
+      });
+      const translator = new NodejsFunction(this, "PagerDutyAlarmTranslator", {
+        entry: path.join(REPO_ROOT, "packages/server/src/observability/pagerduty-notifier.ts"),
+        handler: "handler",
+        runtime: Runtime.NODEJS_22_X,
+        architecture: Architecture.ARM_64,
+        depsLockFilePath: path.join(REPO_ROOT, "pnpm-lock.yaml"),
+        bundling: { minify: true, sourceMap: true, target: "node22" },
+        timeout: Duration.seconds(30),
+        memorySize: 256,
+        reservedConcurrentExecutions: 2,
+        tracing: Tracing.ACTIVE,
+        loggingFormat: LoggingFormat.JSON,
+        logGroup: translatorLogGroup,
+        environment: {
+          ALERT_ENVIRONMENT: "production",
+          ALERT_ACCOUNT_ID: LAKE_RUNTIME_ACCOUNT,
+          ALERT_REGION: LAKE_RUNTIME_REGION,
+          ALERT_COMPONENT: "oracle-lake-runtime",
+          PAGERDUTY_SECRET_ARN: alertsConfiguration.pagerDutySecretArn!,
+        },
+      });
+      pagerDutySecret.grantRead(translator);
+      alerts.addSubscription(new LambdaSubscription(translator));
       channels.push("pagerduty");
     }
 
@@ -311,6 +383,44 @@ export class LakeRuntimeStack extends Stack {
       }),
     );
 
+    const notifierMetric = (metricName: string, statistic = "Sum"): Metric =>
+      new Metric({
+        namespace: "OracleLake",
+        metricName,
+        dimensionsMap: { service: "pagerduty-notifier" },
+        period: Duration.minutes(5),
+        statistic,
+      });
+    const dashboard = new Dashboard(this, "RuntimeDashboard", {
+      dashboardName: "OracleLake-runtime-observability",
+    });
+    dashboard.addWidgets(
+      new GraphWidget({
+        title: "Runtime requests and dataset state",
+        left: [
+          runtimeMetric("RequestsServed"),
+          runtimeMetric("RequestsFailed"),
+          runtimeMetric("ColdStart"),
+          runtimeMetric("DatasetUpgraded"),
+          runtimeMetric("PointerRefreshFailed"),
+          runtimeMetric("DatasetUnavailable"),
+        ],
+      }),
+      new GraphWidget({
+        title: "Runtime duration",
+        left: [
+          runtimeMetric("RequestDuration").with({ statistic: "p95" }),
+          runtimeMetric("DatasetOpenMs").with({ statistic: "p95" }),
+          runtimeMetric("PointerResolveMs").with({ statistic: "p95" }),
+        ],
+      }),
+      new GraphWidget({
+        title: "PagerDuty notification delivery",
+        left: [notifierMetric("NotificationProcessed"), notifierMetric("NotificationFailed")],
+        right: [notifierMetric("ProcessingDuration", "p95")],
+      }),
+    );
+
     // There is no queue and therefore no DLQ: this is a synchronous read-only
     // HTTP surface. The guidelines' DLQ alarm rule is recorded as not
     // applicable rather than silently skipped. The pattern it mandates — one
@@ -322,7 +432,7 @@ export class LakeRuntimeStack extends Stack {
       // subscription is a deploy that cannot page, and that must be visible.
       value: channels.length > 0 ? channels.join(",") : "none",
       description:
-        "Alert channels this deploy wired. Set ORACLE_ALERT_EMAIL, ORACLE_PAGERDUTY_CLOUDWATCH_URL, ORACLE_PAGERDUTY_SECRET_NAME and ORACLE_ALERT_ENVIRONMENT=production to page on-call.",
+        "Alert channels wired. Production PagerDuty requires ORACLE_PAGERDUTY_SECRET_ARN and ORACLE_ALERT_ENVIRONMENT=production.",
     });
 
     // Public and unauthenticated on purpose: this serves a published open-data

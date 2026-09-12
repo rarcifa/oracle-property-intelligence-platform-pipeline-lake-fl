@@ -130,4 +130,30 @@ describe("Clermont immutable ingestion contracts", () => {
       }),
     ).toThrow(/Checkpoint signatures must match/);
   });
+
+  it("binds the point-in-time license directory to the exact partition artifact", () => {
+    const partition = syntheticClermontBaseline().partitions[0]!;
+    expect(partition.licenseDirectory.validityBoundary).toBe(
+      "contractor-registration-at-capture-not-historical-license-validity",
+    );
+    expect(partition.licenseDirectory.sha256).toBe(partition.artifacts.licenseDirectory.sha256);
+    expect(() =>
+      clermontPartitionHandoffSchema.parse({
+        ...partition,
+        licenseDirectory: {
+          ...partition.licenseDirectory,
+          sha256: digest("d"),
+        },
+      }),
+    ).toThrow(/provenance must bind the exact immutable artifact digest/);
+    expect(() =>
+      clermontPartitionHandoffSchema.parse({
+        ...partition,
+        licenseDirectory: {
+          ...partition.licenseDirectory,
+          capturedAt: "2026-09-11T08:11:00.000Z",
+        },
+      }),
+    ).toThrow(/capture cannot postdate/);
+  });
 });

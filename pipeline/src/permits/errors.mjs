@@ -21,14 +21,11 @@ export function classifyPermitError(error) {
       cause: error,
     });
   }
-  return new PermitSourceError(
-    error instanceof Error ? error.message : String(error),
-    {
-      classification: "transient",
-      code: "unexpected_source_error",
-      cause: error instanceof Error ? error : null,
-    },
-  );
+  return new PermitSourceError(error instanceof Error ? error.message : String(error), {
+    classification: "transient",
+    code: "unexpected_source_error",
+    cause: error instanceof Error ? error : null,
+  });
 }
 
 export function assertUsableResponse(response, body) {
@@ -37,45 +34,41 @@ export function assertUsableResponse(response, body) {
     response.status === 403 ||
     /access denied|service unavailable/i.test(body)
   ) {
-    throw new PermitSourceError(
-      `Permit source denied access with HTTP ${response.status}`,
-      {
-        classification: "blocked",
-        code: "source_access_denied",
-        status: response.status,
-      },
-    );
+    throw new PermitSourceError(`Permit source denied access with HTTP ${response.status}`, {
+      classification: "blocked",
+      code: "source_access_denied",
+      status: response.status,
+    });
   }
-  if (
-    /encountered an error.*centralsquare|support id is/i.test(body)
-  ) {
-    throw new PermitSourceError(
-      "CentralSquare did not establish a usable anonymous session",
-      {
-        classification: "blocked",
-        code: "vendor_session_blocked",
-        status: response.status,
-      },
-    );
+  if (/encountered an error.*centralsquare|support id is/i.test(body)) {
+    throw new PermitSourceError("CentralSquare did not establish a usable anonymous session", {
+      classification: "blocked",
+      code: "vendor_session_blocked",
+      status: response.status,
+    });
   }
   if (response.status === 429 || response.status >= 500) {
+    throw new PermitSourceError(`Permit source returned retryable HTTP ${response.status}`, {
+      classification: "transient",
+      code: "retryable_http_status",
+      status: response.status,
+    });
+  }
+  if (response.status === 404 || response.status === 410) {
     throw new PermitSourceError(
-      `Permit source returned retryable HTTP ${response.status}`,
+      `Permit source confirmed the record is unavailable with HTTP ${response.status}`,
       {
-        classification: "transient",
-        code: "retryable_http_status",
+        classification: "permanent",
+        code: response.status === 404 ? "source_record_not_found" : "source_record_gone",
         status: response.status,
       },
     );
   }
   if (!response.ok) {
-    throw new PermitSourceError(
-      `Permit source returned HTTP ${response.status}`,
-      {
-        classification: "permanent",
-        code: "non_retryable_http_status",
-        status: response.status,
-      },
-    );
+    throw new PermitSourceError(`Permit source rejected the request with HTTP ${response.status}`, {
+      classification: "blocked",
+      code: "source_request_rejected",
+      status: response.status,
+    });
   }
 }

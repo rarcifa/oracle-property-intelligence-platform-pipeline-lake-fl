@@ -8,7 +8,11 @@
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { buildIndex, INDEX_PATH } from "../src/index/build-index.js";
+import { buildSourceSnapshot, collectLocalModuleClosure, REPO_ROOT } from "../src/corpus/source.js";
 import { ragIndexSchema } from "../src/types.js";
 import { cosine } from "../src/index/lsa.js";
 
@@ -70,6 +74,54 @@ describe("committed index", () => {
       expect(chunk.provenance.rootCid).toBeNull();
       expect(chunk.provenance.cid).toBeNull();
       expect(chunk.provenance.ipfsPath).toBeNull();
+    }
+  });
+
+  it("binds the complete transitive local generator closure", async () => {
+    const closure = await collectLocalModuleClosure([
+      resolve(REPO_ROOT, "packages/rag/src/index/build-index.ts"),
+    ]);
+    const snapshotted = new Set(committed.sourceSnapshot.inputs.map((input) => input.path));
+    for (const path of closure) {
+      expect(snapshotted.has(path.slice(REPO_ROOT.length + 1)), path).toBe(true);
+    }
+    for (const required of [
+      "packages/rag/src/index/build-index.ts",
+      "packages/rag/src/index/lsa.ts",
+      "packages/rag/src/corpus/build.ts",
+      "packages/rag/src/corpus/markdown.ts",
+      "packages/rag/src/corpus/sources-yaml.ts",
+      "packages/rag/src/text.ts",
+      "packages/shared/src/index.ts",
+      "packages/shared/src/schema.ts",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+    ]) {
+      expect(snapshotted.has(required), required).toBe(true);
+    }
+  });
+
+  it("changes the digest when an adversarial transitive generator dependency changes", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "oracle-rag-closure-"));
+    try {
+      const entry = resolve(root, "entry.ts");
+      const dependency = resolve(root, "dependency.ts");
+      await writeFile(entry, 'import { value } from "./dependency.js";\nexport { value };\n');
+      await writeFile(dependency, 'export const value = "first";\n');
+
+      const firstClosure = await collectLocalModuleClosure([entry], root);
+      const first = await buildSourceSnapshot(firstClosure, root);
+      expect(first.inputs.map((input) => input.path)).toEqual(["dependency.ts", "entry.ts"]);
+
+      await writeFile(dependency, 'export const value = "tampered";\n');
+      const secondClosure = await collectLocalModuleClosure([entry], root);
+      const second = await buildSourceSnapshot(secondClosure, root);
+      expect(second.digest).not.toBe(first.digest);
+      expect(second.inputs.find((input) => input.path === "entry.ts")?.sha256).toBe(
+        first.inputs.find((input) => input.path === "entry.ts")?.sha256,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

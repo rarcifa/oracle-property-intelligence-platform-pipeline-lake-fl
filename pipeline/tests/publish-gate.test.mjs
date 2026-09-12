@@ -6,7 +6,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseApprovalArgs, runApprovalCommand } from "../scripts/lake/publish-approve.mjs";
-import { mayAttemptLivePublication } from "../scripts/lake/publish-run.mjs";
+import {
+  assertSecondaryPinRuntimeTarget,
+  loadLivePublicationCapabilities,
+  mayAttemptLivePublication,
+} from "../scripts/lake/publish-run.mjs";
 import {
   REQUIRED_PUBLISH_ACTIONS,
   advancePublicationAttempt,
@@ -49,17 +53,45 @@ function keys() {
 }
 
 function target(runId = "20260911T120000Z", rootSuffix = "a") {
+  const rootCid = `bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy${rootSuffix}`;
   return {
     county: "lake",
     runId,
     mode: "full",
     candidateWorkflowRunId: "123456789",
-    rootCid: `bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy${rootSuffix}`,
+    candidateCommit: "5".repeat(40),
+    rootCid,
     manifestDigest: `sha256:${"1".repeat(64)}`,
     provenanceDigest: `sha256:${"2".repeat(64)}`,
     bucket: "elephant-oracle-open-data-lake",
+    primaryCars: {
+      root: {
+        key: `runs/${runId}/root.car`,
+        bytes: 123,
+        sha256: `sha256:${"3".repeat(64)}`,
+        cid: rootCid,
+      },
+      manifest: {
+        key: `runs/${runId}/manifest.car`,
+        bytes: 45,
+        sha256: `sha256:${"4".repeat(64)}`,
+        cid: `bafkreigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy${rootSuffix}`,
+      },
+    },
+    secondaryPin: {
+      provider: "pinata",
+      apiBase: "https://api.pinata.cloud/psa",
+      apiOrigin: "https://api.pinata.cloud",
+      apiPath: "/psa/pins",
+      rootPinName: `oracle-open-data-lake/${runId}/root`,
+      manifestPinName: `oracle-open-data-lake/${runId}/manifest`,
+    },
     ipnsLabel: "oracle-open-data-lake",
     ipnsNetworkKey: "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+    ipnsPredecessor: {
+      cid: "bafybeif7figvhmv7q7ykxxfcs3nbnjutjwistroiqtb433z3uhkmce7jau",
+      sequence: 7,
+    },
     actions: [...REQUIRED_PUBLISH_ACTIONS],
   };
 }
@@ -159,7 +191,11 @@ async function driveAfterAuthorization(ledgerPath, attemptId, exactTarget) {
   await recordVerifiedIpnsReadback(
     ledgerPath,
     attemptId,
-    { networkKey: exactTarget.ipnsNetworkKey, cid: exactTarget.rootCid },
+    {
+      networkKey: exactTarget.ipnsNetworkKey,
+      cid: exactTarget.rootCid,
+      sequence: exactTarget.ipnsPredecessor.sequence + 1,
+    },
     { at: NOW },
   );
 }
@@ -192,6 +228,101 @@ describe("exact-target Ed25519 authorization", () => {
     delete process.env.S3_SECRET_ACCESS_KEY;
   });
 
+  it("rejects Pinata host/path normalization tricks before reading a capability file", async () => {
+    const exactTarget = target();
+    for (const endpoint of [
+      "https://api.pinata.cloud/psa/",
+      "https://API.pinata.cloud/psa",
+      "https://api.pinata.cloud/psa?redirect=1",
+      "https://api.pinata.cloud/psa#pins",
+      "https://api.pinata.cloud/psa/../psa",
+      "https://api.pinata.cloud/%70sa",
+      "https://api.pinata.cloud/psa/pins",
+      "https://api.pinata.cloud@evil.example/psa",
+    ]) {
+      let fileReads = 0;
+      await expect(
+        loadLivePublicationCapabilities({
+          target: exactTarget,
+          endpoint,
+          envFile: "/must-not-be-read.env",
+          environment: { SECONDARY_PIN_SERVICE_URL: endpoint },
+          loadEnvironmentFile: async () => {
+            fileReads += 1;
+          },
+        }),
+      ).rejects.toThrow(/must exactly equal signed|signed Pinata origin\/path/);
+      expect(fileReads, endpoint).toBe(0);
+    }
+
+    for (const candidate of [
+      { ...exactTarget, secondaryPin: { ...exactTarget.secondaryPin, provider: "other" } },
+      {
+        ...exactTarget,
+        secondaryPin: { ...exactTarget.secondaryPin, rootPinName: "wrong/root" },
+      },
+      {
+        ...exactTarget,
+        secondaryPin: { ...exactTarget.secondaryPin, manifestPinName: "wrong/manifest" },
+      },
+    ]) {
+      let fileReads = 0;
+      await expect(
+        loadLivePublicationCapabilities({
+          target: candidate,
+          endpoint: exactTarget.secondaryPin.apiBase,
+          envFile: "/must-not-be-read.env",
+          environment: { SECONDARY_PIN_SERVICE_URL: exactTarget.secondaryPin.apiBase },
+          loadEnvironmentFile: async () => {
+            fileReads += 1;
+          },
+        }),
+      ).rejects.toThrow(/Invalid publication target/);
+      expect(fileReads).toBe(0);
+    }
+  });
+
+  it("loads tokens only after exact Pinata target comparison and rejects env-file drift", async () => {
+    const exactTarget = target();
+    let fileReads = 0;
+    const environment = {
+      SECONDARY_PIN_SERVICE_URL: exactTarget.secondaryPin.apiBase,
+    };
+    const capabilities = await loadLivePublicationCapabilities({
+      target: exactTarget,
+      endpoint: environment.SECONDARY_PIN_SERVICE_URL,
+      envFile: "/external/capabilities.env",
+      environment,
+      loadEnvironmentFile: async (_path, env) => {
+        fileReads += 1;
+        env.S3_ACCESS_KEY_ID = "filebase-access";
+        env.S3_SECRET_ACCESS_KEY = "filebase-secret";
+        env.SECONDARY_PIN_SERVICE_TOKEN = "scoped-pinata-jwt";
+      },
+    });
+    expect(fileReads).toBe(1);
+    expect(capabilities.secondaryPinEndpoint).toBe("https://api.pinata.cloud/psa");
+    expect(capabilities.secondaryPinToken).toBe("scoped-pinata-jwt");
+
+    let driftFileReads = 0;
+    const drifted = {
+      SECONDARY_PIN_SERVICE_URL: exactTarget.secondaryPin.apiBase,
+    };
+    await expect(
+      loadLivePublicationCapabilities({
+        target: exactTarget,
+        endpoint: drifted.SECONDARY_PIN_SERVICE_URL,
+        envFile: "/external/capabilities.env",
+        environment: drifted,
+        loadEnvironmentFile: async (_path, env) => {
+          driftFileReads += 1;
+          env.SECONDARY_PIN_SERVICE_URL = "https://evil.example/psa";
+        },
+      }),
+    ).rejects.toThrow(/must exactly equal signed/);
+    expect(driftFileReads).toBe(1);
+  });
+
   it("does not let approval for candidate A publish candidate B", () => {
     const keyPair = keys();
     const candidateA = target("20260911T120000Z", "a");
@@ -202,7 +333,7 @@ describe("exact-target Ed25519 authorization", () => {
     ).toThrow(/exact target/);
   });
 
-  it("binds both ingestion mode and producing workflow into the signature", () => {
+  it("binds commit, workflow, CARs, Pinata target, pin names, and IPNS predecessor", () => {
     const keyPair = keys();
     const exactTarget = target();
     const signed = approval(exactTarget, keyPair);
@@ -218,7 +349,71 @@ describe("exact-target Ed25519 authorization", () => {
       verifyPublishAuthorization(
         signed,
         keyPair.publicKey,
+        { ...exactTarget, candidateCommit: "6".repeat(40) },
+        { now: NOW },
+      ),
+    ).toThrow(/exact target/);
+    expect(() =>
+      verifyPublishAuthorization(
+        signed,
+        keyPair.publicKey,
+        {
+          ...exactTarget,
+          primaryCars: {
+            ...exactTarget.primaryCars,
+            root: { ...exactTarget.primaryCars.root, key: `runs/${exactTarget.runId}/other.car` },
+          },
+        },
+        { now: NOW },
+      ),
+    ).toThrow(/exact target|immutable run-specific/);
+    expect(() =>
+      verifyPublishAuthorization(
+        signed,
+        keyPair.publicKey,
         { ...exactTarget, candidateWorkflowRunId: "987654321" },
+        { now: NOW },
+      ),
+    ).toThrow(/exact target/);
+    for (const secondaryPin of [
+      { ...exactTarget.secondaryPin, provider: "other" },
+      { ...exactTarget.secondaryPin, apiBase: "https://evil.example/psa" },
+      { ...exactTarget.secondaryPin, apiOrigin: "https://evil.example" },
+      { ...exactTarget.secondaryPin, apiPath: "/pinning/pinJSONToIPFS" },
+      { ...exactTarget.secondaryPin, rootPinName: "different/root" },
+      { ...exactTarget.secondaryPin, manifestPinName: "different/manifest" },
+    ]) {
+      expect(() =>
+        verifyPublishAuthorization(
+          signed,
+          keyPair.publicKey,
+          { ...exactTarget, secondaryPin },
+          { now: NOW },
+        ),
+      ).toThrow(/exact target|Invalid publication target/);
+    }
+    expect(() =>
+      verifyPublishAuthorization(
+        signed,
+        keyPair.publicKey,
+        {
+          ...exactTarget,
+          ipnsPredecessor: { ...exactTarget.ipnsPredecessor, sequence: 8 },
+        },
+        { now: NOW },
+      ),
+    ).toThrow(/exact target/);
+    expect(() =>
+      verifyPublishAuthorization(
+        signed,
+        keyPair.publicKey,
+        {
+          ...exactTarget,
+          ipnsPredecessor: {
+            ...exactTarget.ipnsPredecessor,
+            cid: "bafybeidifferentpredecessorcid5555555555555555555555555",
+          },
+        },
         { now: NOW },
       ),
     ).toThrow(/exact target/);
@@ -231,6 +426,10 @@ describe("exact-target Ed25519 authorization", () => {
     const legacy = { ...current };
     delete legacy.mode;
     delete legacy.candidateWorkflowRunId;
+    delete legacy.candidateCommit;
+    delete legacy.primaryCars;
+    delete legacy.secondaryPin;
+    delete legacy.ipnsPredecessor;
     const attemptId = `sha256:${createHash("sha256").update(canonicalJson(legacy)).digest("hex")}`;
     await import("node:fs/promises").then(({ writeFile }) =>
       writeFile(
@@ -266,7 +465,7 @@ describe("exact-target Ed25519 authorization", () => {
         keyPair.publicKey,
         { now: NOW, at: NOW },
       ),
-    ).rejects.toThrow(/predates signed mode\/workflow identity/);
+    ).rejects.toThrow(/predates the current signed commit\/provider\/predecessor contract/);
   });
 
   it("rejects expiry and a forged signature", () => {
@@ -381,8 +580,21 @@ describe("transactional publication ledger", () => {
   it("fails closed on null, stale-CID, and wrong-name IPNS readback", async () => {
     const cases = [
       null,
-      { networkKey: target().ipnsNetworkKey, cid: target("20260911T120001Z", "b").rootCid },
-      { networkKey: "k51qzi5uqu5differentnetworkkey000000000000", cid: target().rootCid },
+      {
+        networkKey: target().ipnsNetworkKey,
+        cid: target("20260911T120001Z", "b").rootCid,
+        sequence: target().ipnsPredecessor.sequence + 1,
+      },
+      {
+        networkKey: "k51qzi5uqu5differentnetworkkey000000000000",
+        cid: target().rootCid,
+        sequence: target().ipnsPredecessor.sequence + 1,
+      },
+      {
+        networkKey: target().ipnsNetworkKey,
+        cid: target().rootCid,
+        sequence: target().ipnsPredecessor.sequence + 2,
+      },
     ];
     for (const readback of cases) {
       const ledgerPath = await scratchLedger();
@@ -653,7 +865,11 @@ describe("transactional publication ledger", () => {
         current = await recordVerifiedIpnsReadback(
           ledgerPath,
           attemptId,
-          { networkKey: exactTarget.ipnsNetworkKey, cid: exactTarget.rootCid },
+          {
+            networkKey: exactTarget.ipnsNetworkKey,
+            cid: exactTarget.rootCid,
+            sequence: exactTarget.ipnsPredecessor.sequence + 1,
+          },
           { at: NOW },
         );
       if (current.state === "IPNS_VERIFIED")

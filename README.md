@@ -48,7 +48,8 @@ release. See [the quality audit](docs/quality-audit.md), [runbook](docs/runbook.
   linkage state. The 511 records that do not join the assessed roll remain queryable.
 - Lake County CD Plus ingestion plus a completed, resumable **permit-year 26** Clermont
   eTRAKiT harvest: 4,132 enumerated, 4,061 achievable and extracted, and 71 permanently
-  classified dead because the source provides no parcel key. The repository also
+  excluded by the prior local no-parcel-key rule. The repaired harvester preserves those
+  public details as valid-unlinked records on the fresh full run. The repository also
   implements partitioned, fenced, digest-bound orchestration and immutable last-good
   materialization for permit years 15–26, but that full historical capture has not been
   authorized, run, or certified.
@@ -73,7 +74,7 @@ release. See [the quality audit](docs/quality-audit.md), [runbook](docs/runbook.
 | Property, ownership and coordinates           | Pass                            | Full DOR roll; 209,503 parcels have 2025 GIO centroids                                                                                                                                                                     |
 | Permit records and long-open signals          | Pass locally                    | 21,732 permit-grain rows; 5,752 open and 3,681 roofing rows                                                                                                                                                                |
 | Contractor identity                           | Partial by source               | Clermont only: 3,634 named permit rows, 996 distinct contractors; other jurisdictions do not publish an accessible field                                                                                                   |
-| BBB rating                                    | Honest source limitation        | 0 published ratings; BBB blocks this egress and the Oracle workflow permits that browser collection only on approved US AWS remote compute                                                                                 |
+| BBB rating                                    | Honest source limitation        | 0 published ratings; the default BBB route returned 403, one prohibited browser-fingerprint spoof returned 200, and no approved official-API harvest was run                                                               |
 | Business records                              | Pass with measured match limits | 33,346 DOR TPP accounts; 2,060 address matches attributed across 2,726 properties                                                                                                                                          |
 | Roof age / 15-year query                      | Pass with explicit basis        | 117,579 properties meet the default threshold; basis is completed permit, issued permit, or year built                                                                                                                     |
 | More than 10 years without ownership exchange | Unsupported by available source | The public DOR material covers only the current 2025–2026 sale window; the system returns the narrower `no_recorded_sale_in_dor_window` signal and does not invent tenure                                                  |

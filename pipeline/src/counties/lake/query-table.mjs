@@ -32,7 +32,9 @@
  *   deliberately stable across counties, and the jurisdictional truth lives in
  *   the coverage snapshot.
  * - `bbb_rating` exists and stays null, with `enrichment_status` naming the
- *   reason. bbb.org answers HTTP 403 to every egress tested. Fabricating it
+ *   reason. BBB's default route returned HTTP 403; a prohibited browser-
+ *   fingerprint spoof returned 200 once but supplied no retained or ingested
+ *   data. No approved official-API harvest was run, and fabricating a rating
  *   would violate the use-oracle contract.
  *
  * @module counties/lake/query-table

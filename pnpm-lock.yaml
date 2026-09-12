@@ -47,6 +47,9 @@ importers:
       constructs:
         specifier: ^10.4.2
         version: 10.8.1
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
       tsx:
         specifier: ^4.20.6
         version: 4.23.13

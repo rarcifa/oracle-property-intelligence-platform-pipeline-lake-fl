@@ -1,8 +1,8 @@
 /**
  * Honest-completeness helpers.
  *
- * `bbb_rating` is a real column that is always null because the source answers
- * HTTP 403. `contractor_name` is the harder case: it is populated for the one
+ * `bbb_rating` is a real column that is always null because no approved BBB API
+ * harvest was run. `contractor_name` is the harder case: it is populated for the one
  * Lake jurisdiction whose permit portal publishes a contractor (Clermont) and
  * null for the other fourteen, so a blank cell means one of three different
  * things and the row itself has to say which. The UI must never render any of
@@ -60,7 +60,7 @@ const NOTICES: Readonly<Record<string, Omit<GatingNotice, "token">>> = Object.fr
     severity: "gated",
     headline: "BBB rating is gated at the source",
     detail:
-      "bbb.org answers HTTP 403 to this egress, and BBB browser work requires approved remote compute that this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null rather than being fabricated.",
+      "BBB's default request/browser route returned HTTP 403. One prohibited browser-fingerprint spoof returned 200 during verification, so this is a policy/API boundary rather than proof the site is unreachable. No BBB result was retained or ingested, and no approved official-API route is configured; bbb_rating stays null rather than being fabricated.",
   },
 });
 
@@ -91,7 +91,8 @@ export function gatedFieldNotices(status: string | null | undefined): GatingNoti
 
 /** Column-level gating explanations, keyed by column name. */
 export const ALWAYS_NULL_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
-  bbb_rating: "Gated at source: bbb.org answers HTTP 403 to this egress.",
+  bbb_rating:
+    "Policy/API gated: the default BBB route returned HTTP 403 and no approved official-API harvest was run.",
   has_bbb_contractor:
     "Always null: BBB enrichment is gated at source, so absence was never established.",
   has_sunbiz_tenant:

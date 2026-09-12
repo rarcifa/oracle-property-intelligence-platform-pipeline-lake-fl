@@ -7,10 +7,17 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  PAGERDUTY_PRODUCTION_ACCOUNT,
+  PAGERDUTY_PRODUCTION_REGION,
   PAGERDUTY_EVENTS_URL,
+  cloudWatchAlarmDedupKey,
+  DATASET_UNAVAILABLE_ALARM_NAME,
   resetPagerDutyRoutingKey,
   triggerPagerDutyAlert,
 } from "../src/observability/pagerduty.js";
+
+const SECRET_ARN =
+  "arn:aws:secretsmanager:us-east-2:122610508924:secret:oracle-lake/pagerduty-ABC123";
 
 const alert = {
   summary: "Lake County runtime cannot open the published dataset",
@@ -32,12 +39,19 @@ afterEach(() => {
 });
 
 describe("triggerPagerDutyAlert", () => {
+  it("shares the dataset-unavailable incident key with its self-resolving alarm", () => {
+    expect(cloudWatchAlarmDedupKey(DATASET_UNAVAILABLE_ALARM_NAME)).toBe(
+      "cloudwatch-alarm/OracleLake-dataset-unavailable",
+    );
+  });
   it("pages through Events API v2 and returns the dedup key", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(accepted());
     const result = await triggerPagerDutyAlert(alert, {
       environment: "production",
-      secretId: "oracle-lake/pagerduty",
-      secretsClient: secrets("routing-key-value"),
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: SECRET_ARN,
+      secretsClient: secrets('{"routing_key":"routing-key-value"}'),
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(result).toEqual({ status: "triggered", dedupKey: "pd-123" });
@@ -51,12 +65,43 @@ describe("triggerPagerDutyAlert", () => {
     expect((body.payload as { severity: string }).severity).toBe("critical");
   });
 
+  it("bounds details and strips credential-bearing keys at the transport boundary", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(accepted());
+    await triggerPagerDutyAlert(
+      {
+        ...alert,
+        summary: "s".repeat(1_000),
+        customDetails: {
+          error: "x".repeat(2_000),
+          nested: { authorization: "must-not-leave", safe: "visible" },
+        },
+      },
+      {
+        environment: "production",
+        accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+        region: PAGERDUTY_PRODUCTION_REGION,
+        secretArn: SECRET_ARN,
+        secretsClient: secrets('{"routing_key":"routing-key-value"}'),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      },
+    );
+
+    const request = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as {
+      payload: { summary: string; custom_details: Record<string, unknown> };
+    };
+    expect(request.payload.summary).toHaveLength(256);
+    expect(request.payload.custom_details.error).toHaveLength(512);
+    expect(request.payload.custom_details.nested).toEqual({ safe: "visible" });
+  });
+
   it("reads the routing key once per container", async () => {
     const secretsClient = secrets("routing-key-value");
     const fetchImpl = vi.fn().mockResolvedValue(accepted());
     const env = {
       environment: "production",
-      secretId: "oracle-lake/pagerduty",
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: SECRET_ARN,
       secretsClient,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -71,7 +116,9 @@ describe("triggerPagerDutyAlert", () => {
     for (const environment of ["staging", "", undefined]) {
       const result = await triggerPagerDutyAlert(alert, {
         environment,
-        secretId: "oracle-lake/pagerduty",
+        accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+        region: PAGERDUTY_PRODUCTION_REGION,
+        secretArn: SECRET_ARN,
         secretsClient: secrets("routing-key-value"),
         fetchImpl: fetchImpl as unknown as typeof fetch,
       });
@@ -83,20 +130,24 @@ describe("triggerPagerDutyAlert", () => {
   it("says plainly when no routing key is configured, rather than claiming success", async () => {
     const result = await triggerPagerDutyAlert(alert, {
       environment: "production",
-      secretId: "",
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: "",
       fetchImpl: vi.fn() as unknown as typeof fetch,
     });
     expect(result).toEqual({
-      status: "skipped",
-      reason: "no PagerDuty routing key is configured",
+      status: "failed",
+      reason: "PagerDuty requires one exact production Secrets Manager ARN",
     });
   });
 
   it("treats anything but 202 as nobody having been told", async () => {
     const result = await triggerPagerDutyAlert(alert, {
       environment: "production",
-      secretId: "oracle-lake/pagerduty",
-      secretsClient: secrets("routing-key-value"),
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: SECRET_ARN,
+      secretsClient: secrets('{"routing_key":"routing-key-value"}'),
       fetchImpl: vi
         .fn()
         .mockResolvedValue(new Response("no", { status: 400 })) as unknown as typeof fetch,
@@ -107,10 +158,66 @@ describe("triggerPagerDutyAlert", () => {
   it("never throws, so the caller can still rethrow the original failure", async () => {
     const result = await triggerPagerDutyAlert(alert, {
       environment: "production",
-      secretId: "oracle-lake/pagerduty",
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: SECRET_ARN,
       secretsClient: { send: vi.fn().mockRejectedValue(new Error("AccessDenied")) },
       fetchImpl: vi.fn() as unknown as typeof fetch,
     });
     expect(result).toEqual({ status: "failed", reason: "AccessDenied" });
+  });
+
+  it("fails closed for JSON secrets that omit routing_key", async () => {
+    const fetchImpl = vi.fn();
+    const result = await triggerPagerDutyAlert(alert, {
+      environment: "production",
+      accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+      region: PAGERDUTY_PRODUCTION_REGION,
+      secretArn: SECRET_ARN,
+      secretsClient: secrets('{"service":"lake"}'),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result).toEqual({
+      status: "failed",
+      reason: "PagerDuty JSON secret must contain a non-empty routing_key",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed 202 receipts instead of assuming the request was accepted", async () => {
+    for (const response of [
+      new Response("not-json", { status: 202 }),
+      new Response(JSON.stringify({ status: "success" }), { status: 202 }),
+      new Response(JSON.stringify({ dedup_key: "" }), { status: 202 }),
+    ]) {
+      resetPagerDutyRoutingKey();
+      const result = await triggerPagerDutyAlert(alert, {
+        environment: "production",
+        accountId: PAGERDUTY_PRODUCTION_ACCOUNT,
+        region: PAGERDUTY_PRODUCTION_REGION,
+        secretArn: SECRET_ARN,
+        secretsClient: secrets('{"routing_key":"routing-key-value"}'),
+        fetchImpl: vi.fn().mockResolvedValue(response) as unknown as typeof fetch,
+      });
+      expect(result.status).toBe("failed");
+    }
+  });
+
+  it("never pages from the wrong account or region", async () => {
+    const fetchImpl = vi.fn();
+    for (const target of [
+      { accountId: "000000000000", region: PAGERDUTY_PRODUCTION_REGION },
+      { accountId: PAGERDUTY_PRODUCTION_ACCOUNT, region: "us-east-1" },
+    ]) {
+      const result = await triggerPagerDutyAlert(alert, {
+        environment: "production",
+        ...target,
+        secretArn: SECRET_ARN,
+        secretsClient: secrets('{"routing_key":"routing-key-value"}'),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      expect(result.status).toBe("skipped");
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

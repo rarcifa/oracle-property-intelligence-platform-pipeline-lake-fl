@@ -32,7 +32,12 @@ import {
 } from "./artifacts.js";
 import { buildColumnDocs } from "./columns.js";
 import { buildPermitDocs } from "./permits.js";
-import { buildSourceSnapshot, selectCorpusSource, type SourceInput } from "./source.js";
+import {
+  buildSourceSnapshot,
+  collectLocalModuleClosure,
+  selectCorpusSource,
+  type SourceInput,
+} from "./source.js";
 import {
   buildAccessDocs,
   buildJurisdictionDocs,
@@ -299,6 +304,7 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
     "FL DOR SDF 2026P": ["source:sdf"],
     "FL DOR TPP 2026P": ["source:tpp"],
     "gated at source (HTTP 403)": ["source:contractor-identity"],
+    "BBB policy/API gate (default route HTTP 403)": ["source:bbb"],
     // schema.ts's label for contractor_name, which stopped being the gated one
     // when Clermont's portal started supplying the column. It keeps the gated
     // document, because that is where the whole fifteen-jurisdiction picture is
@@ -352,19 +358,23 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
     ),
   );
 
+  const generatorSources = await collectLocalModuleClosure([
+    resolve(REPO_ROOT, "packages/rag/src/index/build-index.ts"),
+  ]);
   const sourcePaths = [
     selected.receiptPath,
     ...(selected.releaseReceiptPath ? [selected.releaseReceiptPath] : []),
     ...selected.artifactPaths.values(),
     ...chunks.map((chunk) => resolve(REPO_ROOT, chunk.provenance.sourceFile)),
-    resolve(REPO_ROOT, "packages/shared/src/schema.ts"),
-    resolve(REPO_ROOT, "packages/shared/src/permits.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/aliases.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/corpus/artifacts.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/corpus/columns.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/corpus/entity.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/corpus/permits.ts"),
-    resolve(REPO_ROOT, "packages/rag/src/corpus/sources-yaml.ts"),
+    ...generatorSources,
+    resolve(REPO_ROOT, "package.json"),
+    resolve(REPO_ROOT, "pnpm-lock.yaml"),
+    resolve(REPO_ROOT, "pnpm-workspace.yaml"),
+    resolve(REPO_ROOT, "tsconfig.base.json"),
+    resolve(REPO_ROOT, "packages/rag/package.json"),
+    resolve(REPO_ROOT, "packages/rag/tsconfig.json"),
+    resolve(REPO_ROOT, "packages/shared/package.json"),
+    resolve(REPO_ROOT, "packages/shared/tsconfig.json"),
   ];
   const sourceSnapshot = await buildSourceSnapshot(sourcePaths);
 

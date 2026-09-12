@@ -167,6 +167,73 @@ describe("Clermont certified last-good baseline store", () => {
     ).toBe("lake-clermont-baseline-20260911-r2");
   });
 
+  it("serializes competing promotions and recovers an already-applied exact candidate", async () => {
+    const storeRoot = await mkdtemp(path.join(os.tmpdir(), "clermont-concurrent-fenced-"));
+    const artifactRoot = path.join(storeRoot, "candidate");
+    await writeSyntheticClermontArtifacts(artifactRoot);
+    const original = syntheticClermontBaseline();
+    const originalPointer = await promoteCertifiedClermontBaseline({
+      storeRoot,
+      candidateArtifactRoot: artifactRoot,
+      candidate: original,
+      now: NOW,
+      expectedSignatures: clermontSignatures,
+      expectedPriorSha256: null,
+    });
+    const candidates = [
+      syntheticClermontBaseline({
+        certifiedAt: "2026-09-11T08:50:00.000Z",
+        expiresAt: "2026-09-18T08:50:00.000Z",
+        openYears: [2018, 2026],
+      }),
+      syntheticClermontBaseline({
+        certifiedAt: "2026-09-11T08:51:00.000Z",
+        expiresAt: "2026-09-18T08:51:00.000Z",
+        openYears: [2019, 2026],
+      }),
+    ];
+    candidates[0]!.baselineId = "lake-clermont-baseline-concurrent-a";
+    candidates[1]!.baselineId = "lake-clermont-baseline-concurrent-b";
+
+    const results = await Promise.allSettled(
+      candidates.map((candidate) =>
+        promoteCertifiedClermontBaseline({
+          storeRoot,
+          candidateArtifactRoot: artifactRoot,
+          candidate,
+          now: NOW,
+          expectedSignatures: clermontSignatures,
+          expectedPriorSha256: originalPointer.baselineSha256,
+        }),
+      ),
+    );
+    const successes = results.filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof promoteCertifiedClermontBaseline>>
+      > => result.status === "fulfilled",
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(String((failures[0] as PromiseRejectedResult).reason)).toMatch(/unfenced promotion/);
+
+    const winner = successes[0]!.value;
+    const winningCandidate = candidates.find(
+      (candidate) => clermontBaselineDigest(candidate) === winner.baselineSha256,
+    )!;
+    const recovered = await promoteCertifiedClermontBaseline({
+      storeRoot,
+      candidateArtifactRoot: artifactRoot,
+      candidate: winningCandidate,
+      now: "2026-09-11T09:05:00.000Z",
+      expectedSignatures: clermontSignatures,
+      expectedPriorSha256: originalPointer.baselineSha256,
+    });
+    expect(recovered).toEqual(winner);
+  });
+
   it("rejects stale and incompatible last-good artifacts", async () => {
     const staleStore = await mkdtemp(path.join(os.tmpdir(), "clermont-stale-"));
     const artifactRoot = path.join(staleStore, "candidate");

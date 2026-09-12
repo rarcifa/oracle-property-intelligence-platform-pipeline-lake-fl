@@ -15,7 +15,7 @@ import {
   type BatchHandoff,
   type BatchRequest,
 } from "./contracts.js";
-import { assertCostAllowed } from "./cost-plan.js";
+import { assertCostAllowed, planBatchCost } from "./cost-plan.js";
 import {
   downloadVerifiedObject,
   getVerifiedJson,
@@ -28,6 +28,11 @@ import {
   requiredStageNames,
   validateRequiredHandoffs,
 } from "./reconciliation.js";
+import {
+  createBatchWorkerObserver,
+  emitBatchCostPrediction,
+  type BatchWorkerOperation,
+} from "./worker-observability.js";
 
 const runtimeRoot = path.resolve(
   process.env.ORACLE_RUNTIME_ROOT ??
@@ -112,15 +117,7 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-function log(event: string, details: Record<string, unknown> = {}): void {
-  console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      event,
-      ...details,
-    }),
-  );
-}
+let log: (event: string, details?: Record<string, unknown>) => void = () => undefined;
 
 async function loadRequest(): Promise<{
   bucket: string;
@@ -141,6 +138,8 @@ async function loadRequest(): Promise<{
     throw new Error("Batch request key or digest is not content-addressed correctly");
   }
   const deploymentCeiling = process.env.MAX_COST_CEILING_USD;
+  const predictedPlan = planBatchCost(request);
+  emitBatchCostPrediction(predictedPlan.estimatedUsd);
   const plan = assertCostAllowed(
     request,
     deploymentCeiling === undefined ? undefined : Number(deploymentCeiling),
@@ -580,13 +579,16 @@ async function runReconciliation(
   );
 }
 
-async function main(): Promise<void> {
-  const stage = process.argv[2];
-  if (!["sunbiz", "bbb", "reconciliation"].includes(stage ?? "")) {
+function requestedStage(value: string | undefined): Exclude<BatchWorkerOperation, "permit"> {
+  if (value !== "sunbiz" && value !== "bbb" && value !== "reconciliation") {
     throw new Error(
       "Usage: worker <sunbiz|bbb|reconciliation>",
     );
   }
+  return value;
+}
+
+async function main(stage: Exclude<BatchWorkerOperation, "permit">): Promise<void> {
   const { bucket, request, digest } = await loadRequest();
   log("stage_started", { runId: request.runId, stage });
   if (stage === "sunbiz") return runSunbiz(bucket, request, digest);
@@ -594,13 +596,9 @@ async function main(): Promise<void> {
   return runReconciliation(bucket, request, digest);
 }
 
-main().catch((error: unknown) => {
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      event: "stage_failed",
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+const stage = requestedStage(process.argv[2]);
+const observer = createBatchWorkerObserver(stage);
+log = observer.info;
+observer.run(() => main(stage)).catch(() => {
   process.exitCode = 1;
 });

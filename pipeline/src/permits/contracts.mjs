@@ -2,11 +2,9 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
-export const PERMIT_RECORD_SCHEMA_VERSION =
-  "elephant.normalized-permit-record.v1";
+export const PERMIT_RECORD_SCHEMA_VERSION = "elephant.normalized-permit-record.v1";
 export const PERMIT_RUN_SCHEMA_VERSION = "elephant.permit-harvest-run.v1";
-export const PERMIT_ARTIFACT_MANIFEST_SCHEMA_VERSION =
-  "elephant.permit-artifact-manifest.v1";
+export const PERMIT_ARTIFACT_MANIFEST_SCHEMA_VERSION = "elephant.permit-artifact-manifest.v1";
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const STABLE_ID_PATTERN = /^[a-f0-9]{32}$/;
@@ -91,7 +89,7 @@ export const normalizedPermitRecordSchema = permitTableRowSchema
     jurisdictionKey: z.string().regex(KEY_PATTERN),
     sourceRecordId: z.string().trim().min(1),
     sourceUrl: z.string().url(),
-    requestedParcelIdentifier: z.string().trim().min(1),
+    requestedParcelIdentifier: nullableText,
     requestedPropertyId: z.string().regex(STABLE_ID_PATTERN).nullable(),
     workAddress: nullableText,
     isRoofPermit: z.boolean(),
@@ -106,16 +104,14 @@ export const normalizedPermitRecordSchema = permitTableRowSchema
       context.addIssue({
         code: "custom",
         path: ["property_id"],
-        message:
-          "Permit property_id must be bound to the explicitly requested property",
+        message: "Permit property_id must be bound to the explicitly requested property",
       });
     }
     if (record.parcel_identifier !== record.requestedParcelIdentifier) {
       context.addIssue({
         code: "custom",
         path: ["parcel_identifier"],
-        message:
-          "Permit parcel_identifier must be bound to the explicitly requested parcel",
+        message: "Permit parcel_identifier must be bound to the explicitly requested parcel",
       });
     }
     if (new URL(record.sourceUrl).protocol !== "https:") {
@@ -132,12 +128,7 @@ export const permitFailureSchema = z
     parcelIdentifier: z.string().trim().min(1),
     propertyId: z.string().regex(STABLE_ID_PATTERN).nullable(),
     jurisdictionKey: z.string().regex(KEY_PATTERN),
-    classification: z.enum([
-      "permanent",
-      "transient",
-      "blocked",
-      "unrouted",
-    ]),
+    classification: z.enum(["permanent", "transient", "blocked", "unrouted"]),
     errorCode: z.string().regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/),
     message: z.string().min(1),
     attempts: z.number().int().positive(),
@@ -164,12 +155,7 @@ export const parcelPermitStatusSchema = z
 const jurisdictionCoverageSchema = z
   .object({
     jurisdictionKey: z.string().regex(KEY_PATTERN),
-    sourceStatus: z.enum([
-      "supported",
-      "blocked",
-      "manual-only",
-      "unavailable",
-    ]),
+    sourceStatus: z.enum(["supported", "blocked", "manual-only", "unavailable"]),
     attemptedParcels: z.number().int().nonnegative(),
     succeededParcels: z.number().int().nonnegative(),
     failedParcels: z.number().int().nonnegative(),
@@ -245,11 +231,7 @@ export const permitRunManifestSchema = z
   })
   .strict();
 
-export function createStablePermitId({
-  countyKey,
-  jurisdictionKey,
-  sourceRecordId,
-}) {
+export function createStablePermitId({ countyKey, jurisdictionKey, sourceRecordId }) {
   return createHash("sha256")
     .update(`${countyKey}\u0000${jurisdictionKey}\u0000${sourceRecordId}`)
     .digest("hex")
@@ -259,8 +241,6 @@ export function createStablePermitId({
 export function toPermitTableRow(record) {
   const parsed = normalizedPermitRecordSchema.parse(record);
   return permitTableRowSchema.parse(
-    Object.fromEntries(
-      Object.keys(permitTableSchemaFields).map((key) => [key, parsed[key]]),
-    ),
+    Object.fromEntries(Object.keys(permitTableSchemaFields).map((key) => [key, parsed[key]])),
   );
 }

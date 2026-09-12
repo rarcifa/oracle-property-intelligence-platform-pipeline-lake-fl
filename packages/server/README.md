@@ -187,8 +187,10 @@ To register it with an MCP client:
 
 ## Honesty guarantees enforced in code
 
-- `bbb_rating` is a real column that is null for every row because bbb.org answers
-  HTTP 403. `contractor_name` is a real column that is **populated for Clermont
+- `bbb_rating` is a real column that is null for every row because the default BBB
+  route returned HTTP 403 and no approved official-API harvest was run; one prohibited
+  browser-fingerprint spoof returned 200 but supplied no retained or ingested data.
+  `contractor_name` is a real column that is **populated for Clermont
   parcels only** — one of Lake County's fifteen permitting jurisdictions, and the
   only one whose permit portal publishes a contractor of record — and null on the
   rest of the county. `/api/stats` and the contractor view report

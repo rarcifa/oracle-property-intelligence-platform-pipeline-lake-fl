@@ -21,7 +21,11 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createContext } from "./context.js";
 import { RuntimeDataset } from "./data/source.js";
-import { triggerPagerDutyAlert } from "./observability/pagerduty.js";
+import {
+  cloudWatchAlarmDedupKey,
+  DATASET_UNAVAILABLE_ALARM_NAME,
+  triggerPagerDutyAlert,
+} from "./observability/pagerduty.js";
 import type { Router } from "./http/router.js";
 
 /** A Lambda Function URL request, in its v2.0 payload shape. */
@@ -130,30 +134,41 @@ async function getRouter(): Promise<Router> {
  * a failed refresh must leave the container serving what it was already
  * serving, not take it down.
  */
+export async function observePointerRefresh(
+  current: Pick<RuntimeDataset, "refresh">,
+): Promise<void> {
+  // This work can finish after the request-scoped metric buffer was flushed.
+  // Give it an independent EMF buffer and always flush that buffer on its own
+  // completion, including a rejected refresh promise.
+  const refreshMetrics = new Metrics({ namespace: "OracleLake", serviceName: "runtime" });
+  try {
+    const outcome = await current.refresh();
+    if (outcome.status === "upgraded") {
+      logger.info("dataset_upgraded", {
+        from: outcome.from,
+        to: outcome.pointer.rootCid,
+        runId: outcome.pointer.runId,
+      });
+      refreshMetrics.addMetric("DatasetUpgraded", MetricUnit.Count, 1);
+    } else if (outcome.status === "failed") {
+      // Not paged: the process is still serving a verified published run, so
+      // this is degraded freshness, not a failure a human must act on now.
+      // The alarm on this metric is what pages, once it persists.
+      logger.warn("pointer_refresh_failed", { error: outcome.error.message });
+      refreshMetrics.addMetric("PointerRefreshFailed", MetricUnit.Count, 1);
+    }
+  } catch (error) {
+    logger.warn("pointer_refresh_failed", { error: String(error) });
+    refreshMetrics.addMetric("PointerRefreshFailed", MetricUnit.Count, 1);
+  } finally {
+    refreshMetrics.publishStoredMetrics();
+  }
+}
+
 function refreshPointerInBackground(): void {
   const current = dataset;
   if (current === null) return;
-  void current
-    .refresh()
-    .then((outcome) => {
-      if (outcome.status === "upgraded") {
-        logger.info("dataset_upgraded", {
-          from: outcome.from,
-          to: outcome.pointer.rootCid,
-          runId: outcome.pointer.runId,
-        });
-        metrics.addMetric("DatasetUpgraded", MetricUnit.Count, 1);
-      } else if (outcome.status === "failed") {
-        // Not paged: the process is still serving a verified published run, so
-        // this is degraded freshness, not a failure a human must act on now.
-        // The alarm on this metric is what pages, once it persists.
-        logger.warn("pointer_refresh_failed", { error: outcome.error.message });
-        metrics.addMetric("PointerRefreshFailed", MetricUnit.Count, 1);
-      }
-    })
-    .catch((error: unknown) => {
-      logger.warn("pointer_refresh_failed", { error: String(error) });
-    });
+  void observePointerRefresh(current);
 }
 
 /**
@@ -235,7 +250,7 @@ export async function bufferedHandler(event: FunctionUrlEvent): Promise<Function
       summary: `Lake County runtime cannot open the published dataset: ${String(error)}`,
       source: process.env.AWS_LAMBDA_FUNCTION_NAME ?? "oracle-lake-runtime",
       severity: "critical",
-      dedupKey: `oracle-lake-runtime/dataset-unavailable/${process.env.AWS_LAMBDA_FUNCTION_NAME ?? "local"}`,
+      dedupKey: cloudWatchAlarmDedupKey(DATASET_UNAVAILABLE_ALARM_NAME),
       customDetails: { method, path, error: String(error) },
     });
     // Whether anybody was actually told is itself evidence, so it is logged

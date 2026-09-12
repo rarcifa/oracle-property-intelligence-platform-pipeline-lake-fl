@@ -89,7 +89,7 @@
       "FL GIO parcel centroids 2025",
       "Lake County CD Plus permit layer",
       "derived by the pipeline",
-      "gated at source (HTTP 403)",
+      "BBB policy/API gate (default route HTTP 403)",
       "not ingested for this run"
     ],
     "runId": "20260909T185056Z",

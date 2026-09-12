@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertCostAllowed,
   planBatchCost,
+  planPermitBatchCost,
 } from "../src/batch/cost-plan.js";
 import { syntheticRequest } from "./batch-fixtures.js";
 
@@ -49,5 +50,20 @@ describe("county-enrichment conservative cost gate", () => {
     expect(() => assertCostAllowed(request)).toThrow(
       /exceeds the configured/,
     );
+  });
+
+  it("bounds the separate permit worker from input size before source reads", () => {
+    const allowed = planPermitBatchCost(120_051_259, 64_000, 5);
+    expect(allowed.allowed).toBe(true);
+    expect(allowed.components.map(({ name }) => name)).toEqual([
+      "permit-transform",
+      "permit-input-volume",
+      "s3-logs-requests",
+    ]);
+
+    const blocked = planPermitBatchCost(120_051_259, 64_000, 1);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.estimatedUsd).toBe(allowed.estimatedUsd);
+    expect(() => planPermitBatchCost(0, 64_000, 5)).toThrow(/positive integer/);
   });
 });

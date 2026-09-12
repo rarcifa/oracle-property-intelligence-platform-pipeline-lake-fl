@@ -11,6 +11,7 @@ import {
   buildCityCentroidSql,
   boundStatement,
   BUSINESS_VIEW_NOTE,
+  CONTRACTOR_VIEW_NOTE,
   buildBusinessByCitySql,
   buildBusinessByTypeSql,
   buildCountSql,
@@ -339,7 +340,7 @@ export async function getContractorView(
     // rather than letting the notices imply a countywide zero.
     gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
     provenance: provenance(context, sql, []),
-    note: "Permit signals combine the Lake County CD Plus layer, joined to the DOR roll on Alternate_Key, with the harvested Clermont eTRAKiT records. CD Plus publishes a rolling 365-day Permit_LastModDate window for unincorporated Lake County; Clermont is the only municipality with harvested contractor detail in this run.",
+    note: CONTRACTOR_VIEW_NOTE,
   };
 }
 

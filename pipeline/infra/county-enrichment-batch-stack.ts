@@ -11,6 +11,7 @@ import {
   type StackProps,
 } from "aws-cdk-lib";
 import * as batch from "aws-cdk-lib/aws-batch";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecrAssets from "aws-cdk-lib/aws-ecr-assets";
 import * as ecs from "aws-cdk-lib/aws-ecs";
@@ -23,6 +24,19 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import type { Construct } from "constructs";
 
+import {
+  createPagerDutyFailureNotifier,
+  pagerDutySecretArnFromContext,
+} from "./pagerduty-failure-notifier.js";
+import { PERMIT_BATCH_MAXIMUM_HOURS } from "../src/batch/cost-plan.js";
+import {
+  BATCH_COST_METRIC_NAME,
+  BATCH_PROJECT_NAME,
+  BATCH_WORKERS,
+  BATCH_WORKER_METRIC_NAMES,
+  type BatchWorkerOperation,
+} from "../src/batch/worker-observability.js";
+
 interface JobDefinitionOptions {
   id: string;
   name: string;
@@ -32,32 +46,35 @@ interface JobDefinitionOptions {
   ephemeralStorageGib: number;
   timeout: Duration;
   jobRole: iam.IRole;
+  operation: BatchWorkerOperation;
 }
+
+export const COUNTY_ENRICHMENT_ACCOUNT = "122610508924";
+export const COUNTY_ENRICHMENT_REGION = "us-east-2";
 
 export class CountyEnrichmentBatchStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+    if (this.account !== COUNTY_ENRICHMENT_ACCOUNT || this.region !== COUNTY_ENRICHMENT_REGION) {
+      throw new Error(
+        `CountyEnrichmentBatchStack is pinned to AWS account ${COUNTY_ENRICHMENT_ACCOUNT} in ${COUNTY_ENRICHMENT_REGION}`,
+      );
+    }
 
     const alertEmail = this.node.tryGetContext("alertEmail");
-    if (
-      typeof alertEmail !== "string" ||
-      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmail)
-    ) {
-      throw new Error(
-        "CDK context alertEmail is required and must be a valid email address",
-      );
+    if (typeof alertEmail !== "string" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmail)) {
+      throw new Error("CDK context alertEmail is required and must be a valid email address");
     }
-    const maxCostCeilingUsd = Number(
-      this.node.tryGetContext("maxCostCeilingUsd") ?? 5,
-    );
+    const maxCostCeilingUsd = Number(this.node.tryGetContext("maxCostCeilingUsd") ?? 5);
+    const pagerDutySecretArn = pagerDutySecretArnFromContext(this);
     if (!Number.isFinite(maxCostCeilingUsd) || maxCostCeilingUsd <= 0) {
-      throw new Error(
-        "CDK context maxCostCeilingUsd must be a positive finite number",
-      );
+      throw new Error("CDK context maxCostCeilingUsd must be a positive finite number");
     }
 
-    const projectName =
-      this.node.tryGetContext("projectName") ?? "county-enrichment";
+    const projectName = this.node.tryGetContext("projectName") ?? BATCH_PROJECT_NAME;
+    if (projectName !== BATCH_PROJECT_NAME) {
+      throw new Error(`CDK context projectName must be exactly ${BATCH_PROJECT_NAME}`);
+    }
     Tags.of(this).add("project_name", projectName);
 
     const artifactBucket = new s3.Bucket(this, "ArtifactBucket", {
@@ -107,32 +124,23 @@ export class CountyEnrichmentBatchStack extends Stack {
       "TCP DNS fallback through the VPC resolver",
     );
 
-    const computeEnvironment = new batch.FargateComputeEnvironment(
-      this,
-      "ComputeEnvironment",
-      {
-        vpc,
-        vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-        securityGroups: [securityGroup],
-        maxvCpus: 6,
-        spot: false,
-      },
-    );
+    const computeEnvironment = new batch.FargateComputeEnvironment(this, "ComputeEnvironment", {
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      securityGroups: [securityGroup],
+      maxvCpus: 6,
+      spot: false,
+    });
     const jobQueue = new batch.JobQueue(this, "JobQueue", {
       priority: 1,
-      computeEnvironments: [
-        { computeEnvironment, order: 1 },
-      ],
+      computeEnvironments: [{ computeEnvironment, order: 1 }],
     });
 
     const logGroup = new logs.LogGroup(this, "BatchLogGroup", {
       retention: logs.RetentionDays.THREE_MONTHS,
       removalPolicy: RemovalPolicy.RETAIN,
     });
-    const runtimeRoot = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "..",
-    );
+    const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const imageAsset = new ecrAssets.DockerImageAsset(this, "BatchImage", {
       directory: runtimeRoot,
       file: "Dockerfile.batch",
@@ -176,9 +184,7 @@ export class CountyEnrichmentBatchStack extends Stack {
       "runs/*/artifacts/sunbiz/*",
       "runs/*/handoffs/sunbiz.json",
     ]);
-    this.grantList(sunbizRole, artifactBucket, [
-      "runs/*/handoffs/sunbiz.json",
-    ]);
+    this.grantList(sunbizRole, artifactBucket, ["runs/*/handoffs/sunbiz.json"]);
 
     this.grantObjects(bbbRole, artifactBucket, "s3:GetObject", [
       "requests/*",
@@ -206,9 +212,7 @@ export class CountyEnrichmentBatchStack extends Stack {
       "runs/*/artifacts/permit/*",
       "runs/*/handoffs/permit.json",
     ]);
-    this.grantList(permitRole, artifactBucket, [
-      "runs/*/handoffs/permit.json",
-    ]);
+    this.grantList(permitRole, artifactBucket, ["runs/*/handoffs/permit.json"]);
 
     this.grantObjects(reconciliationRole, artifactBucket, "s3:GetObject", [
       "requests/*",
@@ -219,40 +223,33 @@ export class CountyEnrichmentBatchStack extends Stack {
       "runs/*/artifacts/reconciliation/*",
       "runs/*/handoffs/reconciliation.json",
     ]);
-    this.grantList(reconciliationRole, artifactBucket, [
-      "runs/*/handoffs/*",
-    ]);
+    this.grantList(reconciliationRole, artifactBucket, ["runs/*/handoffs/*"]);
 
-    const createJobDefinition = (
-      options: JobDefinitionOptions,
-    ): batch.EcsJobDefinition => {
-      const container = new batch.EcsFargateContainerDefinition(
-        this,
-        `${options.id}Container`,
-        {
-          image,
-          command: options.command,
-          cpu: options.cpu,
-          memory: Size.mebibytes(options.memoryMib),
-          ephemeralStorageSize: Size.gibibytes(
-            options.ephemeralStorageGib,
-          ),
-          assignPublicIp: true,
-          executionRole,
-          jobRole: options.jobRole,
-          logging: ecs.LogDrivers.awsLogs({
-            logGroup,
-            streamPrefix: options.name,
-          }),
-          user: "node",
-          environment: {
-            HOME: "/work/home",
-            TMPDIR: "/work/tmp",
-            CHROME_EXECUTABLE_PATH: "/usr/bin/chromium",
-            MAX_COST_CEILING_USD: String(maxCostCeilingUsd),
-          },
+    const createJobDefinition = (options: JobDefinitionOptions): batch.EcsJobDefinition => {
+      const container = new batch.EcsFargateContainerDefinition(this, `${options.id}Container`, {
+        image,
+        command: options.command,
+        cpu: options.cpu,
+        memory: Size.mebibytes(options.memoryMib),
+        ephemeralStorageSize: Size.gibibytes(options.ephemeralStorageGib),
+        assignPublicIp: true,
+        executionRole,
+        jobRole: options.jobRole,
+        logging: ecs.LogDrivers.awsLogs({
+          logGroup,
+          streamPrefix: options.name,
+        }),
+        user: "node",
+        environment: {
+          HOME: "/work/home",
+          TMPDIR: "/work/tmp",
+          CHROME_EXECUTABLE_PATH: "/usr/bin/chromium",
+          MAX_COST_CEILING_USD: String(maxCostCeilingUsd),
+          ORACLE_METRIC_ENVIRONMENT: "production",
+          ORACLE_METRIC_OPERATION: options.operation,
+          ORACLE_PROJECT_NAME: projectName,
         },
-      );
+      });
       return new batch.EcsJobDefinition(this, options.id, {
         jobDefinitionName: options.name,
         container,
@@ -271,6 +268,7 @@ export class CountyEnrichmentBatchStack extends Stack {
       ephemeralStorageGib: 80,
       timeout: Duration.hours(4),
       jobRole: sunbizRole,
+      operation: "sunbiz",
     });
     const bbbJob = createJobDefinition({
       id: "BbbJobDefinition",
@@ -281,6 +279,7 @@ export class CountyEnrichmentBatchStack extends Stack {
       ephemeralStorageGib: 30,
       timeout: Duration.hours(6),
       jobRole: bbbRole,
+      operation: "bbb",
     });
     const reconciliationJob = createJobDefinition({
       id: "ReconciliationJobDefinition",
@@ -291,6 +290,7 @@ export class CountyEnrichmentBatchStack extends Stack {
       ephemeralStorageGib: 21,
       timeout: Duration.minutes(20),
       jobRole: reconciliationRole,
+      operation: "reconciliation",
     });
     const permitJob = createJobDefinition({
       id: "PermitJobDefinition",
@@ -299,57 +299,97 @@ export class CountyEnrichmentBatchStack extends Stack {
       cpu: 4,
       memoryMib: 16_384,
       ephemeralStorageGib: 80,
-      timeout: Duration.hours(4),
+      timeout: Duration.hours(PERMIT_BATCH_MAXIMUM_HOURS),
       jobRole: permitRole,
+      operation: "permit",
     });
 
-    const operatorPolicy = new iam.ManagedPolicy(
-      this,
-      "OperatorSubmissionPolicy",
-      {
-        description:
-          "Least-privilege policy for durable county-enrichment submissions",
-        statements: [
-          new iam.PolicyStatement({
-            actions: ["s3:GetObject", "s3:PutObject"],
-            resources: [
-              artifactBucket.arnForObjects("requests/*"),
-              artifactBucket.arnForObjects("runs/*/submissions/*"),
-              artifactBucket.arnForObjects("runs/*/recoveries/*"),
-            ],
-          }),
-          new iam.PolicyStatement({
-            actions: ["batch:SubmitJob"],
-            resources: [
-              jobQueue.jobQueueArn,
-              sunbizJob.jobDefinitionArn,
-              bbbJob.jobDefinitionArn,
-              reconciliationJob.jobDefinitionArn,
-              permitJob.jobDefinitionArn,
-            ],
-          }),
-          new iam.PolicyStatement({
-            actions: ["batch:ListJobs", "batch:DescribeJobs"],
-            resources: ["*"],
-          }),
-          new iam.PolicyStatement({
-            actions: ["cloudformation:DescribeStacks"],
-            resources: [this.stackId],
-          }),
-          new iam.PolicyStatement({
-            actions: ["sts:GetCallerIdentity"],
-            resources: ["*"],
+    const workerMetric = (
+      operation: BatchWorkerOperation,
+      metricName: string,
+      statistic = "Sum",
+    ): cloudwatch.Metric =>
+      new cloudwatch.Metric({
+        namespace: "OracleLake",
+        metricName,
+        dimensionsMap: {
+          service: BATCH_WORKERS[operation],
+          environment: "production",
+          operation,
+        },
+        period: Duration.minutes(5),
+        statistic,
+      });
+    const workerDashboard = new cloudwatch.Dashboard(this, "BatchWorkerDashboard", {
+      dashboardName: "OracleLake-county-enrichment-workers",
+    });
+    workerDashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: "Predicted batch cost (USD)",
+        left: [
+          new cloudwatch.Metric({
+            namespace: "OracleLake",
+            metricName: BATCH_COST_METRIC_NAME,
+            dimensionsMap: { service: projectName },
+            period: Duration.minutes(5),
+            statistic: "Maximum",
           }),
         ],
-      },
+      }),
     );
+    for (const operation of Object.keys(BATCH_WORKERS) as BatchWorkerOperation[]) {
+      workerDashboard.addWidgets(
+        new cloudwatch.GraphWidget({
+          title: `${operation} worker outcomes and duration`,
+          left: [
+            workerMetric(operation, BATCH_WORKER_METRIC_NAMES.processed),
+            workerMetric(operation, BATCH_WORKER_METRIC_NAMES.failed),
+          ],
+          right: [workerMetric(operation, BATCH_WORKER_METRIC_NAMES.duration, "p95")],
+        }),
+      );
+    }
+
+    const operatorPolicy = new iam.ManagedPolicy(this, "OperatorSubmissionPolicy", {
+      description: "Least-privilege policy for durable county-enrichment submissions",
+      statements: [
+        new iam.PolicyStatement({
+          actions: ["s3:GetObject", "s3:PutObject"],
+          resources: [
+            artifactBucket.arnForObjects("requests/*"),
+            artifactBucket.arnForObjects("runs/*/submissions/*"),
+            artifactBucket.arnForObjects("runs/*/recoveries/*"),
+          ],
+        }),
+        new iam.PolicyStatement({
+          actions: ["batch:SubmitJob"],
+          resources: [
+            jobQueue.jobQueueArn,
+            sunbizJob.jobDefinitionArn,
+            bbbJob.jobDefinitionArn,
+            reconciliationJob.jobDefinitionArn,
+            permitJob.jobDefinitionArn,
+          ],
+        }),
+        new iam.PolicyStatement({
+          actions: ["batch:ListJobs", "batch:DescribeJobs"],
+          resources: ["*"],
+        }),
+        new iam.PolicyStatement({
+          actions: ["cloudformation:DescribeStacks"],
+          resources: [this.stackId],
+        }),
+        new iam.PolicyStatement({
+          actions: ["sts:GetCallerIdentity"],
+          resources: ["*"],
+        }),
+      ],
+    });
 
     const failureTopic = new sns.Topic(this, "BatchFailureTopic", {
       displayName: "County enrichment AWS Batch failures",
     });
-    failureTopic.addSubscription(
-      new subscriptions.EmailSubscription(alertEmail),
-    );
+    failureTopic.addSubscription(new subscriptions.EmailSubscription(alertEmail));
     const failedJobs = new events.Rule(this, "FailedBatchJobs", {
       eventPattern: {
         source: ["aws.batch"],
@@ -361,6 +401,18 @@ export class CountyEnrichmentBatchStack extends Stack {
       },
     });
     failedJobs.addTarget(new eventTargets.SnsTopic(failureTopic));
+    const failureNotifier = createPagerDutyFailureNotifier(this, "FailureNotifier", {
+      secretArn: pagerDutySecretArn,
+      component: "county-enrichment-batch",
+    });
+    if (failureNotifier !== null) {
+      failedJobs.addTarget(
+        new eventTargets.LambdaFunction(failureNotifier, {
+          maxEventAge: Duration.hours(2),
+          retryAttempts: 2,
+        }),
+      );
+    }
 
     new CfnOutput(this, "ArtifactBucketName", {
       value: artifactBucket.bucketName,
@@ -386,6 +438,14 @@ export class CountyEnrichmentBatchStack extends Stack {
     new CfnOutput(this, "FailureTopicArn", {
       value: failureTopic.topicArn,
     });
+    if (failureNotifier !== null) {
+      new CfnOutput(this, "FailureNotifierArn", {
+        value: failureNotifier.functionArn,
+      });
+    }
+    new CfnOutput(this, "PagerDutyConfigured", {
+      value: failureNotifier === null ? "false" : "true",
+    });
     new CfnOutput(this, "MaxCostCeilingUsd", {
       value: String(maxCostCeilingUsd),
     });
@@ -409,18 +469,12 @@ export class CountyEnrichmentBatchStack extends Stack {
     role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: [action],
-        resources: paths.map((objectPath) =>
-          bucket.arnForObjects(objectPath),
-        ),
+        resources: paths.map((objectPath) => bucket.arnForObjects(objectPath)),
       }),
     );
   }
 
-  private grantList(
-    role: iam.IRole,
-    bucket: s3.IBucket,
-    prefixes: string[],
-  ): void {
+  private grantList(role: iam.IRole, bucket: s3.IBucket, prefixes: string[]): void {
     role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         actions: ["s3:ListBucket"],

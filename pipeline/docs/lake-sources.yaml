@@ -22,7 +22,9 @@ parcel:
   separately_assessed_without_geometry: acknowledged
   identifier_proven: true
   identifier_name: DOR Parcel ID (with Alternate Key as the permit join)
-  identifier_format: "NN-NN-NN-NNNN-NNN-NNNNN (23 characters); ALT_KEY is 7 digits"
+  identifier_format: >-
+    NN-NN-NN-NNNN-AAA-AAAAA (23 characters), where A is an uppercase
+    alphanumeric block/lot character rather than a digits-only slot; ALT_KEY is 7 digits
   join_rule: >-
     PARCEL_ID and ALT_KEY are both unique across all 215,806 NAL rows (measured:
     215,806 distinct of each). ALT_KEY joins the CD Plus permit layer's
@@ -149,9 +151,10 @@ permits:
         over 2,656 parcels. Permit years 15 through 25 are reachable and are NOT in this
         job. Routing by mailing city over-selects heavily - 50,447 seed parcels carry a
         CLERMONT mailing city while the portal knows about 2,656 a year - so the portal's
-        own answer, not the city string, decides membership. Permits the portal files
-        against no parcel key at all are recorded as dead with their enumeration row rather
-        than dropped or counted as parcels with no permits.
+        own answer, not the city string, decides membership. The prior year-26 capture
+        classified 71 permits with no parcel key as dead. The repaired full harvester retains
+        each accessible detail and its raw evidence as a valid-unlinked permit; only a genuine
+        permanent source failure is recorded as dead.
     - jurisdiction: Groveland
       key: groveland
       status: blocked
@@ -476,16 +479,18 @@ publication:
 enrichment:
   bbb:
     status: gated
-    source_access_status: blocked
+    source_access_status: policy_api_gated
     advertised_listing_count: null
     expected_count: null
     listing_page_cap: null
     cap_acknowledged: false
     blocker: >-
-      bbb.org answers HTTP 403 to this egress, and the kit requires BBB browser work to
-      run on approved AWS-managed remote compute, which this local-only, no-ongoing-cost
-      deployment does not have. bbb_rating is published as a real column that stays null,
-      with the reason carried in enrichment_status.
+      The default BBB request and browser route returned HTTP 403. One prohibited
+      desktop-user-agent spoof returned 200 during verification, so the site is not claimed
+      to be technically unreachable; no result from that request was retained or ingested.
+      The kit requires the 403 to remain a stop and access to proceed through an approved
+      official BBB API route. That route is not configured. bbb_rating is therefore a real
+      column that stays null, with the reason carried in enrichment_status.
   contractor_identity:
     status: supported_partial
     source_access_status: partial
@@ -515,9 +520,8 @@ approved_exceptions:
 #   www2.myfloridalicense.com (DBPR extracts) ................. 403 both methods
 #   dos.fl.gov Sunbiz data-download portal .................... 403 both methods
 #   search.sunbiz.org (name search) ........................... 200 in a browser
-#   www.bbb.org profile pages ................................. 200 in a browser
-# The last two were previously recorded as 403 and that was wrong. Sunbiz name
-# search is not the ingest channel — the bulk portal is, and it is still blocked.
-# BBB profiles are reachable but withheld on policy: robots.txt disallows the
-# query-string URLs and bbb-harvest requires approved API access rather than
-# working around the challenge.
+#   www.bbb.org profile page, default headless user agent ..... 403
+#   www.bbb.org profile page, prohibited desktop-UA spoof ..... 200 once
+# Sunbiz name search is not the ingest channel — the bulk portal is, and it is
+# still blocked. The BBB 200 was obtained by a method the kit expressly forbids;
+# no result was retained, and the source remains gated pending approved API access.

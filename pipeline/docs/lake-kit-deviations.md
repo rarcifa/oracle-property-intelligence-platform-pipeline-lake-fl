@@ -80,17 +80,33 @@ each shard record; `schema.json` lists every column, so an absent key is unambig
 
 A grep of every skill and the whole runtime finds nothing for CAR files, CIDv1, base32,
 per-run artifact manifests with digests, multi-gateway verification, or run history with
-record deltas. The assignment requires all six. They are implemented as new core modules in
-the kit's own conventions — `.mjs` with JSDoc, Zod `.strict()` schemas, Vitest coverage,
-`sha256:<hex>` digest strings, `schemaVersion` tags matching the house style:
+record deltas. The assignment requires all six. They extend the runtime's existing
+interoperability conventions — ESM modules, JSDoc contracts, Zod `.strict()` schemas, Vitest
+coverage, `sha256:<hex>` digest strings, and `schemaVersion` tags:
 
-| Module | What it adds |
-|---|---|
-| `src/core/cid.mjs` | CIDv1 base32, raw leaves, UnixFS files and directories |
-| `src/core/car.mjs` | CARv1 write and read-back |
+| Module                           | What it adds                                                        |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `src/core/cid.mjs`               | CIDv1 base32, raw leaves, UnixFS files and directories              |
+| `src/core/car.mjs`               | CARv1 write and read-back                                           |
 | `src/core/artifact-manifest.mjs` | `elephant.artifact-manifest.v1` with cid, name, size, codec, sha256 |
-| `src/core/gateway-verify.mjs` | Byte and digest agreement across independent public gateways |
-| `src/core/run-history.mjs` | `elephant.run-history.v1`, immutable prior runs, record deltas |
+| `src/core/gateway-verify.mjs`    | Byte and digest agreement across independent public gateways        |
+| `src/core/run-history.mjs`       | `elephant.run-history.v1`, immutable prior runs, record deltas      |
+
+### Arceus-approved, narrow `.mjs` exception
+
+`apply-engineering-guidelines` requires TypeScript for services and batch workloads. Arceus
+approved a bounded exception for the executed `.mjs` paths retained here: they are legacy
+vendored/interoperable ESM entry points in the extracted Oracle runtime, and changing their
+module boundary during the release repair would break fixture and downstream CLI compatibility.
+This is an exception, not a claim that JavaScript satisfies the Golden Path.
+
+Containment is explicit. The publication provenance closure recursively discovers these modules,
+requires every one to be tracked and byte-identical to the candidate commit, and signs that digest
+into the release target. Zod strict schemas, JSDoc type contracts, Vitest adversarial tests,
+Prettier and ESLint cover the boundary. New AWS infrastructure and service code remains
+TypeScript. Migration is staged rather than a release-time rewrite: move leaf/core contracts to
+TypeScript first, preserve tested ESM adapters at the boundary, then migrate CLI entry points only
+after parity fixtures prove byte-identical publication output.
 
 The CID implementation is cross-checked against the canonical `ipfs-unixfs-importer`. That
 package is deliberately NOT a dependency of this repository — a checker that shares code with
@@ -133,13 +149,13 @@ This section exists because the opening claim, that every decision is listed her
 true of the routing itself. Four things the kit provides were not used, and three of them
 should have been.
 
-| Not invoked | What it would have produced | Why it was missed |
-|---|---|---|
-| `deploy-open-data-mcp` | The hosted runtime, which is the gate that zeroes the score | Hosting needed the owner's authorisation, but the skill was never even read for the deploy shape |
-| `integrate-ci-cd` | `.github/workflows`, so "continuous" ingestion actually recurs | Routed by arceus, then dropped under time pressure |
-| `espeon` + `build-rag-systems` | Semantic retrieval question-answering, a distinct scoring line | Silently substituted by the tool-calling chat agent when the UI work was delegated. **Since closed, but not as the skill prescribes** — see section 12 |
-| `donphan` + `use-elephant-mcp` | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server never connected in this session. **Since closed**: the county is registered in the catalog and the MCP maps, and the substance of the smoke test is verified in `artifacts/mcp-smoke.json` |
-| `smeargle` + `responsive-design-tests` | Breakpoint coverage before a demo video | Never named by arceus, because the routing prompt described the UI as functional requirements and never said it would be visually assessed |
+| Not invoked                            | What it would have produced                                        | Why it was missed                                                                                                                                                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy-open-data-mcp`                 | The hosted runtime, which is the gate that zeroes the score        | Hosting needed the owner's authorisation, but the skill was never even read for the deploy shape                                                                                                                           |
+| `integrate-ci-cd`                      | `.github/workflows`, so "continuous" ingestion actually recurs     | Routed by arceus, then dropped under time pressure                                                                                                                                                                         |
+| `espeon` + `build-rag-systems`         | Semantic retrieval question-answering, a distinct scoring line     | Silently substituted by the tool-calling chat agent when the UI work was delegated. **Since closed, but not as the skill prescribes** — see section 12                                                                     |
+| `donphan` + `use-elephant-mcp`         | The post-publish MCP smoke test that `use-oracle` step 13 requires | The bundled elephant MCP server never connected in this session. **Since closed**: the county is registered in the catalog and the MCP maps, and the substance of the smoke test is verified in `artifacts/mcp-smoke.json` |
+| `smeargle` + `responsive-design-tests` | Breakpoint coverage before a demo video                            | Never named by arceus, because the routing prompt described the UI as functional requirements and never said it would be visually assessed                                                                                 |
 
 Two of these have since been closed. `integrate-ci-cd`'s recipe contract now exists as a
 `justfile`, with workflows that run it and a scheduled ingestion that makes "continuous"
@@ -161,10 +177,11 @@ returning all 215,806 rows from the published CID in about two seconds.
 - **Sunbiz corporate ingest** — not in the acceptance criteria. Business records come from
   the DOR TPP roll instead.
 - **Overture places** — not in the acceptance criteria.
-- **BBB harvest** — `bbb.org` answers 403 to this egress, and `use-oracle` requires BBB
-  browser work on approved AWS-managed remote compute. A deployment whose premise is no
-  ongoing infrastructure cost has none. `bbb_rating` is published as a real column that
-  stays null, with the reason in `enrichment_status`.
+- **BBB harvest** — the default request and browser route returned 403. A prohibited
+  desktop-user-agent spoof later returned 200, as recorded below; no result was retained or
+  ingested. `use-oracle` requires the 403 to remain a stop and the approved route to use
+  official BBB API access. That access is not configured, so `bbb_rating` is published as a
+  real column that stays null, with the reason in `enrichment_status`.
 - **`query-db-loading-matching`** — that skill loads into a Postgres query DB. This
   deployment has no Postgres by design; the equivalent reconciliation happens in DuckDB
   during consolidation, and the same gate is enforced: published rows must equal distinct
@@ -236,7 +253,7 @@ permit.
 
 ## 13. Three more, found late and recorded rather than left out
 
-### Observability: mostly closed, PagerDuty is not
+### Observability: implemented paths, with PagerDuty still unconfigured
 
 `apply-engineering-guidelines` ranks observability HIGH. For most of this build there was
 none, and — worse than the gap itself — this document did not disclose it while the pull
@@ -245,11 +262,10 @@ now wired into the Lambda handler with requests-served, requests-failed and cold
 metrics, X-Ray is on, and two self-resolving CloudWatch alarms watch the error and throttle
 rates.
 
-What is still missing is `observability-pagerduty-alerting`: the alarms have no actions
-wired, so they fire into CloudWatch and page nobody. The rule says no critical issue may
-fail silently, and here one would. The reason is that this exercise has no PagerDuty
-account or on-call rotation to route to, not that the rule was judged unimportant — and an
-alarm nobody receives is worth naming as a gap rather than counting as coverage.
+The ingestion infrastructure now has a shared PagerDuty notifier path, but this deployment has
+no PagerDuty account or on-call rotation behind it. Therefore the current SNS email channel is a
+notification, not a page, and `observability-pagerduty-alerting` remains an explicit conformance
+gap. The exact implemented and unconfigured boundary is recorded in section 16.
 
 `observability-dlq-alarms` is genuinely not applicable: this is a synchronous read-only HTTP
 surface with no queue and therefore no DLQ. That is a different claim from the one above and
@@ -264,7 +280,7 @@ Chromium, and a profile page loaded and returned a rating. With the default head
 agent the same page is 403.
 
 No BBB data was taken into the product, and the finding was used only to correct the
-*reason* recorded for the empty column. It is still the thing the rule prohibits, and the
+_reason_ recorded for the empty column. It is still the thing the rule prohibits, and the
 rule does not carve out verification. Recorded here because a deviations document that omits
 the author's own is worth nothing.
 
@@ -280,7 +296,6 @@ bytes — the file the skill describes. That is an official channel needing no c
 solving, and it is not the channel the skill names. Nothing has been ingested through it;
 this is written down before the fact so that taking that route later is a recorded decision
 rather than a silent one.
-
 
 ## 14. A last-known-good pointer is not a pinned CID
 
@@ -334,26 +349,27 @@ contract is `artifacts/publication-attempts.json`: an append-only attempt ledger
 an external one-time Ed25519 authorization over the exact immutable target. A schedule,
 credentials, `publish:false`, or a claimed approver name cannot reach an upload.
 
-## 16. Alerting is wired but unconfigured, and says so
+## 16. PagerDuty uses one exact secret ARN; the current deployment remains SNS-only
 
-`apply-engineering-guidelines` makes paging on-call non-negotiable and forbids
-swallowing a critical failure with a log-only handler. Three failure paths now
-alert:
+`apply-engineering-guidelines` makes paging on-call non-negotiable. The implemented ingestion
+path no longer accepts a routing key or credential-bearing integration URL from repository
+configuration. CDK accepts only a complete Secrets Manager ARN in AWS account `122610508924`,
+region `us-east-2`, through `-c pagerDutySecretArn=<exact-arn>`. A shared, production-gated
+Node 22 Lambda receives that exact ARN, retrieves the secret at invocation time, sends PagerDuty
+Events API v2, requires HTTP 202 and its returned deduplication receipt, and never puts the secret
+value in environment variables or logs.
 
-| Path | Mechanism |
-|---|---|
-| The runtime cannot open the published dataset | Direct Events API v2 trigger from the point it becomes terminal, plus a self-resolving alarm |
-| Lambda errors, throttles, a pointer refresh failing for 15 minutes | One self-resolving CloudWatch alarm each, fanned out to an SNS topic |
-| A scheduled ingestion run fails | Events API v2 trigger from the workflow's `failure()` step |
+AWS Batch terminal failures target that notifier through EventBridge; the durable Clermont CLI
+and GitHub failure step invoke its exact function ARN. Recoverable retries, cooldown, cost pauses,
+and authorization rejection do not page. SNS email remains a secondary operator channel and is
+explicitly labelled as not paging.
 
-Two things are honestly absent. There is no PagerDuty account behind this, so no
-routing key and no CloudWatch integration URL are configured: the stack output
-`AlertingConfigured` reports `none`, the workflow's failure step logs a GitHub
-error saying nobody was paged, and the runtime logs `paging: skipped`. Every one of
-those is a loud absence rather than a silent one, and setting
-`ORACLE_ALERT_EMAIL`, `ORACLE_PAGERDUTY_CLOUDWATCH_URL`,
-`ORACLE_PAGERDUTY_SECRET_NAME`, `ORACLE_ALERT_ENVIRONMENT=production` and the
-`PAGERDUTY_ROUTING_KEY` repository secret turns them all on with no code change.
+The honest deployment state is still a gap: the owner selected PagerDuty `none`, no PagerDuty
+secret ARN or notifier output is configured, and the deployed baseline stack predates this repair.
+Only SNS email to `rarcifa@gmail.com` is approved. After an account/service exists, store a scoped
+routing key in Secrets Manager, redeploy with the exact ARN, and set
+`CLERMONT_FAILURE_NOTIFIER_ARN` from the CDK output. No PagerDuty credential belongs in GitHub or
+this repository.
 
 The guidelines' non-negotiable 6 — every metric registered in Lexicon and shown on
 the Main Dashboard — cannot be met from here at all: both are private
@@ -366,10 +382,10 @@ register; the registration itself is not something this repository can do.
 ## 17. Exact signed authority supersedes claimed CLI identity
 
 `county-open-data-publish` and `durable-workflow-builder` pattern 10 require an approval gate
-on the publish path, and `artifacts/publish-gate.json` implements it. What neither skill
-addresses is that a file-based gate cannot prove a human typed into it: anything able to run
-`publish-approve.mjs` can pass `--by "<a person's name>"`, and the resulting record looks
-identical either way.
+on the publish path. The original `artifacts/publish-gate.json` attempted that with a committed
+boolean and is now retired as historical evidence. What neither skill addresses is that a
+file-based gate cannot prove a human typed into it: anything able to run the old approval command
+could claim a person's name, and the resulting record looked identical either way.
 
 That is exactly what happened for run `20260910T153418Z`. The owner authorised the republish
 in conversation; an agent ran the CLI and recorded the approval under the owner's name. The
@@ -377,10 +393,15 @@ fact was true, but the file claimed more provenance than it could support.
 
 That weakness is now closed rather than merely labelled. `publish-approve.mjs` has no
 `--by` authority path: it can sign only when given an external Ed25519 private key, and it
-refuses to place the key or signed authorization inside the repository. The authorization
-binds the exact county, run, root CID, manifest/provenance digests, bucket, IPNS label and
-network key, ordered actions, expiry, nonce and approver. The publisher verifies the trusted
-public key, consumes the nonce only after exact IPNS readback, and rejects reuse.
+refuses to place the key or signed authorization inside the repository. The authorization binds
+the exact county, run, mode, candidate workflow and commit, root CID, manifest/provenance digests,
+immutable primary CAR identities, bucket, IPNS label and network key, ordered actions, expiry,
+nonce and approver. The publisher verifies the trusted public key, consumes the nonce only after
+exact IPNS readback, and rejects reuse. The signed target also fixes `provider: pinata`, the
+canonical `https://api.pinata.cloud/psa` base/origin/path, deterministic root and manifest pin
+names, and the expected IPNS predecessor CID/sequence. Runtime URL normalization, provider/name
+drift, stale pointer sequence, and approval replay all fail before the corresponding capability or
+mutation is reachable.
 
 ## 18. The bundled elephant MCP launches from a pre-installed binary when one exists
 
@@ -388,13 +409,13 @@ The kit's `.mcp.json` starts the elephant MCP with
 `npx -y --package=github:elephant-xyz/elephant-mcp#main mcp`. That resolves and rebuilds a
 GitHub dependency tree on **every** launch, which measured here as:
 
-| Launch method | Time to `initialize` |
-| --- | --- |
-| `npx` from `#main`, cold | 86 s |
-| `npx` from `#main`, warm | 38 s |
-| `npx` pinned to commit `aad2785`, cold | 190 s |
-| `npx` pinned to commit `aad2785`, warm | 119 s |
-| Pre-installed binary | **1–2 s** |
+| Launch method                          | Time to `initialize` |
+| -------------------------------------- | -------------------- |
+| `npx` from `#main`, cold               | 86 s                 |
+| `npx` from `#main`, warm               | 38 s                 |
+| `npx` pinned to commit `aad2785`, cold | 190 s                |
+| `npx` pinned to commit `aad2785`, warm | 119 s                |
+| Pre-installed binary                   | **1–2 s**            |
 
 Against a 30 s connect timeout the server therefore never came up, and the MCP was reported
 as failing to connect for this whole build. Pinning the ref to a commit was tried first on
@@ -520,19 +541,24 @@ record of truth and the table stays a projection of it. The kit change that woul
 remove this deviation is still the one §3 names: a `current-window` status, or
 decoupling `historicalRecords` from `supported`.
 
-## 23. A permanent failure that left no artifact was retried forever
+## 23. A terminal result that left no artifact was retried forever
 
 Not a deviation from the kit but a defect against it, found while resuming the
-Clermont harvest and fixed. `county-ingest-run` §5 says a DEAD record is recorded
-and never retried, and that the achievable total is `seed − dead − current-invalid`.
-The harvester recorded a permanently unattachable permit — one the portal files
-against no parcel key at all — as a failure entry in the run summary only. Resume
-skipped work by looking for `extracted/<permit>.json`, which a dead permit never
-has, so every pass re-fetched every dead permit, and a completion gate of
-`captured == enumerated` could never be met.
+Clermont harvest and fixed in two stages. `county-ingest-run` §5 says a DEAD record
+is recorded and never retried, and that the achievable total is
+`seed − dead − current-invalid`. The original harvester treated a permit with no
+parcel key as permanently unattachable and kept only a failure in the run summary.
+Resume skipped work by looking for `extracted/<permit>.json`, which that result did
+not have, so every pass re-fetched it and `captured == enumerated` could never hold.
 
-Dead permits now get `dead/<permit>.json` carrying the reason and the enumeration
-row that produced them; resume skips captured **and** dead; and `coverage.json`
-reports `enumeratedPermits`, `deadPermits`, `achievablePermits` and a `complete`
-flag gated on `permitCount >= achievable`, which is the kit's
-`loaded >= achievable` rule rather than an exact-source-count assert.
+The first repair made true permanent failures durable as `dead/<permit>.json`, with
+the reason and enumeration row, and made resume skip both captured and dead results.
+The completeness counters still expose `enumeratedPermits`, `deadPermits`,
+`achievablePermits`, and `complete`, using the kit's `loaded >= achievable` rule.
+
+The subsequent full-history review corrected the classification itself: a successfully
+fetched public permit detail without a parcel key is not dead. It is now retained with
+raw and extracted evidence, a null property binding, and `valid-unlinked` disposition.
+Only a genuine permanent source failure becomes a dead artifact. The existing year-26
+snapshot still reports the 71 records under its historical rule; a fresh full capture
+must recover and certify them under the current rule before replacing that baseline.

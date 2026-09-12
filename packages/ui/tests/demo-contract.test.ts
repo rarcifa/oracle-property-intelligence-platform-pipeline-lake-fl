@@ -22,6 +22,14 @@ function fixture() {
             ),
             complete: true,
           },
+          businessAccounts: {
+            rows: 33_346,
+            withSitusAddress: 32_738,
+            matchedToParcel: 2_060,
+            attributedAcrossParcels: 4_451,
+            propertiesWithAccount: 2_726,
+            sharedAddressGroups: 90,
+          },
         },
       },
     },
@@ -33,7 +41,16 @@ function fixture() {
     contractor: {
       posture: { contractor_names_present: 2_359, bbb_ratings_present: 0 },
       note: "Clermont is the only municipality with harvested contractor detail in this run.",
-      gating: [{ field: "bbb_rating", detail: "bbb.org answers HTTP 403." }],
+      gating: [
+        {
+          field: "bbb_rating",
+          detail: "BBB is policy/API gated; the default route returned HTTP 403.",
+        },
+      ],
+      provenance: { runId, rootCid },
+    },
+    business: {
+      totals: { business_accounts: 4_451, properties_with_accounts: 2_726 },
       provenance: { runId, rootCid },
     },
   };
@@ -62,6 +79,14 @@ describe("recorded demo release contract", () => {
         "26",
       ],
       bbbRatings: 0,
+      business: {
+        sourceAccounts: 33_346,
+        withSitusAddress: 32_738,
+        matchedToParcel: 2_060,
+        attributedAcrossParcels: 4_451,
+        propertiesWithAccount: 2_726,
+        sharedAddressGroups: 90,
+      },
     });
   });
 
@@ -87,5 +112,19 @@ describe("recorded demo release contract", () => {
     const fabricated = fixture();
     fabricated.contractor.posture.bbb_ratings_present = 1;
     expect(() => assertDemoContract(fabricated)).toThrow(/honestly absent/);
+  });
+
+  it("rejects business figures from another release or inconsistent coverage", () => {
+    const stale = fixture();
+    stale.business.provenance.runId = "20260910T000000Z";
+    expect(() => assertDemoContract(stale)).toThrow(/business provenance/);
+
+    const mismatched = fixture();
+    mismatched.business.totals.business_accounts = 4_450;
+    expect(() => assertDemoContract(mismatched)).toThrow(/do not match.*coverage snapshot/);
+
+    const impossible = fixture();
+    impossible.meta.coverage.tables.businessAccounts.matchedToParcel = 40_000;
+    expect(() => assertDemoContract(impossible)).toThrow(/internally inconsistent/);
   });
 });

@@ -121,6 +121,13 @@ describe("corpus construction", () => {
         .map((chunk) => chunk.docId)
         .sort(),
     ).toEqual(["jurisdiction:clermont", "jurisdiction:unincorporated"]);
+
+    const overview = jurisdictions.find((chunk) => chunk.docId === "jurisdiction:overview");
+    expect(overview?.textForContext).toContain(
+      "Unincorporated Lake County (Perconti CD Plus county layer)",
+    );
+    expect(overview?.textForContext).toContain("Clermont (CentralSquare eTRAKiT portal)");
+    expect(overview?.textForContext).not.toContain("through the Perconti CD Plus permit layer");
   });
 
   it("carries provenance on every chunk", async () => {
@@ -162,6 +169,32 @@ describe("corpus construction", () => {
     expect(contractor?.metadata.alwaysNull).toBe("false");
     // And it must not be described as empty everywhere.
     expect(contractor?.textForContext).not.toContain("empty on every row of the table");
+
+    for (const docId of ["column:has_bbb_contractor", "column:has_sunbiz_tenant"]) {
+      const boolean = chunks.find((chunk) => chunk.docId === docId);
+      expect(boolean?.textForContext).toContain("unknown/not established");
+      expect(boolean?.textForContext).toContain("never false");
+      expect(boolean?.textForContext).not.toMatch(/false on every row/i);
+    }
+
+    const parcelId = chunks.find((chunk) => chunk.docId === "column:request_identifier");
+    expect(parcelId?.textForContext).toContain("uppercase alphanumeric block/lot");
+    expect(parcelId?.textForContext).toContain("not digits-only");
+  });
+
+  it("uses selected-run wording and labels superseded immutable evidence as historical", async () => {
+    const { chunks } = await corpusPromise;
+    const generated = chunks.filter((chunk) => chunk.docType !== "doc");
+    const text = generated.map((chunk) => chunk.textForContext).join("\n");
+    expect(text).not.toMatch(/published Lake County query table/i);
+    expect(text).not.toMatch(/only permit source in the published dataset/i);
+    expect(text).not.toMatch(/Candidate run \d/i);
+    expect(text).not.toMatch(/published coverage snapshot/i);
+
+    const bbb = chunks.find((chunk) => chunk.docId === "limitation:bbb-gated");
+    expect(bbb?.textForContext).toContain("Current verified status");
+    expect(bbb?.textForContext).toContain("Historical immutable wording");
+    expect(bbb?.textForContext).toContain("must not be used as the current access conclusion");
   });
 
   it("links every column document to the source that fills it", async () => {

@@ -2,7 +2,7 @@
  * Helper for the generated half of the corpus.
  *
  * Documents in this half are not extracted from prose; they are written from
- * structured records — the source catalog, the coverage snapshot, the published
+ * structured records — the source catalog, the coverage snapshot, the selected
  * schema — into the sentences a person would use to ask about them. The text is
  * generated deterministically from the record, so it can never drift from the
  * data it describes, and every one carries the provenance of the record it was

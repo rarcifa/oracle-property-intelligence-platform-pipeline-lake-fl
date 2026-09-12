@@ -12,22 +12,24 @@ import { describe, expect, it } from "vitest";
 import { BUSINESS_VIEW_NOTE, CONTRACTOR_VIEW_NOTE } from "./notes.js";
 
 describe("BUSINESS_VIEW_NOTE", () => {
-  it("states the measured coverage rather than implying the whole roll is loaded", () => {
-    expect(BUSINESS_VIEW_NOTE).toContain("2,060");
-    expect(BUSINESS_VIEW_NOTE).toContain("33,346");
-    expect(BUSINESS_VIEW_NOTE).toContain("6.2%");
+  it("states the join limits without freezing release-specific figures into copy", () => {
+    expect(BUSINESS_VIEW_NOTE).toMatch(/normalized street\+ZIP/i);
+    expect(BUSINESS_VIEW_NOTE).toMatch(/cannot publish source accounts without a matching/i);
+    expect(BUSINESS_VIEW_NOTE).not.toMatch(/2,060|33,346|6\.2%/);
   });
 
-  it("explains that the published total double counts shared addresses", () => {
-    expect(BUSINESS_VIEW_NOTE).toContain("4,451");
+  it("explains shared-address attribution while leaving the total to the runtime", () => {
+    expect(BUSINESS_VIEW_NOTE).toMatch(/every parcel sharing that address/i);
     expect(BUSINESS_VIEW_NOTE).toMatch(/account-to-parcel matches/i);
+    expect(BUSINESS_VIEW_NOTE).toMatch(/runtime-derived total/i);
+    expect(BUSINESS_VIEW_NOTE).not.toContain("4,451");
   });
 
-  it("records that NAICS and names are now carried, and how many match", () => {
+  it("records that NAICS and names are carried without hardcoded match counts", () => {
     expect(BUSINESS_VIEW_NOTE).toMatch(/business_naics_codes/);
     expect(BUSINESS_VIEW_NOTE).toMatch(/business_names/);
-    expect(BUSINESS_VIEW_NOTE).toContain("44 roofing contractors");
-    expect(BUSINESS_VIEW_NOTE).toMatch(/\b10\b/);
+    expect(BUSINESS_VIEW_NOTE).toMatch(/not that it worked on the parcel/i);
+    expect(BUSINESS_VIEW_NOTE).not.toMatch(/44 roofing contractors|\b10\b/);
   });
 
   it("says why Sunbiz is absent without blaming the wrong endpoint", () => {
@@ -52,6 +54,7 @@ describe("CONTRACTOR_VIEW_NOTE", () => {
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/Clermont/);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/fifteen jurisdictions/i);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/never read a non-zero contractor count/i);
+    expect(CONTRACTOR_VIEW_NOTE).not.toMatch(/names 10 roofing contractors/i);
     expect(CONTRACTOR_VIEW_NOTE).not.toMatch(/[Bb]oth columns are published and stay null/);
   });
 

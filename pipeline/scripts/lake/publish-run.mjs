@@ -20,7 +20,8 @@
  *
  * Usage:
  *   node scripts/lake/publish-run.mjs --run-id <id> [--mode full|incremental]
- *     --provenance-digest <sha256> [--dry-run]
+ *     --candidate-commit <git-sha> --provenance-digest <sha256> [--dry-run]
+ *     --expected-ipns-predecessor-cid <cid> --expected-ipns-predecessor-sequence <integer>
  *     [--approve <signed-authorization.json>]
  *     [--approval-public-key <ed25519-public-key.pem>] [--env-file <path>]
  *
@@ -30,7 +31,8 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { z } from "zod";
 import {
   buildUnixfsDirectory,
   computeRawCid,
@@ -47,6 +49,9 @@ import {
 import { assertPermitTableGate, assertQueryTableGate } from "../../src/counties/lake/adapter.mjs";
 import { appendRun, computeTableDeltas } from "../../src/core/run-history.mjs";
 import {
+  PINATA_SECONDARY_PIN_API_BASE,
+  PINATA_SECONDARY_PIN_API_ORIGIN,
+  PINATA_SECONDARY_PIN_API_PATH,
   REQUIRED_PUBLISH_ACTIONS,
   advancePublicationAttempt,
   assertPublicationAuthorizationActive,
@@ -58,6 +63,7 @@ import {
   readPublicationLedger,
   recordVerifiedIpnsReadback,
   sha256Digest,
+  validatePublicationTarget,
 } from "../../src/core/publish-gate.mjs";
 import {
   ensureSecondaryPin,
@@ -74,6 +80,7 @@ import {
   LAKE_IPNS_LABEL,
   LAKE_IPNS_NETWORK_KEY,
 } from "../../src/counties/lake/enrichment-profile.mjs";
+import { currentRepositoryCommit, verifyPublicationProvenance } from "./publication-provenance.mjs";
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REPO_ROOT = path.resolve(RUNTIME_ROOT, "..");
@@ -96,21 +103,120 @@ export function mayAttemptLivePublication(intent) {
 }
 
 /**
+ * Build the only secondary destination an approval may authorize.
+ *
+ * @param {string} runId - Immutable publication run identity.
+ * @returns {{provider: "pinata", apiBase: string, apiOrigin: string, apiPath: string, rootPinName: string, manifestPinName: string}}
+ */
+export function pinataSecondaryPinTarget(runId) {
+  return {
+    provider: "pinata",
+    apiBase: PINATA_SECONDARY_PIN_API_BASE,
+    apiOrigin: PINATA_SECONDARY_PIN_API_ORIGIN,
+    apiPath: PINATA_SECONDARY_PIN_API_PATH,
+    rootPinName: `${LAKE_IPNS_LABEL}/${runId}/root`,
+    manifestPinName: `${LAKE_IPNS_LABEL}/${runId}/manifest`,
+  };
+}
+
+/**
+ * Refuse endpoint normalization. The runtime string must be byte-for-byte the
+ * Pinata API base in the signed target before a token, env file, or client is
+ * touched.
+ *
+ * @param {unknown} target - Exact publication target.
+ * @param {unknown} endpoint - Raw runtime endpoint value.
+ * @returns {string} Exact approved Pinata API base.
+ */
+export function assertSecondaryPinRuntimeTarget(target, endpoint) {
+  const validated = validatePublicationTarget(target);
+  if (endpoint !== validated.secondaryPin.apiBase) {
+    throw new Error(
+      `Secondary pin runtime endpoint must exactly equal signed ${validated.secondaryPin.apiBase}`,
+    );
+  }
+  const parsed = new URL(endpoint);
+  if (
+    parsed.origin !== validated.secondaryPin.apiOrigin ||
+    `${parsed.pathname.replace(/\/$/, "")}/pins` !== validated.secondaryPin.apiPath ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error("Secondary pin runtime endpoint does not match the signed Pinata origin/path");
+  }
+  return endpoint;
+}
+
+/**
+ * Load capabilities only after the public endpoint has matched the signed
+ * target. The optional loader injection proves bad targets never read a file.
+ *
+ * @param {object} options - Capability-loading options.
+ * @param {unknown} options.target - Exact publication target.
+ * @param {unknown} options.endpoint - Raw runtime secondary-pin endpoint.
+ * @param {string | null} options.envFile - Optional external capability file.
+ * @param {NodeJS.ProcessEnv} [options.environment] - Mutable environment map.
+ * @param {typeof loadEnvFile} [options.loadEnvironmentFile] - Injectable env-file loader.
+ * @returns {Promise<{secondaryPinEndpoint: string, secondaryPinToken: string, filebaseApiToken: string | undefined, filebaseCredentials: {accessKeyId: string, secretAccessKey: string}}>} Validated capabilities.
+ */
+export async function loadLivePublicationCapabilities({
+  target,
+  endpoint,
+  envFile,
+  environment = process.env,
+  loadEnvironmentFile = loadEnvFile,
+}) {
+  const exactEndpoint = assertSecondaryPinRuntimeTarget(target, endpoint);
+  if (envFile) await loadEnvironmentFile(envFile, environment);
+  assertSecondaryPinRuntimeTarget(target, environment.SECONDARY_PIN_SERVICE_URL);
+  fillDerivedFilebaseToken(environment);
+  if (!environment.S3_ACCESS_KEY_ID || !environment.S3_SECRET_ACCESS_KEY) {
+    throw new Error("Filebase credentials are required for a live publish");
+  }
+  if (!environment.SECONDARY_PIN_SERVICE_TOKEN) {
+    throw new Error("A scoped Pinata JWT is required before the primary upload");
+  }
+  return {
+    secondaryPinEndpoint: exactEndpoint,
+    secondaryPinToken: environment.SECONDARY_PIN_SERVICE_TOKEN,
+    filebaseApiToken: environment.FILEBASE_API_TOKEN,
+    filebaseCredentials: {
+      accessKeyId: environment.S3_ACCESS_KEY_ID,
+      secretAccessKey: environment.S3_SECRET_ACCESS_KEY,
+    },
+  };
+}
+
+/**
  * Bind a mutation to the predecessor recorded in immutable local history.
  * A target CID is accepted only at the IPNS stage, where it means the provider
  * applied the update before the process could persist its receipt.
  */
 export function assertPublicationPredecessor(previousRun, readback, target, attemptState) {
   if (readback === null) throw new Error("The existing IPNS pointer could not be read back");
+  if (previousRun?.rootCid !== target.ipnsPredecessor.cid) {
+    throw new Error("The signed IPNS predecessor does not match immutable local history");
+  }
   if (readback.networkKey !== target.ipnsNetworkKey) {
     throw new Error("The existing IPNS network key does not match the exact publication target");
   }
-  if (readback.cid === target.rootCid && attemptState === "HISTORY_RECORDED") {
+  if (
+    readback.cid === target.rootCid &&
+    readback.sequence === target.ipnsPredecessor.sequence + 1 &&
+    attemptState === "HISTORY_RECORDED"
+  ) {
     return "target-already-applied";
   }
-  if (previousRun?.rootCid && readback.cid === previousRun.rootCid) return "recorded-predecessor";
+  if (
+    readback.cid === target.ipnsPredecessor.cid &&
+    readback.sequence === target.ipnsPredecessor.sequence
+  ) {
+    return "recorded-predecessor";
+  }
   throw new Error(
-    `The live IPNS pointer ${readback.cid} is not the recorded predecessor ${previousRun?.rootCid ?? "none"}; restore the durable publication history before retrying`,
+    `The live IPNS pointer ${readback.cid}@${readback.sequence} is not the signed predecessor ${target.ipnsPredecessor.cid}@${target.ipnsPredecessor.sequence}; restore the durable publication history before retrying`,
   );
 }
 
@@ -260,21 +366,76 @@ export async function buildRunDag(runDir) {
 }
 
 /**
- * Upload one CAR to Filebase so the exact DAG computed locally is pinned.
+ * Read an S3 streaming body without trusting its optional declared length.
+ *
+ * @param {unknown} body - AWS SDK GetObject Body.
+ * @returns {Promise<Buffer>} Exact object bytes.
+ */
+async function readS3Body(body) {
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "transformToByteArray" in body &&
+    typeof body.transformToByteArray === "function"
+  ) {
+    return Buffer.from(await body.transformToByteArray());
+  }
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    Symbol.asyncIterator in body &&
+    typeof body[Symbol.asyncIterator] === "function"
+  ) {
+    const chunks = [];
+    for await (const chunk of body) chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks);
+  }
+  throw new Error("Immutable CAR GET returned no readable body");
+}
+
+const immutableCarGetSchema = z
+  .object({
+    Body: z.unknown(),
+    ContentLength: z.number().int().nonnegative().optional(),
+    Metadata: z.record(z.string(), z.string()).optional(),
+  })
+  .passthrough();
+
+function isPreconditionFailure(error) {
+  return (
+    error?.$metadata?.httpStatusCode === 412 ||
+    error?.name === "PreconditionFailed" ||
+    error?.Code === "PreconditionFailed"
+  );
+}
+
+/**
+ * Create one non-overwritable CAR and reconcile the exact stored bytes.
+ *
+ * A retry still sends the conditional request: S3 rejects the mutation with
+ * 412, then GET proves whether the already-created object is byte-identical.
+ * A colliding key can therefore never silently replace the first CAR.
  *
  * @param {object} options - Options.
  * @param {S3Client} options.client - Configured S3 client.
- * @param {string} options.key - Object key.
- * @param {Buffer} options.body - CAR bytes.
- * @returns {Promise<string | null>} The CID Filebase reports, when it reports one.
+ * @param {string} options.bucket - Authorization-bound destination bucket.
+ * @param {string} options.key - Authorization-bound immutable object key.
+ * @param {Buffer} options.body - Exact CAR bytes.
+ * @param {string} [options.expectedCid] - Locally computed CAR root CID.
+ * @returns {Promise<{action: "created" | "reconciled-existing", key: string, bytes: number, sha256: string, reportedCid: string | null}>}
  */
-export async function uploadCar({ client, key, body }) {
+export async function uploadImmutableCar({ client, bucket, key, body, expectedCid }) {
+  if (!Buffer.isBuffer(body) || body.length === 0) {
+    throw new Error("Immutable CAR upload requires non-empty Buffer bytes");
+  }
   const command = new PutObjectCommand({
-    Bucket: LAKE_BUCKET,
+    Bucket: bucket,
     Key: key,
     Body: body,
     ContentType: "application/vnd.ipld.car",
     Metadata: { import: "car" },
+    IfNoneMatch: "*",
   });
   /** @type {string | null} */
   let reportedCid = null;
@@ -287,8 +448,52 @@ export async function uploadCar({ client, key, body }) {
     },
     { step: "deserialize", name: `captureCid-${key.replace(/[^a-z0-9]/gi, "-")}`, priority: "low" },
   );
-  await client.send(command);
-  return reportedCid;
+  let action = "created";
+  try {
+    await client.send(command);
+  } catch (error) {
+    if (!isPreconditionFailure(error)) throw error;
+    action = "reconciled-existing";
+  }
+
+  const readbackCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+  let readbackCid = null;
+  readbackCommand.middlewareStack.add(
+    (next) => async (args) => {
+      const result = await next(args);
+      const header = result.response?.headers?.["x-amz-meta-cid"];
+      if (typeof header === "string") readbackCid = header.trim();
+      return result;
+    },
+    {
+      step: "deserialize",
+      name: `captureReadbackCid-${key.replace(/[^a-z0-9]/gi, "-")}`,
+      priority: "low",
+    },
+  );
+  const readback = immutableCarGetSchema.parse(await client.send(readbackCommand));
+  const readbackBody = await readS3Body(readback.Body);
+  const expectedSha256 = sha256Digest(body);
+  const readbackSha256 = sha256Digest(readbackBody);
+  if (
+    (readback.ContentLength !== undefined && readback.ContentLength !== readbackBody.length) ||
+    readbackBody.length !== body.length ||
+    readbackSha256 !== expectedSha256 ||
+    !readbackBody.equals(body)
+  ) {
+    throw new Error(`Immutable CAR ${key} already exists with different bytes`);
+  }
+  const exactReportedCid = reportedCid ?? readbackCid ?? readback.Metadata?.cid?.trim() ?? null;
+  if (expectedCid !== undefined && exactReportedCid !== null && exactReportedCid !== expectedCid) {
+    throw new Error(`Filebase reported CAR root ${exactReportedCid}, expected ${expectedCid}`);
+  }
+  return {
+    action,
+    key,
+    bytes: body.length,
+    sha256: expectedSha256,
+    reportedCid: exactReportedCid,
+  };
 }
 
 /**
@@ -298,25 +503,49 @@ export async function uploadCar({ client, key, body }) {
  * @param {string} options.runId - Run identifier.
  * @param {string} options.mode - `full` or `incremental`.
  * @param {string} options.candidateWorkflowRunId - GitHub run that built the frozen candidate, or `local`.
+ * @param {string} options.candidateCommit - Exact Git commit that built the frozen candidate.
  * @param {boolean} options.dryRun - When true, compute and write locally but upload nothing.
  * @param {string | null} options.approvalPath - External signed exact-target approval.
  * @param {string | null} options.approvalPublicKeyPath - Trusted Ed25519 public key.
  * @param {string | null} options.envFile - Optional external Filebase environment file.
  * @param {string} options.provenanceDigest - Frozen runtime/config/schema provenance.
+ * @param {string} options.expectedIpnsPredecessorCid - Reviewed current IPNS CID.
+ * @param {number} options.expectedIpnsPredecessorSequence - Reviewed current IPNS sequence.
  * @returns {Promise<Record<string, unknown>>} The run record appended to history.
  */
 export async function publishRun({
   runId,
   mode,
   candidateWorkflowRunId,
+  candidateCommit,
   dryRun,
   approvalPath,
   approvalPublicKeyPath,
   envFile,
   provenanceDigest,
+  expectedIpnsPredecessorCid,
+  expectedIpnsPredecessorSequence,
 }) {
   if (mode !== "full" && mode !== "incremental") {
     throw new Error("Publication mode must be full or incremental");
+  }
+  // This is deliberately the first asynchronous boundary. Source/runtime
+  // drift is rejected before run artifacts, approvals, credentials, or any
+  // network-capable client are touched.
+  const publicationProvenance = await verifyPublicationProvenance({
+    repoRoot: REPO_ROOT,
+    candidateCommit,
+    currentCommit: await currentRepositoryCommit(REPO_ROOT),
+    expectedDigest: provenanceDigest,
+  });
+  if (!/^b[a-z2-7]{20,}$/.test(expectedIpnsPredecessorCid)) {
+    throw new Error("An exact expected IPNS predecessor CID is required");
+  }
+  if (
+    !Number.isSafeInteger(expectedIpnsPredecessorSequence) ||
+    expectedIpnsPredecessorSequence < 0
+  ) {
+    throw new Error("An exact non-negative expected IPNS predecessor sequence is required");
   }
   const runDir = path.join(PUBLISH_ROOT, "runs", runId);
   const carDir = path.join(PUBLISH_ROOT, "cars");
@@ -330,6 +559,11 @@ export async function publishRun({
   const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
   const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousRun = await readPreviousRun(historyPath);
+  if (previousRun?.rootCid !== expectedIpnsPredecessorCid) {
+    throw new Error(
+      `Expected IPNS predecessor ${expectedIpnsPredecessorCid} does not match immutable local history ${previousRun?.rootCid ?? "none"}`,
+    );
+  }
   assertTablesPlausible(coverageTableRows(coverage), previousRun);
 
   // The kit's one-row-per-property invariant: no null folio, and exactly as many
@@ -371,6 +605,11 @@ export async function publishRun({
   });
   const manifestPath = path.join(runDir, "..", "..", "manifests", `${runId}.json`);
   await mkdir(path.dirname(manifestPath), { recursive: true });
+  await writeFile(
+    path.join(path.dirname(manifestPath), `${runId}.publication-provenance.json`),
+    `${JSON.stringify(publicationProvenance, null, 2)}\n`,
+    "utf8",
+  );
   // Where this machine wrote the CAR. It used to ride along in the published
   // manifest as `root.carBuildPath`, which put a local filesystem layout inside
   // an immutable public artifact and resolved for nobody but this machine. It
@@ -389,22 +628,42 @@ export async function publishRun({
     blocks: [{ cid: manifestCid, bytes: manifestBytes }],
     outputPath: path.join(carDir, `${runId}-manifest.car`),
   });
+  const rootCarBody = await readFile(car.path);
+  const manifestCarBody = await readFile(manifestCar.path);
+  const primaryCars = {
+    root: {
+      key: `runs/${runId}/root.car`,
+      bytes: rootCarBody.length,
+      sha256: sha256Digest(rootCarBody),
+      cid: car.rootCid,
+    },
+    manifest: {
+      key: `runs/${runId}/manifest.car`,
+      bytes: manifestCarBody.length,
+      sha256: sha256Digest(manifestCarBody),
+      cid: manifestCid,
+    },
+  };
   log("manifest_written", { manifestCid, bytes: manifestWrite.bytes });
 
-  if (!/^sha256:[a-f0-9]{64}$/.test(String(provenanceDigest))) {
-    throw new Error("A frozen sha256 provenance digest is required before publication");
-  }
   const target = {
     county: COUNTY,
     runId,
     mode,
     candidateWorkflowRunId,
+    candidateCommit,
     rootCid: dag.rootCid,
     manifestDigest: manifestWrite.sha256,
     provenanceDigest,
     bucket: LAKE_BUCKET,
+    primaryCars,
+    secondaryPin: pinataSecondaryPinTarget(runId),
     ipnsLabel: LAKE_IPNS_LABEL,
     ipnsNetworkKey: LAKE_IPNS_NETWORK_KEY,
+    ipnsPredecessor: {
+      cid: expectedIpnsPredecessorCid,
+      sequence: expectedIpnsPredecessorSequence,
+    },
     actions: [...REQUIRED_PUBLISH_ACTIONS],
   };
   const attemptId = publicationAttemptId(target);
@@ -416,6 +675,7 @@ export async function publishRun({
   await advancePublicationAttempt(PUBLICATION_LEDGER_PATH, attemptId, "BUILT", {
     rootCar: { cid: car.rootCid, bytes: car.bytes },
     manifest: { cid: manifestCid, digest: manifestWrite.sha256, bytes: manifestWrite.bytes },
+    primaryCars,
   });
   const approvalRequestPath = path.join(
     path.dirname(manifestPath),
@@ -441,6 +701,7 @@ export async function publishRun({
       runId,
       mode,
       candidateWorkflowRunId,
+      candidateCommit,
       rootCid: dag.rootCid,
       manifestCid,
       carCid: car.rootCid,
@@ -451,6 +712,13 @@ export async function publishRun({
     };
   }
 
+  // This comparison deliberately precedes approval/key/env-file reads and all
+  // network clients. A URL that merely normalizes to Pinata is not equivalent
+  // to the exact destination the human signed.
+  const secondaryPinEndpoint = assertSecondaryPinRuntimeTarget(
+    target,
+    process.env.SECONDARY_PIN_SERVICE_URL,
+  );
   const approval = JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8"));
   const publicKey = await readFile(approvalPublicKeyPath);
   let attempt = await authorizePublicationAttempt(
@@ -461,6 +729,8 @@ export async function publishRun({
   );
   const gatedDryRun = false;
   let predecessorState = null;
+  /** @type {Awaited<ReturnType<typeof loadLivePublicationCapabilities>> | null} */
+  let capabilities = null;
 
   /** @type {Record<string, unknown>} */
   const publishResult = {
@@ -471,17 +741,12 @@ export async function publishRun({
   };
 
   if (!gatedDryRun) {
-    if (envFile) await loadEnvFile(envFile, process.env);
-    fillDerivedFilebaseToken(process.env);
-    if (!process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY) {
-      throw new Error("Filebase credentials are required for a live publish");
-    }
-    if (!process.env.SECONDARY_PIN_SERVICE_URL || !process.env.SECONDARY_PIN_SERVICE_TOKEN) {
-      throw new Error(
-        "An independent secondary IPFS pinning service URL and token are required before the primary upload",
-      );
-    }
-    validateSecondaryPinServiceEndpoint(process.env.SECONDARY_PIN_SERVICE_URL);
+    capabilities = await loadLivePublicationCapabilities({
+      target,
+      endpoint: secondaryPinEndpoint,
+      envFile,
+    });
+    validateSecondaryPinServiceEndpoint(capabilities.secondaryPinEndpoint);
     if (
       [
         "AUTHORIZED",
@@ -492,30 +757,31 @@ export async function publishRun({
         "HISTORY_RECORDED",
       ].includes(attempt.state)
     ) {
-      const pointer = await readIpnsPointer(process.env.FILEBASE_API_TOKEN);
+      const pointer = await readIpnsPointer(capabilities.filebaseApiToken);
       predecessorState = assertPublicationPredecessor(previousRun, pointer, target, attempt.state);
     }
     const client = new S3Client({
       endpoint: FILEBASE_ENDPOINT,
       region: "us-east-1",
       forcePathStyle: true,
-      credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY_ID,
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-      },
+      credentials: capabilities.filebaseCredentials,
     });
     if (attempt.state === "AUTHORIZED") {
       assertPublicationAuthorizationActive(attempt);
-      const rootReported = await uploadCar({
+      const rootUpload = await uploadImmutableCar({
         client,
-        key: `runs/${runId}/root.car`,
-        body: await readFile(carPath),
+        bucket: target.bucket,
+        key: target.primaryCars.root.key,
+        body: rootCarBody,
+        expectedCid: target.primaryCars.root.cid,
       });
+      const rootReported = rootUpload.reportedCid;
       if (rootReported !== null && rootReported !== dag.rootCid) {
         throw new Error(`Filebase reported root ${rootReported}, expected ${dag.rootCid}`);
       }
       log("car_uploaded", {
-        key: `runs/${runId}/root.car`,
+        key: target.primaryCars.root.key,
+        action: rootUpload.action,
         reportedCid: rootReported,
         computedCid: dag.rootCid,
       });
@@ -524,16 +790,24 @@ export async function publishRun({
         PUBLICATION_LEDGER_PATH,
         attemptId,
         "ROOT_UPLOAD_RECORDED",
-        { key: `runs/${runId}/root.car`, computedCid: dag.rootCid, reportedCid: rootReported },
+        {
+          ...target.primaryCars.root,
+          action: rootUpload.action,
+          computedCid: dag.rootCid,
+          reportedCid: rootReported,
+        },
       );
     }
     if (attempt.state === "ROOT_UPLOAD_RECORDED") {
       assertPublicationAuthorizationActive(attempt);
-      const manifestReported = await uploadCar({
+      const manifestUpload = await uploadImmutableCar({
         client,
-        key: `runs/${runId}/manifest.car`,
-        body: await readFile(manifestCar.path),
+        bucket: target.bucket,
+        key: target.primaryCars.manifest.key,
+        body: manifestCarBody,
+        expectedCid: target.primaryCars.manifest.cid,
       });
+      const manifestReported = manifestUpload.reportedCid;
       if (manifestReported !== null && manifestReported !== manifestCid) {
         throw new Error(`Filebase reported manifest ${manifestReported}, expected ${manifestCid}`);
       }
@@ -544,7 +818,8 @@ export async function publishRun({
         attemptId,
         "MANIFEST_UPLOAD_RECORDED",
         {
-          key: `runs/${runId}/manifest.car`,
+          ...target.primaryCars.manifest,
+          action: manifestUpload.action,
           computedCid: manifestCid,
           reportedCid: manifestReported,
         },
@@ -552,19 +827,19 @@ export async function publishRun({
     }
     if (attempt.state === "MANIFEST_UPLOAD_RECORDED") {
       const pinOptions = {
-        endpoint: process.env.SECONDARY_PIN_SERVICE_URL,
-        token: process.env.SECONDARY_PIN_SERVICE_TOKEN,
+        endpoint: target.secondaryPin.apiBase,
+        token: capabilities.secondaryPinToken,
         beforeCreate: () => assertPublicationAuthorizationActive(attempt),
       };
       const rootPin = await ensureSecondaryPin({
         ...pinOptions,
         cid: dag.rootCid,
-        name: `${LAKE_IPNS_LABEL}/${runId}/root`,
+        name: target.secondaryPin.rootPinName,
       });
       const manifestPin = await ensureSecondaryPin({
         ...pinOptions,
         cid: manifestCid,
-        name: `${LAKE_IPNS_LABEL}/${runId}/manifest`,
+        name: target.secondaryPin.manifestPinName,
       });
       attempt = await advancePublicationAttempt(
         PUBLICATION_LEDGER_PATH,
@@ -634,6 +909,7 @@ export async function publishRun({
   const runRecord = {
     runId,
     candidateWorkflowRunId,
+    candidateCommit,
     startedAt: started,
     finishedAt: new Date().toISOString(),
     mode,
@@ -681,6 +957,7 @@ export async function publishRun({
           runId,
           mode,
           candidateWorkflowRunId,
+          candidateCommit,
           rootCid: dag.rootCid,
           manifestCid,
           manifestDigest: manifestWrite.sha256,
@@ -722,7 +999,7 @@ export async function publishRun({
     } else {
       assertPublicationAuthorizationActive(attempt);
       const name = await updateExistingFilebaseName(
-        process.env.FILEBASE_API_TOKEN,
+        capabilities.filebaseApiToken,
         LAKE_IPNS_LABEL,
         LAKE_IPNS_NETWORK_KEY,
         dag.rootCid,
@@ -736,7 +1013,7 @@ export async function publishRun({
     }
   }
   if (attempt.state === "IPNS_REPOINT_RECORDED") {
-    const readback = await readIpnsPointer(process.env.FILEBASE_API_TOKEN);
+    const readback = await readIpnsPointer(capabilities.filebaseApiToken);
     attempt = await recordVerifiedIpnsReadback(PUBLICATION_LEDGER_PATH, attemptId, readback);
   }
   if (attempt.state === "IPNS_VERIFIED") {
@@ -765,6 +1042,7 @@ export async function publishRun({
           runId,
           mode,
           candidateWorkflowRunId,
+          candidateCommit,
           rootCid: dag.rootCid,
           manifestCid,
           carCid: car.rootCid,
@@ -830,7 +1108,15 @@ export async function readIpnsPointer(token, fetchImpl = fetch) {
   const names = await response.json();
   const entry = Array.isArray(names) ? names.find((name) => name.label === LAKE_IPNS_LABEL) : null;
   if (!entry) return null;
-  return { networkKey: entry.network_key, cid: entry.cid, sequence: Number(entry.sequence) };
+  if (
+    typeof entry.network_key !== "string" ||
+    typeof entry.cid !== "string" ||
+    !Number.isSafeInteger(entry.sequence) ||
+    entry.sequence < 0
+  ) {
+    throw new Error("Filebase returned an invalid IPNS predecessor receipt");
+  }
+  return { networkKey: entry.network_key, cid: entry.cid, sequence: entry.sequence };
 }
 
 /**
@@ -1049,16 +1335,24 @@ export async function readCurrentRowHashes(parquetPath) {
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const flags = parseArgs(process.argv.slice(2));
+  const predecessorSequenceFlag = flags["expected-ipns-predecessor-sequence"];
   publishRun({
     runId: String(flags["run-id"] ?? ""),
     mode: String(flags.mode ?? "full"),
     candidateWorkflowRunId: String(flags["candidate-workflow-run-id"] ?? "local"),
+    candidateCommit: String(flags["candidate-commit"] ?? "").toLowerCase(),
     dryRun: flags["dry-run"] === true,
     approvalPath: typeof flags.approve === "string" ? flags.approve : null,
     approvalPublicKeyPath:
       typeof flags["approval-public-key"] === "string" ? flags["approval-public-key"] : null,
     envFile: typeof flags["env-file"] === "string" ? flags["env-file"] : null,
     provenanceDigest: String(flags["provenance-digest"] ?? ""),
+    expectedIpnsPredecessorCid: String(flags["expected-ipns-predecessor-cid"] ?? ""),
+    expectedIpnsPredecessorSequence:
+      typeof predecessorSequenceFlag === "string" &&
+      /^(?:0|[1-9][0-9]*)$/.test(predecessorSequenceFlag)
+        ? Number(predecessorSequenceFlag)
+        : Number.NaN,
   }).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
     process.exit(1);

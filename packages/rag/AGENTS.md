@@ -26,7 +26,7 @@ pnpm --filter @oracle-lake/rag promote:published -- \
   built from, and the confidence thresholds. **Run it first** to confirm the
   index exists and covers the run you think it does.
 - `query` returns ranked chunks with scores, signals and provenance.
-- `eval` runs the 25-question evaluation set and prints precision at k. It exits
+- `eval` runs the 29-question evaluation set and prints precision at k. It exits
   non-zero if any unanswerable question got an answer.
 - `build:index` regenerates `index-data/lake-rag-index.json` from the checkout.
   Run it after changing any corpus source; the committed index is asserted
@@ -71,7 +71,7 @@ pnpm --filter @oracle-lake/rag promote:published -- \
 
 ## What is in the corpus
 
-Two families, 159 chunks across 105 documents:
+Two families, 254 chunks across 138 documents:
 
 **(a) Prose**, heading-chunked with stable ids: `README.md`, `docs/runbook.md`,
 `docs/cost.md`, `docs/demo-script.md`, the county findings and the kit-deviations
@@ -82,13 +82,13 @@ structured records so they cannot drift from the data:
 
 | Family           | Count | Built from                                                   |
 | ---------------- | ----- | ------------------------------------------------------------ |
-| `column:*`       | 59    | the published schema + `@oracle-lake/shared` column contract |
+| `column:*`       | 85    | the published schema + `@oracle-lake/shared` column contract |
 | `jurisdiction:*` | 16    | `lake-sources.yaml` permit jurisdictions + an overview       |
 | `source:*`       | 9     | `lake-sources.yaml` source inventory and enrichment states   |
-| `limitation:*`   | 6     | `coverage.json` limitations, one document each               |
-| `coverage:*`     | 3     | `coverage.json` denominator, tables, signals                 |
+| `limitation:*`   | 10    | `coverage.json` limitations, one document each               |
+| `coverage:*`     | 5     | `coverage.json` denominator, tables, signals                 |
 | `sample:*`       | 3     | the published sample extracts                                |
-| `publication:*`  | 2     | `artifacts/latest.json` + the run manifest                   |
+| `publication:*`  | 1     | the selected run's publication identity                      |
 | `access:*`       | 1     | `lake-sources.yaml` access states                            |
 
 ## Retrieval model

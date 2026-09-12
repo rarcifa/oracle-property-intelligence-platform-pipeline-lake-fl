@@ -10,6 +10,11 @@ import {
   putImmutableJson,
   uploadDirectoryImmutable,
 } from "./s3-integrity.js";
+import { planPermitBatchCost } from "./cost-plan.js";
+import {
+  createBatchWorkerObserver,
+  emitBatchCostPrediction,
+} from "./worker-observability.js";
 
 const runtimeRoot = path.resolve(
   process.env.ORACLE_RUNTIME_ROOT ??
@@ -58,26 +63,53 @@ function positiveIntegerEnvironment(name: string): number {
   return value;
 }
 
+function positiveNumberEnvironment(name: string): number {
+  const value = Number(requiredEnvironment(name));
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive finite number`);
+  }
+  return value;
+}
+
 async function runtimeModule<T>(relativePath: string): Promise<T> {
   return (await import(
     pathToFileURL(path.join(runtimeRoot, relativePath)).href
   )) as T;
 }
 
-function log(event: string, details: Record<string, unknown> = {}): void {
-  console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      event,
-      ...details,
-    }),
-  );
-}
+const observer = createBatchWorkerObserver("permit");
+const log = observer.info;
 
 async function main(): Promise<void> {
   const bucket = requiredEnvironment("ARTIFACT_BUCKET");
   const runId = requiredEnvironment("PERMIT_RUN_ID");
   const county = requiredEnvironment("PERMIT_COUNTY");
+  const queryTableInput = {
+    key: requiredEnvironment("PERMIT_INPUT_QUERY_TABLE_KEY"),
+    bytes: positiveIntegerEnvironment("PERMIT_INPUT_QUERY_TABLE_BYTES"),
+    sha256: requiredEnvironment("PERMIT_INPUT_QUERY_TABLE_SHA256"),
+  };
+  const coverageInput = {
+    key: requiredEnvironment("PERMIT_INPUT_COVERAGE_KEY"),
+    bytes: positiveIntegerEnvironment("PERMIT_INPUT_COVERAGE_BYTES"),
+    sha256: requiredEnvironment("PERMIT_INPUT_COVERAGE_SHA256"),
+  };
+  const costPlan = planPermitBatchCost(
+    queryTableInput.bytes,
+    coverageInput.bytes,
+    positiveNumberEnvironment("MAX_COST_CEILING_USD"),
+  );
+  emitBatchCostPrediction(costPlan.estimatedUsd);
+  if (!costPlan.allowed) {
+    throw new Error(
+      `Predicted permit run cost $${costPlan.estimatedUsd.toFixed(2)} exceeds the deployment ceiling $${costPlan.ceilingUsd.toFixed(2)}`,
+    );
+  }
+  log("permit_cost_gate_passed", {
+    runId,
+    estimatedUsd: costPlan.estimatedUsd,
+    ceilingUsd: costPlan.ceilingUsd,
+  });
   const handoffKey = `runs/${runId}/handoffs/permit.json`;
   const completed = await getVerifiedJsonIfExists(s3, bucket, handoffKey);
   if (completed !== null) {
@@ -95,21 +127,13 @@ async function main(): Promise<void> {
     downloadVerifiedObject(
       s3,
       bucket,
-      {
-        key: requiredEnvironment("PERMIT_INPUT_QUERY_TABLE_KEY"),
-        bytes: positiveIntegerEnvironment("PERMIT_INPUT_QUERY_TABLE_BYTES"),
-        sha256: requiredEnvironment("PERMIT_INPUT_QUERY_TABLE_SHA256"),
-      },
+      queryTableInput,
       inputPropertyParquet,
     ),
     downloadVerifiedObject(
       s3,
       bucket,
-      {
-        key: requiredEnvironment("PERMIT_INPUT_COVERAGE_KEY"),
-        bytes: positiveIntegerEnvironment("PERMIT_INPUT_COVERAGE_BYTES"),
-        sha256: requiredEnvironment("PERMIT_INPUT_COVERAGE_SHA256"),
-      },
+      coverageInput,
       inputCoveragePath,
     ),
   ]);
@@ -151,20 +175,8 @@ async function main(): Promise<void> {
     runtimeImageProvenance:
       process.env.RUNTIME_IMAGE_PROVENANCE ?? null,
     input: {
-      queryTable: {
-        key: requiredEnvironment("PERMIT_INPUT_QUERY_TABLE_KEY"),
-        bytes: positiveIntegerEnvironment(
-          "PERMIT_INPUT_QUERY_TABLE_BYTES",
-        ),
-        sha256: requiredEnvironment(
-          "PERMIT_INPUT_QUERY_TABLE_SHA256",
-        ),
-      },
-      coverage: {
-        key: requiredEnvironment("PERMIT_INPUT_COVERAGE_KEY"),
-        bytes: positiveIntegerEnvironment("PERMIT_INPUT_COVERAGE_BYTES"),
-        sha256: requiredEnvironment("PERMIT_INPUT_COVERAGE_SHA256"),
-      },
+      queryTable: queryTableInput,
+      coverage: coverageInput,
     },
     artifacts,
     summary: {
@@ -184,13 +196,6 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error: unknown) => {
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      event: "permit_bulk_export_failed",
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+observer.run(main).catch(() => {
   process.exitCode = 1;
 });

@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 import {
   esriEpochToIsoDate,
@@ -11,6 +14,32 @@ import {
   toObjectIdRanges,
   ROOFING_PERMIT_TYPES,
 } from "../src/counties/lake/sources.mjs";
+
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+
+describe("source-access evidence story", () => {
+  it("keeps BBB policy gating and the reachable appraiser correction consistent", async () => {
+    const [agents, readme, demo, sources, findings, deviations] = await Promise.all(
+      [
+        "AGENTS.md",
+        "README.md",
+        "docs/demo-script.md",
+        "pipeline/docs/lake-sources.yaml",
+        "pipeline/docs/lake-county-findings.md",
+        "pipeline/docs/lake-kit-deviations.md",
+      ].map((relativePath) => readFile(`${repositoryRoot}${relativePath}`, "utf8")),
+    );
+    const combined = [agents, readme, demo, sources, findings, deviations].join("\n");
+
+    expect(combined).toContain("prohibited desktop-user-agent spoof");
+    expect(combined).toContain("official BBB API");
+    expect(combined).toContain("lakecopropappr.com` returned 200");
+    expect(combined).toContain("deliberately unused");
+    expect(agents).not.toContain("Gated (403 from every egress)");
+    expect(demo).not.toContain("117,605");
+    expect(demo).toContain('test "$ONE" -le "$FIVE"');
+  });
+});
 
 describe("DOR roll listing", () => {
   it("parses a SharePoint folder listing and selects the Lake file", async () => {

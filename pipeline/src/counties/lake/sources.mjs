@@ -4,10 +4,11 @@
  * FeatureServer, and the Lake County CD Plus permit layer.
  *
  * Lake is a **bulk-first** county. Its property appraiser portal
- * (`lakecopropappr.com`) and its per-permit detail pages
- * (`c.lakecountyfl.gov/.../permit_report.ashx`) both answer HTTP 403 to every
- * egress tested, so — unlike Duval and Pinellas, whose adapters capture one
- * HTML page per parcel — Lake's record of origin is the published bulk roll.
+ * (`lakecopropappr.com`) was reachable but deliberately unused because the DOR
+ * roll supplies the assessed facts in bulk. Its per-permit detail pages
+ * (`c.lakecountyfl.gov/.../permit_report.ashx`) answer HTTP 403 behind a
+ * Cloudflare challenge. Unlike Duval and Pinellas, whose adapters capture one
+ * HTML page per parcel, Lake's record of origin is the published bulk roll.
  * Every function here therefore fetches a *dataset*, not a parcel page.
  *
  * Two measured source constraints are encoded as constants rather than

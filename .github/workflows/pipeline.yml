@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.18"
+          node-version: "22.18.0"
 
       - name: Install DuckDB
         run: |
@@ -165,18 +165,18 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         working-directory: .
         env:
-          CLERMONT_BASELINE_REQUEST_B64: ${{ secrets.CLERMONT_BASELINE_REQUEST_B64 }}
+          CLERMONT_BASELINE_CONSUMPTION_REQUEST_B64: ${{ secrets.CLERMONT_BASELINE_CONSUMPTION_REQUEST_B64 }}
           CLERMONT_BASELINE_S3_URI: ${{ vars.CLERMONT_BASELINE_S3_URI }}
         run: |
-          test -n "$CLERMONT_BASELINE_REQUEST_B64" || {
+          test -n "$CLERMONT_BASELINE_CONSUMPTION_REQUEST_B64" || {
             echo "::error::no exact certified Clermont baseline request is configured"
             exit 1
           }
           umask 077
-          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
+          REQUEST="$RUNNER_TEMP/clermont-consumption-request.json"
           STORE="pipeline/data/baselines/lake/clermont"
-          printf '%s' "$CLERMONT_BASELINE_REQUEST_B64" | base64 --decode > "$REQUEST"
-          DIGEST="$(jq -er '.baseline.requiredSha256 | select(test("^[a-f0-9]{64}$"))' "$REQUEST")"
+          printf '%s' "$CLERMONT_BASELINE_CONSUMPTION_REQUEST_B64" | base64 --decode > "$REQUEST"
+          DIGEST="$(jq -er '.baselineSha256 | select(test("^[a-f0-9]{64}$"))' "$REQUEST")"
           mkdir -p "$STORE/baselines/$DIGEST"
           aws s3 cp "$CLERMONT_BASELINE_S3_URI/last-good.json" "$STORE/last-good.json" --no-progress
           POINTER_DIGEST="$(jq -er '.baselineSha256' "$STORE/last-good.json")"
@@ -190,11 +190,11 @@ jobs:
       - name: Materialize the certified Clermont export
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: |
-          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
+          REQUEST="$RUNNER_TEMP/clermont-consumption-request.json"
           npm run clermont:materialize -- \
-            --request "$REQUEST" \
+            --consumption-request "$REQUEST" \
             --baseline-store data/baselines/lake/clermont \
-            --output data/downloads/lake/clermont-permits.csv \
+            --output-root .. \
             --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Consolidate the query table
@@ -215,8 +215,8 @@ jobs:
       - name: Assemble the publish set
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         run: |
-          REQUEST="$RUNNER_TEMP/clermont-baseline-request.json"
-          DIGEST="$(jq -er '.baseline.requiredSha256' "$REQUEST")"
+          REQUEST="$RUNNER_TEMP/clermont-consumption-request.json"
+          DIGEST="$(jq -er '.baselineSha256' "$REQUEST")"
           node scripts/lake/build-publish-set.mjs \
             --run-id "${{ steps.target.outputs.run_id }}" \
             --clermont-baseline-sha256 "$DIGEST" \
@@ -226,37 +226,42 @@ jobs:
         id: candidate
         working-directory: .
         run: |
-          SCOPE=(
-            pipeline/package.json
-            pipeline/package-lock.json
-            pipeline/docs/lake-sources.yaml
-            pipeline/scripts/lake/build-query-table.sql
-            pipeline/scripts/lake/build-publish-set.mjs
-            pipeline/scripts/lake/publish-run.mjs
-            pipeline/src/core/publish-gate.mjs
-            pipeline/src/core/secondary-pin.mjs
-            pipeline/src/counties/lake/enrichment-profile.mjs
-            pipeline/src/counties/lake/query-table.mjs
-            pipeline/src/counties/lake/permit-table.mjs
-          )
-          : > "$RUNNER_TEMP/provenance-components.txt"
-          for FILE in "${SCOPE[@]}"; do
-            test -f "$FILE"
-            printf '%s  %s\n' "$(sha256sum "$FILE" | cut -d' ' -f1)" "$FILE" \
-              >> "$RUNNER_TEMP/provenance-components.txt"
-          done
-          PROVENANCE_DIGEST="sha256:$(sort "$RUNNER_TEMP/provenance-components.txt" | sha256sum | cut -d' ' -f1)"
-          echo "provenance_digest=$PROVENANCE_DIGEST" >> "$GITHUB_OUTPUT"
+          node pipeline/scripts/lake/publication-provenance.mjs \
+            --candidate-commit "${{ github.sha }}" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Freeze the local publication candidate
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
         working-directory: .
+        env:
+          IPNS_PREDECESSOR_RECEIPT_JSON_B64: ${{ vars.IPNS_PREDECESSOR_RECEIPT_JSON_B64 }}
         run: |
+          test -n "$IPNS_PREDECESSOR_RECEIPT_JSON_B64" || {
+            echo "::error::candidate preparation requires a reviewed Filebase names receipt"
+            exit 1
+          }
+          umask 077
+          IPNS_RECEIPT="$RUNNER_TEMP/lake-ipns-predecessor.json"
+          printf '%s' "$IPNS_PREDECESSOR_RECEIPT_JSON_B64" | base64 --decode > "$IPNS_RECEIPT"
+          jq -e \
+            '.label == "oracle-open-data-lake" and
+             .network_key == "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un" and
+             (.cid | test("^b[a-z2-7]{20,}$")) and
+             (.sequence | type == "number" and . >= 0 and floor == .)' \
+            "$IPNS_RECEIPT" >/dev/null || {
+              echo "::error::reviewed Filebase names receipt has the wrong identity or shape"
+              exit 1
+            }
+          IPNS_PREDECESSOR_CID="$(jq -er '.cid' "$IPNS_RECEIPT")"
+          IPNS_PREDECESSOR_SEQUENCE="$(jq -er '.sequence' "$IPNS_RECEIPT")"
           node --max-old-space-size=6144 pipeline/scripts/lake/publish-run.mjs \
             --run-id "${{ steps.target.outputs.run_id }}" \
             --mode "${{ steps.mode.outputs.mode }}" \
             --candidate-workflow-run-id "${{ github.run_id }}" \
+            --candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" \
             --provenance-digest "${{ steps.candidate.outputs.provenance_digest }}" \
+            --expected-ipns-predecessor-cid "$IPNS_PREDECESSOR_CID" \
+            --expected-ipns-predecessor-sequence "$IPNS_PREDECESSOR_SEQUENCE" \
             --dry-run
 
       - name: Verify the restored candidate identity
@@ -269,12 +274,19 @@ jobs:
             --arg run "${{ steps.target.outputs.run_id }}" \
             --arg mode "${{ steps.mode.outputs.mode }}" \
             --arg workflow "${{ inputs.candidate_workflow_run_id }}" \
+            --arg commit "${{ github.sha }}" \
             --arg provenance "${{ steps.candidate.outputs.provenance_digest }}" \
             '.schemaVersion == "elephant.publication-request.v1" and
              .target.runId == $run and .target.mode == $mode and
              .target.candidateWorkflowRunId == $workflow and
-             .target.provenanceDigest == $provenance' "$REQUEST" >/dev/null || {
-              echo "::error::dispatch mode, source workflow, run, or provenance does not match the reviewed candidate"
+             .target.candidateCommit == $commit and
+             .target.provenanceDigest == $provenance and
+             .target.secondaryPin.provider == "pinata" and
+             .target.secondaryPin.apiBase == "https://api.pinata.cloud/psa" and
+             (.target.ipnsPredecessor.cid | test("^b[a-z2-7]{20,}$")) and
+             (.target.ipnsPredecessor.sequence | type == "number" and . >= 0 and floor == .)' \
+            "$REQUEST" >/dev/null || {
+              echo "::error::dispatch commit, mode, source workflow, run, or provenance does not match the reviewed candidate"
               exit 1
             }
           ATTEMPT_ID="$(jq -er '.attemptId' "$REQUEST")"
@@ -292,7 +304,7 @@ jobs:
           S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
           S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
           FILEBASE_API_TOKEN: ${{ secrets.FILEBASE_API_TOKEN }}
-          SECONDARY_PIN_SERVICE_URL: ${{ secrets.SECONDARY_PIN_SERVICE_URL }}
+          SECONDARY_PIN_SERVICE_URL: https://api.pinata.cloud/psa
           SECONDARY_PIN_SERVICE_TOKEN: ${{ secrets.SECONDARY_PIN_SERVICE_TOKEN }}
           PUBLISH_AUTHORIZATION_JSON_B64: ${{ secrets.PUBLISH_AUTHORIZATION_JSON_B64 }}
           PUBLISH_APPROVAL_PUBLIC_KEY_B64: ${{ secrets.PUBLISH_APPROVAL_PUBLIC_KEY_B64 }}
@@ -313,11 +325,17 @@ jobs:
           PUBLIC_KEY="$RUNNER_TEMP/lake-publication-approval.pub.pem"
           printf '%s' "$PUBLISH_AUTHORIZATION_JSON_B64" | base64 --decode > "$APPROVAL"
           printf '%s' "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" | base64 --decode > "$PUBLIC_KEY"
+          REQUEST="data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-request.json"
+          IPNS_PREDECESSOR_CID="$(jq -er '.target.ipnsPredecessor.cid' "$REQUEST")"
+          IPNS_PREDECESSOR_SEQUENCE="$(jq -er '.target.ipnsPredecessor.sequence' "$REQUEST")"
           node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
             --run-id "${{ steps.target.outputs.run_id }}" \
             --mode "${{ steps.mode.outputs.mode }}" \
             --candidate-workflow-run-id "${{ inputs.candidate_workflow_run_id }}" \
+            --candidate-commit "${{ github.sha }}" \
             --provenance-digest "${{ steps.candidate.outputs.provenance_digest }}" \
+            --expected-ipns-predecessor-cid "$IPNS_PREDECESSOR_CID" \
+            --expected-ipns-predecessor-sequence "$IPNS_PREDECESSOR_SEQUENCE" \
             --approve "$APPROVAL" \
             --approval-public-key "$PUBLIC_KEY"
 
@@ -333,51 +351,92 @@ jobs:
                "Run the explicit promote:published command, review its receipt and deterministic index," \
                "and deploy the runtime as a separate change."
 
-      # A scheduled ingestion run that fails is a terminal failure of a job
-      # nobody is watching: it runs at 07:20 UTC and its only other output is a
-      # workflow-run page. The engineering guidelines forbid leaving that to a
-      # log, so it pages on-call through the same Events API v2 path the
-      # runtime uses. Gated on the routing key being configured, and it says so
-      # when it is not rather than reporting a success it did not achieve.
-      - name: Page on-call for a failed ingestion run
+      # Alerting must work even when the run failed before its ordinary
+      # baseline-role assumption. The branch-bound role can read baselines,
+      # publish only to the approved SNS topic, and invoke only the stack's
+      # secret-backed notifier; it still cannot write S3 or mutate a baseline.
+      - name: Assume the notification role after an ingestion failure
+        if: ${{ failure() && vars.CLERMONT_BASELINE_READ_ROLE_ARN != '' && (vars.CLERMONT_ALERT_TOPIC_ARN != '' || vars.CLERMONT_FAILURE_NOTIFIER_ARN != '') }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.CLERMONT_BASELINE_READ_ROLE_ARN }}
+          aws-region: ${{ vars.CLERMONT_BASELINE_AWS_REGION || 'us-east-2' }}
+
+      # The notifier reads its one exact PagerDuty routing-key secret inside
+      # AWS; no routing key enters GitHub. SNS is the approved secondary email
+      # channel and is explicitly not described as paging.
+      - name: Notify operators of a failed ingestion run
         if: ${{ failure() }}
         working-directory: .
         env:
-          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+          CLERMONT_ALERT_TOPIC_ARN: ${{ vars.CLERMONT_ALERT_TOPIC_ARN }}
+          CLERMONT_FAILURE_NOTIFIER_ARN: ${{ vars.CLERMONT_FAILURE_NOTIFIER_ARN }}
         run: |
-          if [ -z "$PAGERDUTY_ROUTING_KEY" ]; then
-            echo "::error::This ingestion run failed and PAGERDUTY_ROUTING_KEY is not configured," \
-                 "so nobody was paged. Configure it as a repository secret."
+          DEDUP_KEY="${{ github.repository }}/lake-county-ingestion/${{ steps.target.outputs.run_id }}"
+          PAYLOAD=$(jq -nc \
+            --arg summary "Lake County ingestion run failed (${{ steps.mode.outputs.mode }})" \
+            --arg source "github-actions/${{ github.repository }}" \
+            --arg dedupKey "$DEDUP_KEY" \
+            --arg repository "${{ github.repository }}" \
+            --arg mode "${{ steps.mode.outputs.mode }}" \
+            --arg runId "${{ steps.target.outputs.run_id }}" \
+            --arg runUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{summary:$summary,source:$source,dedupKey:$dedupKey,customDetails:{repository:$repository,mode:$mode,runId:$runId,runUrl:$runUrl}}')
+
+          PAGED=false
+          PAGING_FAILED=false
+          if [ -n "$CLERMONT_FAILURE_NOTIFIER_ARN" ]; then
+            if ! [[ "$CLERMONT_FAILURE_NOTIFIER_ARN" =~ ^arn:aws:lambda:us-east-2:122610508924:function:[A-Za-z0-9_-]+$ ]]; then
+              PAGING_FAILED=true
+              echo "::error::CLERMONT_FAILURE_NOTIFIER_ARN is not one exact production Lambda ARN"
+            elif INVOCATION=$(aws lambda invoke \
+              --function-name "$CLERMONT_FAILURE_NOTIFIER_ARN" \
+              --cli-binary-format raw-in-base64-out \
+              --payload "$PAYLOAD" \
+              "$RUNNER_TEMP/clermont-failure-notifier.json"); then
+              if printf '%s' "$INVOCATION" | jq -e \
+                '(.FunctionError // null) == null and .StatusCode == 200' >/dev/null && \
+                RETURNED_DEDUP_KEY=$(jq -er \
+                  'select(.status == "triggered") | .dedupKey | select(type == "string" and length > 0)' \
+                  "$RUNNER_TEMP/clermont-failure-notifier.json"); then
+                PAGED=true
+                echo "::notice::paged on-call through the production-gated AWS notifier (dedup_key=$RETURNED_DEDUP_KEY)"
+              else
+                PAGING_FAILED=true
+                echo "::error::the PagerDuty notifier returned a function error or invalid receipt"
+              fi
+            else
+              PAGING_FAILED=true
+              echo "::error::the PagerDuty notifier invocation failed"
+            fi
+          fi
+
+          SNS_SENT=false
+          if [ -n "$CLERMONT_ALERT_TOPIC_ARN" ]; then
+            if aws sns publish \
+              --topic-arn "$CLERMONT_ALERT_TOPIC_ARN" \
+              --subject "Lake County ingestion failed" \
+              --message "$PAYLOAD" >/dev/null; then
+              SNS_SENT=true
+              echo "::notice::sent the approved SNS email notification; this is not an on-call page"
+            else
+              echo "::warning::the SNS failure notification could not be delivered"
+            fi
+          fi
+
+          if [ "$PAGING_FAILED" = "true" ]; then
+            echo "::error::SNS may have notified operators, but the required on-call page failed"
+            exit 1
+          fi
+          if [ "$PAGED" = "true" ]; then
             exit 0
           fi
-          # dedup_key is the workflow, not the run, so a run failing every
-          # morning keeps updating one incident instead of opening seven a week.
-          STATUS=$(curl -sS -o /tmp/pd.json -w '%{http_code}' \
-            -X POST https://events.pagerduty.com/v2/enqueue \
-            -H 'content-type: application/json' \
-            -d @- <<JSON
-          {
-            "routing_key": "$PAGERDUTY_ROUTING_KEY",
-            "event_action": "trigger",
-            "dedup_key": "lake-county-ingestion/${{ github.workflow }}",
-            "payload": {
-              "summary": "Lake County ingestion run failed (${{ steps.mode.outputs.mode }})",
-              "source": "github-actions/${{ github.repository }}",
-              "severity": "critical",
-              "component": "lake-county-ingestion",
-              "custom_details": {
-                "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "mode": "${{ steps.mode.outputs.mode }}",
-                "run_id": "${{ steps.target.outputs.run_id }}"
-              }
-            }
-          }
-          JSON
-          )
-          # Events API v2 accepts asynchronously: 202 means enqueued, anything
-          # else means on-call was not told.
-          test "$STATUS" = "202" || { echo "::error::PagerDuty returned HTTP $STATUS"; exit 1; }
-          echo "::notice::paged on-call, dedup_key $(jq -r .dedup_key /tmp/pd.json)"
+          if [ "$SNS_SENT" = "true" ]; then
+            echo "::warning::PagerDuty is not configured; operators were notified by SNS, but nobody was paged"
+            exit 0
+          fi
+          echo "::error::This ingestion run failed and neither paging nor SNS notification is configured"
+          exit 1
 
       - name: Report that publishing was skipped
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish != true }}
@@ -400,6 +459,7 @@ jobs:
             pipeline/data/artifacts/publish/lake/runs/${{ steps.target.outputs.run_id }}/
             pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.json
             pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-request.json
+            pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-provenance.json
             pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}.car
             pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}-manifest.car
           retention-days: 30

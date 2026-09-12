@@ -11,7 +11,7 @@
  *     permit-lists/clermont-permit-index.json   enumeration output
  *     raw/<permit>.html                         detail page as served
  *     extracted/<permit>.json                   normalized permit record
- *     dead/<permit>.json                        permanently unattachable permit, recorded not retried
+ *     dead/<permit>.json                        permanent source failure, recorded not retried
  *     status/<alt_key>.json                     per-parcel completion status
  *     license-directory.html                    the page the licence index is built from
  *     throughput.json                           measured source performance
@@ -20,8 +20,9 @@
  * Everything is resumable: `enumerate` and `harvest` skip work whose artifact
  * already exists — captured under `extracted/` or recorded dead under `dead/` —
  * so re-running the same `--job-id` re-sends only what is missing or genuinely
- * retryable. A permanently unattachable permit is recorded once and never
- * refetched (`docs/lake-kit-deviations.md` §23).
+ * retryable. A permanent source failure is recorded once and never refetched;
+ * a fetched permit with no parcel key is retained as valid-unlinked
+ * (`docs/lake-kit-deviations.md` §23).
  *
  * **Kit deviations recorded for this file:** §19 (this harvest was first run
  * before its benchmark, against `county-permit-adapter`'s ordering), §20 (permit-
@@ -32,8 +33,10 @@
  *   node scripts/lake/clermont-permits.mjs measure   [--sample 20] [--parcel-sample 10]
  *                                                    [--prefix-sample 10] [--concurrency 1,2]
  *   node scripts/lake/clermont-permits.mjs enumerate [--years 25,26] [--job-id <id>]
+ *                                                    [--max-attempts 4]
  *   node scripts/lake/clermont-permits.mjs harvest   [--job-id <id>] [--concurrency 2]
  *                                                    [--limit N] [--only-roofing] [--delay-ms 0]
+ *                                                    [--max-attempts 4]
  *   node scripts/lake/clermont-permits.mjs renormalize [--job-id <id>]
  *   node scripts/lake/clermont-permits.mjs export    [--job-id <id>] [--out <path>]
  *   node scripts/lake/clermont-permits.mjs coverage  [--job-id <id>]
@@ -41,15 +44,18 @@
  * @module scripts/lake/clermont-permits
  */
 
+import { randomUUID, createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+
+import { z } from "zod";
 
 import {
   clermontPermitLoadRow,
-  contractorMatchKey,
   createClermontPermitSession,
   estimateHarvestDuration,
   expandPermitPrefix,
@@ -68,9 +74,174 @@ import {
 import { licenseIndexFromSearchPage } from "../../src/counties/lake/etrakit-adapter.mjs";
 import { LAKE_PERMIT_JURISDICTIONS } from "../../src/counties/lake/permit-routing.mjs";
 import { mapWithConcurrency } from "../../src/counties/lake/sources.mjs";
+import { normalizedPermitRecordSchema } from "../../src/permits/contracts.mjs";
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SEED_PATH = path.join(RUNTIME_ROOT, "data", "seeds", "lake.csv");
+const LICENSE_DIRECTORY_SOURCE_URL = CLERMONT_ETRAKIT_SEARCH_URL;
+const LICENSE_DIRECTORY_VALIDITY_BOUNDARY =
+  "contractor-registration-at-capture-not-historical-license-validity";
+
+export const CLERMONT_TERMINAL_DEAD_ERROR_CODES = Object.freeze([
+  "source_record_not_found",
+  "source_record_gone",
+]);
+
+const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+const terminalDeadErrorCodeSchema = z.enum(CLERMONT_TERMINAL_DEAD_ERROR_CODES);
+const permitIndexRowSchema = z
+  .object({
+    permitNumber: z.string().trim().min(1),
+    alternateKey: z.string().trim().min(1).nullable().optional(),
+  })
+  .passthrough();
+const deadAttemptEvidenceSchema = z
+  .object({
+    attempt: z.number().int().positive(),
+    maxAttempts: z.number().int().positive(),
+    observedAt: z.string().datetime({ offset: true }),
+    requestUrl: z
+      .string()
+      .url()
+      .refine((value) => new URL(value).protocol === "https:"),
+    requestMethod: z.literal("GET"),
+    httpStatus: z.number().int().min(100).max(599).nullable(),
+    responseSha256: sha256Schema.nullable(),
+    classification: z.enum(["transient", "permanent"]),
+    errorCode: z.string().min(1),
+  })
+  .strict();
+
+export const clermontPermanentDeadEvidenceSchema = z
+  .object({
+    schemaVersion: z.literal("elephant.clermont-permanent-dead-evidence.v2"),
+    permitNumber: z.string().trim().min(1),
+    alternateKey: z.string().trim().min(1).nullable(),
+    classification: z.literal("permanent"),
+    errorCode: terminalDeadErrorCodeSchema,
+    message: z.string().min(1),
+    observedAt: z.string().datetime({ offset: true }),
+    attempts: z.array(deadAttemptEvidenceSchema).min(1),
+    sourceProof: z
+      .object({
+        requestUrl: z
+          .string()
+          .url()
+          .refine((value) => new URL(value).protocol === "https:"),
+        requestMethod: z.literal("GET"),
+        httpStatus: z.union([z.literal(404), z.literal(410)]),
+        responseSha256: sha256Schema,
+        responseBody: z.string(),
+        observedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    searchRow: permitIndexRowSchema,
+  })
+  .strict()
+  .superRefine((evidence, context) => {
+    const expectedRequestUrl = `${LICENSE_DIRECTORY_SOURCE_URL}?activityNo=${encodeURIComponent(
+      evidence.permitNumber,
+    )}`;
+    const expectedCode =
+      evidence.sourceProof.httpStatus === 404 ? "source_record_not_found" : "source_record_gone";
+    if (evidence.errorCode !== expectedCode) {
+      context.addIssue({
+        code: "custom",
+        path: ["errorCode"],
+        message: "Terminal code must match the source HTTP status",
+      });
+    }
+    if (evidence.sourceProof.responseSha256 !== sha256Text(evidence.sourceProof.responseBody)) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceProof", "responseSha256"],
+        message: "Source proof digest must match the retained response body",
+      });
+    }
+    if (evidence.sourceProof.requestUrl !== expectedRequestUrl) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceProof", "requestUrl"],
+        message: "Source proof URL must identify the exact enumerated permit",
+      });
+    }
+    if (
+      evidence.searchRow.permitNumber !== evidence.permitNumber ||
+      (evidence.searchRow.alternateKey ?? null) !== evidence.alternateKey
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["searchRow"],
+        message: "Dead evidence must bind the exact enumeration identity",
+      });
+    }
+    const lastAttempt = evidence.attempts.at(-1);
+    const declaredMaximum = evidence.attempts[0]?.maxAttempts;
+    if (
+      evidence.attempts.length > (declaredMaximum ?? 0) ||
+      evidence.attempts.some(
+        (attempt, index) =>
+          attempt.attempt !== index + 1 ||
+          attempt.maxAttempts !== declaredMaximum ||
+          attempt.requestUrl !== evidence.sourceProof.requestUrl ||
+          (index < evidence.attempts.length - 1 && attempt.classification !== "transient"),
+      ) ||
+      lastAttempt?.classification !== "permanent" ||
+      lastAttempt.errorCode !== evidence.errorCode ||
+      lastAttempt.httpStatus !== evidence.sourceProof.httpStatus ||
+      lastAttempt.responseSha256 !== evidence.sourceProof.responseSha256 ||
+      lastAttempt.observedAt !== evidence.sourceProof.observedAt
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["attempts"],
+        message: "Ordered attempt evidence must end in the retained terminal source proof",
+      });
+    }
+  });
+
+export const clermontLicenseDirectoryProvenanceSchema = z
+  .object({
+    schemaVersion: z.literal("elephant.clermont-license-directory-provenance.v1"),
+    jobId: z.string().min(1),
+    sourceUrl: z.literal(LICENSE_DIRECTORY_SOURCE_URL),
+    capturedAt: z.string().datetime({ offset: true }),
+    sha256: sha256Schema,
+    entries: z.number().int().nonnegative(),
+    validityBoundary: z.literal(LICENSE_DIRECTORY_VALIDITY_BOUNDARY),
+  })
+  .strict();
+
+/**
+ * Validate a committed job-wide contractor-directory pin. The metadata file
+ * is the commit marker: records may be written only after both files agree
+ * byte-for-byte and the retained HTML reconstructs the declared index.
+ *
+ * @param {object} options - Validation options.
+ * @param {string} options.html - Retained source HTML.
+ * @param {unknown} options.metadata - Parsed provenance JSON.
+ * @param {string} options.jobId - Exact job identity.
+ * @returns {{ html: string, metadata: object, licenseIndex: Map<string, string> }} Valid pin.
+ */
+export function validateClermontLicenseDirectoryPair({ html, metadata, jobId }) {
+  const parsed = clermontLicenseDirectoryProvenanceSchema.parse(metadata);
+  const licenseIndex = licenseIndexFromSearchPage(html);
+  if (
+    parsed.jobId !== jobId ||
+    parsed.sha256 !== sha256Text(html) ||
+    parsed.entries !== licenseIndex.size
+  ) {
+    throw new Error("Pinned Clermont license-directory HTML and provenance do not match");
+  }
+  if (licenseIndex.size === 0) {
+    throw new Error("Clermont license-directory pin contains no usable contractor entries");
+  }
+  return { html, metadata: parsed, licenseIndex };
+}
+
+function sha256Text(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 /**
  * @param {string} jobId - Harvest job id.
@@ -108,7 +279,9 @@ export function parseArgs(argv) {
  * @returns {void}
  */
 function log(message, fields = {}) {
-  process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), event: message, ...fields })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ at: new Date().toISOString(), event: message, ...fields })}\n`,
+  );
 }
 
 /**
@@ -120,6 +293,271 @@ function log(message, fields = {}) {
  */
 export function safeKeyPart(value) {
   return String(value).replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+/**
+ * Commit one artifact by same-directory rename so a crash cannot expose
+ * partially written final bytes.
+ *
+ * @param {string} filePath - Final artifact path.
+ * @param {string | Buffer} body - Complete artifact bytes.
+ * @returns {Promise<void>} Resolves after the atomic rename.
+ */
+export async function atomicWriteArtifact(filePath, body) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, body, { flag: "wx" });
+    await rename(temporaryPath, filePath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
+
+async function hasExtractedPermitRecords(root) {
+  return (await readdir(path.join(root, "extracted")).catch(() => [])).some((name) =>
+    name.endsWith(".json"),
+  );
+}
+
+/**
+ * Reuse the first valid contractor-directory pair committed for a job. A
+ * partial or invalid pair can be recovered only before any extracted permit
+ * exists; once records exist, changing the directory would mix two license
+ * snapshots inside one job and therefore fails closed.
+ *
+ * @param {object} options - Pin options.
+ * @param {string} options.root - Job artifact root.
+ * @param {string} options.jobId - Exact job identity.
+ * @param {() => Promise<{ html: string, capturedAt: string }>} options.loadSource - Bounded upstream bootstrap.
+ * @param {() => Promise<void>} [options.afterHtmlCommit] - Test-only crash hook.
+ * @returns {Promise<{ html: string, metadata: object, licenseIndex: Map<string, string>, reused: boolean }>} Pinned pair.
+ */
+export async function ensureClermontLicenseDirectoryPin({
+  root,
+  jobId,
+  loadSource,
+  afterHtmlCommit = async () => {},
+}) {
+  const htmlPath = path.join(root, "license-directory.html");
+  const metadataPath = path.join(root, "license-directory.meta.json");
+  const [hasHtml, hasMetadata] = await Promise.all([
+    pathExists(htmlPath),
+    pathExists(metadataPath),
+  ]);
+  if (hasHtml && hasMetadata) {
+    try {
+      const committed = validateClermontLicenseDirectoryPair({
+        html: await readFile(htmlPath, "utf8"),
+        metadata: JSON.parse(await readFile(metadataPath, "utf8")),
+        jobId,
+      });
+      return { ...committed, reused: true };
+    } catch (error) {
+      if (await hasExtractedPermitRecords(root)) {
+        throw new Error(
+          `Pinned Clermont license directory is invalid after permit capture: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  } else if ((hasHtml || hasMetadata) && (await hasExtractedPermitRecords(root))) {
+    throw new Error("Pinned Clermont license directory is partial after permit capture");
+  }
+
+  const source = await loadSource();
+  if (!Number.isFinite(Date.parse(source.capturedAt))) {
+    throw new Error("Clermont license-directory capture time must be ISO-8601");
+  }
+  const licenseIndex = licenseIndexFromSearchPage(source.html);
+  const metadata = clermontLicenseDirectoryProvenanceSchema.parse({
+    schemaVersion: "elephant.clermont-license-directory-provenance.v1",
+    jobId,
+    sourceUrl: LICENSE_DIRECTORY_SOURCE_URL,
+    capturedAt: source.capturedAt,
+    sha256: sha256Text(source.html),
+    entries: licenseIndex.size,
+    validityBoundary: LICENSE_DIRECTORY_VALIDITY_BOUNDARY,
+  });
+  validateClermontLicenseDirectoryPair({ html: source.html, metadata, jobId });
+
+  // HTML is committed first and metadata last. The metadata file is the pair's
+  // commit marker, so the record loop below cannot observe a half-pinned pair.
+  await atomicWriteArtifact(htmlPath, source.html);
+  await afterHtmlCommit();
+  await atomicWriteArtifact(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+  const committed = validateClermontLicenseDirectoryPair({
+    html: await readFile(htmlPath, "utf8"),
+    metadata: JSON.parse(await readFile(metadataPath, "utf8")),
+    jobId,
+  });
+  return { ...committed, reused: false };
+}
+
+/**
+ * Commit the raw/extracted pair. A process interruption between the two atomic
+ * renames can leave one complete artifact, but resume validation treats that
+ * state as pending and safely overwrites it on the next source fetch.
+ *
+ * @param {object} options - Pair options.
+ * @param {string} options.rawPath - Final raw HTML path.
+ * @param {string} options.extractedPath - Final normalized JSON path.
+ * @param {string} options.rawBody - Raw HTML bytes.
+ * @param {string} options.extractedBody - Typed normalized JSON bytes.
+ * @param {() => Promise<void>} [options.afterRawCommit] - Test-only interruption hook.
+ * @returns {Promise<void>} Resolves after both final paths are committed.
+ */
+export async function writeClermontPermitArtifactPair({
+  rawPath,
+  extractedPath,
+  rawBody,
+  extractedBody,
+  afterRawCommit = async () => {},
+}) {
+  await atomicWriteArtifact(rawPath, rawBody);
+  await afterRawCommit();
+  await atomicWriteArtifact(extractedPath, extractedBody);
+}
+
+async function pathExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate an on-disk terminal unit before a resume skips it. Filename
+ * existence alone is never completion: success requires an exact raw HTML +
+ * typed normalized JSON identity pair, while exclusion requires typed,
+ * whitelisted permanent-dead proof bound to the enumeration row.
+ *
+ * @param {object} options - Inspection options.
+ * @param {string} options.root - Live partition root.
+ * @param {object} options.row - Exact permit enumeration row.
+ * @param {string} [options.licenseDirectorySha256] - Required job-wide directory digest.
+ * @returns {Promise<{ disposition: "completed" | "proven-dead" | "pending", reason: string | null }>} Resume state.
+ */
+export async function inspectClermontHarvestArtifactState({ root, row, licenseDirectorySha256 }) {
+  const parsedRow = permitIndexRowSchema.parse(row);
+  const permitKey = safeKeyPart(parsedRow.permitNumber);
+  const rawPath = path.join(root, "raw", `${permitKey}.html`);
+  const extractedPath = path.join(root, "extracted", `${permitKey}.json`);
+  const deadPath = path.join(root, "dead", `${permitKey}.json`);
+  const [hasRaw, hasExtracted, hasDead] = await Promise.all([
+    pathExists(rawPath),
+    pathExists(extractedPath),
+    pathExists(deadPath),
+  ]);
+  if (hasDead && (hasRaw || hasExtracted)) {
+    throw new Error(`Permit ${parsedRow.permitNumber} has conflicting captured and dead evidence`);
+  }
+  if (hasRaw && hasExtracted) {
+    try {
+      const [rawBody, extractedBody] = await Promise.all([
+        readFile(rawPath, "utf8"),
+        readFile(extractedPath, "utf8"),
+      ]);
+      const detail = parsePermitDetailHtml(rawBody, {
+        expectedPermitNumber: parsedRow.permitNumber,
+      });
+      const record = normalizedPermitRecordSchema.parse(JSON.parse(extractedBody));
+      if (
+        detail.permitNumber !== parsedRow.permitNumber ||
+        record.permit_number !== parsedRow.permitNumber ||
+        (licenseDirectorySha256 !== undefined &&
+          record.sourcePayload.licenseDirectorySha256 !== licenseDirectorySha256) ||
+        record.sourcePayload.searchRow === null ||
+        !isDeepStrictEqual(record.sourcePayload.searchRow, parsedRow)
+      ) {
+        return { disposition: "pending", reason: "captured_identity_mismatch" };
+      }
+      return { disposition: "completed", reason: null };
+    } catch {
+      return { disposition: "pending", reason: "captured_pair_invalid" };
+    }
+  }
+  if (hasDead) {
+    try {
+      const evidence = clermontPermanentDeadEvidenceSchema.parse(
+        JSON.parse(await readFile(deadPath, "utf8")),
+      );
+      if (!isDeepStrictEqual(evidence.searchRow, parsedRow)) {
+        return { disposition: "pending", reason: "dead_enumeration_mismatch" };
+      }
+      return { disposition: "proven-dead", reason: null };
+    } catch {
+      return { disposition: "pending", reason: "dead_evidence_invalid" };
+    }
+  }
+  if (hasRaw || hasExtracted) {
+    return { disposition: "pending", reason: "partial_captured_pair" };
+  }
+  return { disposition: "pending", reason: "not_started" };
+}
+
+/**
+ * Accept only a terminal source code carrying reproducible HTTP evidence.
+ * Other permanent-looking adapter errors remain pending/human-blocking.
+ *
+ * @param {object} options - Evidence options.
+ * @param {object} options.row - Exact enumeration row.
+ * @param {unknown} options.error - Classified source error.
+ * @param {string} options.observedAt - Failure observation time.
+ * @returns {object | null} Typed terminal evidence, or null when exclusion is not proven.
+ */
+export function buildClermontPermanentDeadEvidence({ row, error, observedAt }) {
+  const candidate = {
+    schemaVersion: "elephant.clermont-permanent-dead-evidence.v2",
+    permitNumber: row.permitNumber,
+    alternateKey: row.alternateKey ?? null,
+    classification: error?.classification,
+    errorCode: error?.code,
+    message: error?.message ?? String(error),
+    observedAt,
+    attempts: error?.attemptEvidence,
+    sourceProof: error?.sourceProof,
+    searchRow: row,
+  };
+  const parsed = clermontPermanentDeadEvidenceSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Read only dead evidence that proves a terminal outcome for an exact row in
+ * the current enumeration. Invalid or orphan files fail closed instead of
+ * inflating dead counts in summaries and coverage.
+ *
+ * @param {string} root - Live partition root.
+ * @param {object | null} index - Current permit index.
+ * @returns {Promise<object[]>} Validated permanent-dead evidence.
+ */
+async function readValidatedDeadEvidence(root, index) {
+  const files = (await readdir(path.join(root, "dead")).catch(() => [])).filter((name) =>
+    name.endsWith(".json"),
+  );
+  if (files.length === 0) return [];
+  if (!Array.isArray(index?.permits)) {
+    throw new Error("Dead evidence cannot be counted without its exact permit enumeration");
+  }
+  const rows = new Map(index.permits.map((row) => [row.permitNumber, row]));
+  return Promise.all(
+    files.sort().map(async (file) => {
+      const evidence = clermontPermanentDeadEvidenceSchema.parse(
+        JSON.parse(await readFile(path.join(root, "dead", file), "utf8")),
+      );
+      const row = rows.get(evidence.permitNumber);
+      if (
+        file !== `${safeKeyPart(evidence.permitNumber)}.json` ||
+        row === undefined ||
+        !isDeepStrictEqual(evidence.searchRow, row)
+      ) {
+        throw new Error(`Dead evidence is not bound to this enumeration: ${file}`);
+      }
+      return evidence;
+    }),
+  );
 }
 
 /**
@@ -276,7 +714,9 @@ export async function measureThroughput({
     rowsReturned: parcelSearchRows,
     parcelsWithAnyPermit: parcelSearchHits,
     permitsPerSearchedParcel:
-      parcelSearchMs.length > 0 ? Number((parcelSearchRows / parcelSearchMs.length).toFixed(2)) : null,
+      parcelSearchMs.length > 0
+        ? Number((parcelSearchRows / parcelSearchMs.length).toFixed(2))
+        : null,
   };
   log("throughput.phase", parcelSearch);
   await pause(3000);
@@ -308,7 +748,8 @@ export async function measureThroughput({
     latency: summarizeLatencies(listSearchMs),
     rowsReturned: listRows,
     cappedResponses: listCapped,
-    rowsPerSearch: listSearchMs.length > 0 ? Number((listRows / listSearchMs.length).toFixed(2)) : null,
+    rowsPerSearch:
+      listSearchMs.length > 0 ? Number((listRows / listSearchMs.length).toFixed(2)) : null,
   };
   log("throughput.phase", listSearch);
   await pause(3000);
@@ -332,11 +773,19 @@ export async function measureThroughput({
           contractor: selectContractorOfRecord(record.contacts)?.name ?? null,
         };
       } catch (error) {
-        return { ms: Date.now() - at, ok: false, code: error?.code ?? "unknown", bytes: 0, contractor: null };
+        return {
+          ms: Date.now() - at,
+          ok: false,
+          code: error?.code ?? "unknown",
+          bytes: 0,
+          contractor: null,
+        };
       }
     });
     const wallSeconds = (Date.now() - started) / 1000;
-    const latency = summarizeLatencies(results.filter((result) => result.ok).map((result) => result.ms));
+    const latency = summarizeLatencies(
+      results.filter((result) => result.ok).map((result) => result.ms),
+    );
     const failures = results.filter((result) => !result.ok);
     detail.push({
       phase: "permit-detail-capture",
@@ -349,7 +798,9 @@ export async function measureThroughput({
       failureRate: Number((failures.length / results.length).toFixed(3)),
       failureCodes: [...new Set(failures.map((failure) => failure.code))],
       contractorCount: results.filter((result) => result.contractor !== null).length,
-      averageBytes: Math.round(results.reduce((sum, result) => sum + result.bytes, 0) / results.length),
+      averageBytes: Math.round(
+        results.reduce((sum, result) => sum + result.bytes, 0) / results.length,
+      ),
     });
     log("throughput.phase", detail.at(-1));
     await pause(5000);
@@ -403,19 +854,25 @@ export async function measureBytesWritten(jobId) {
  * @param {string} options.jobId - Job id.
  * @param {readonly string[]} options.years - Two-digit permit-number years.
  * @param {number} [options.concurrency] - Independent sessions walking in parallel.
+ * @param {number} [options.maxAttempts] - Executor-authorized attempts per source request.
  * @returns {Promise<object>} The written permit index.
  */
-export async function enumeratePermits({ jobId, years, concurrency = 2 }) {
+export async function enumeratePermits({ jobId, years, concurrency = 2, maxAttempts = 4 }) {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 12) {
+    throw new Error("maxAttempts must be an integer between 1 and 12");
+  }
   const listDir = path.join(jobDir(jobId), "permit-lists");
   await mkdir(listDir, { recursive: true });
   const indexPath = path.join(listDir, "clermont-permit-index.json");
 
   const roots = permitYearPrefixes(years).flatMap((year) => expandPermitPrefix(year));
-  const shards = Array.from({ length: concurrency }, (_, shard) => roots.filter((_root, position) => position % concurrency === shard));
+  const shards = Array.from({ length: concurrency }, (_, shard) =>
+    roots.filter((_root, position) => position % concurrency === shard),
+  );
 
   const started = Date.now();
   const walks = await mapWithConcurrency(shards, concurrency, async (rootPrefixes) => {
-    const session = createClermontPermitSession();
+    const session = createClermontPermitSession({ maxAttempts });
     return walkPermitPrefixes({
       rootPrefixes,
       // A root here is already `YY-N`, one digit deep, so three more digits
@@ -429,9 +886,11 @@ export async function enumeratePermits({ jobId, years, concurrency = 2 }) {
   });
 
   const walk = {
-    rows: [...new Map(walks.flatMap((result) => result.rows).map((row) => [row.permitNumber, row])).values()].sort(
-      (left, right) => left.permitNumber.localeCompare(right.permitNumber),
-    ),
+    rows: [
+      ...new Map(
+        walks.flatMap((result) => result.rows).map((row) => [row.permitNumber, row]),
+      ).values(),
+    ].sort((left, right) => left.permitNumber.localeCompare(right.permitNumber)),
     prefixesSearched: walks.reduce((sum, result) => sum + result.prefixesSearched, 0),
     unresolvedPrefixes: walks.flatMap((result) => result.unresolvedPrefixes),
   };
@@ -450,7 +909,7 @@ export async function enumeratePermits({ jobId, years, concurrency = 2 }) {
     distinctAlternateKeys: new Set(walk.rows.map((row) => row.alternateKey).filter(Boolean)).size,
     permits: walk.rows,
   };
-  await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  await atomicWriteArtifact(indexPath, `${JSON.stringify(index, null, 2)}\n`);
   log("enumerate.done", {
     jobId,
     permitCount: index.permitCount,
@@ -476,6 +935,11 @@ export async function enumeratePermits({ jobId, years, concurrency = 2 }) {
  * @param {number} [options.limit] - Cap on permits to fetch this pass.
  * @param {boolean} [options.onlyRoofing] - Restrict to roofing permit types.
  * @param {number} [options.delayMs] - Politeness pause each worker takes after every permit.
+ * @param {number} [options.maxAttempts] - Executor-authorized attempts per source request.
+ * @param {string} [options.artifactRoot] - Injected job root for offline verification.
+ * @param {string} [options.seedPath] - Injected seed path for offline verification.
+ * @param {object} [options.session] - Injected source session for offline verification.
+ * @param {() => string} [options.clock] - ISO-8601 capture clock.
  * @returns {Promise<object>} Harvest summary.
  */
 export async function harvestPermits({
@@ -484,34 +948,65 @@ export async function harvestPermits({
   limit = Infinity,
   onlyRoofing = false,
   delayMs = 0,
+  maxAttempts = 4,
+  artifactRoot,
+  seedPath,
+  session: suppliedSession,
+  clock = () => new Date().toISOString(),
 }) {
-  const root = jobDir(jobId);
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 12) {
+    throw new Error("maxAttempts must be an integer between 1 and 12");
+  }
+  const root = artifactRoot ?? jobDir(jobId);
   const indexPath = path.join(root, "permit-lists", "clermont-permit-index.json");
   const index = JSON.parse(await readFile(indexPath, "utf8"));
-  for (const dir of ["raw", "extracted", "status", "dead"]) await mkdir(path.join(root, dir), { recursive: true });
+  for (const dir of ["raw", "extracted", "status", "dead"])
+    await mkdir(path.join(root, dir), { recursive: true });
 
-  // Resume skips what is already captured AND what is already known dead.
-  // Without the second half a permanently unattachable permit is re-fetched on
-  // every pass forever: `county-ingest-run` section 5 is explicit that a DEAD
-  // record is recorded and never retried, and that the achievable total is
-  // enumerated minus dead, so a pass that keeps re-attempting them can never
-  // reach its own completion gate.
+  const seed = await loadSeedIndex(seedPath === undefined ? {} : { seedPath });
+  const session = suppliedSession ?? createClermontPermitSession({ maxAttempts });
+  const licenseDirectory = await ensureClermontLicenseDirectoryPin({
+    root,
+    jobId,
+    loadSource: async () => {
+      await session.loadContractorLicenseIndex();
+      const html = session.bootstrapHtml();
+      if (html === null) {
+        throw new Error("Contractor license directory bootstrap bytes were not retained");
+      }
+      return { html, capturedAt: clock() };
+    },
+  });
+  const licenseIndex = licenseDirectory.licenseIndex;
+  const licenseSha256 = licenseDirectory.metadata.sha256;
+  log("harvest.license-directory", {
+    entries: licenseDirectory.metadata.entries,
+    sha256: licenseSha256,
+    capturedAt: licenseDirectory.metadata.capturedAt,
+    reused: licenseDirectory.reused,
+  });
+
+  // Resolve the immutable job-wide directory before inspecting or writing any
+  // record. Resume is then evidence-based: an exact raw + typed extracted pair
+  // is complete only when the record binds this same directory digest.
+  const resumeStates = await mapWithConcurrency(index.permits, 32, async (row) => ({
+    row,
+    state: await inspectClermontHarvestArtifactState({
+      root,
+      row,
+      licenseDirectorySha256: licenseSha256,
+    }),
+  }));
   const done = new Set(
-    [
-      ...(await readdir(path.join(root, "extracted")).catch(() => [])),
-      ...(await readdir(path.join(root, "dead")).catch(() => [])),
-    ].map((name) => name.replace(/\.json$/, "")),
+    resumeStates
+      .filter(({ state }) => state.disposition !== "pending")
+      .map(({ row }) => safeKeyPart(row.permitNumber)),
   );
-  const seed = await loadSeedIndex();
-  const session = createClermontPermitSession({ maxAttempts: 4 });
-  const licenseIndex = await session.loadContractorLicenseIndex();
-  // Saved so `renormalize` can rebuild the same index from the same bytes.
-  // Without it an offline re-normalization resolves whatever licences the
-  // previous records happen to carry, which can only ever be a subset.
-  const bootstrapHtml = session.bootstrapHtml();
-  if (bootstrapHtml !== null) await writeFile(path.join(root, "license-directory.html"), bootstrapHtml);
-  log("harvest.license-directory", { entries: licenseIndex.size, saved: bootstrapHtml !== null });
-
+  const pendingReasonByKey = new Map(
+    resumeStates
+      .filter(({ state }) => state.disposition === "pending")
+      .map(({ row, state }) => [safeKeyPart(row.permitNumber), state.reason]),
+  );
   const queue = index.permits
     .filter((row) => !onlyRoofing || /roof/i.test(String(row.permitType ?? "")))
     .filter((row) => !done.has(safeKeyPart(row.permitNumber)))
@@ -525,7 +1020,7 @@ export async function harvestPermits({
     onlyRoofing,
   });
 
-  /** @type {Map<string, { permits: number, failures: number, contractors: number }>} */
+  /** @type {Map<string, { permits: number, failures: number, contractors: number, parcelIdentifier: string | null, permitNumber: string | null, fromDisk?: boolean }>} */
   const perParcel = new Map();
   const failures = [];
   let contractorCount = 0;
@@ -535,16 +1030,30 @@ export async function harvestPermits({
   await mapWithConcurrency(queue, concurrency, async (row) => {
     const permitKey = safeKeyPart(row.permitNumber);
     const alternateKey = row.alternateKey ?? null;
+    const pendingReason = pendingReasonByKey.get(permitKey);
+    if (pendingReason !== undefined && pendingReason !== "not_started") {
+      const recoveryRoot = path.join(root, "recovery");
+      await mkdir(recoveryRoot, { recursive: true });
+      for (const [directory, extension] of [
+        ["raw", "html"],
+        ["extracted", "json"],
+        ["dead", "json"],
+      ]) {
+        const source = path.join(root, directory, `${permitKey}.${extension}`);
+        if (!(await pathExists(source))) continue;
+        await rename(
+          source,
+          path.join(
+            recoveryRoot,
+            `${permitKey}.${directory}.${pendingReason}.${randomUUID()}.${extension}`,
+          ),
+        );
+      }
+    }
     try {
       const { detail, html } = await session.fetchPermitDetail(row.permitNumber);
       const boundKey = alternateKey ?? detail.alternateKey;
-      if (boundKey === null) {
-        throw Object.assign(new Error(`Permit ${row.permitNumber} carries no parcel key`), {
-          classification: "permanent",
-          code: "permit_without_parcel_key",
-        });
-      }
-      const seedRow = seed.get(boundKey) ?? null;
+      const seedRow = boundKey === null ? null : (seed.get(boundKey) ?? null);
       if (seedRow === null) unseededCount += 1;
       const record = normalizeClermontPermit({
         detail,
@@ -552,38 +1061,60 @@ export async function harvestPermits({
         requestedAlternateKey: boundKey,
         requestedParcelId: seedRow?.parcelId ?? null,
         licenseIndex,
+        licenseDirectorySha256: licenseSha256,
       });
-      await writeFile(path.join(root, "raw", `${permitKey}.html`), html);
-      await writeFile(path.join(root, "extracted", `${permitKey}.json`), `${JSON.stringify(record, null, 2)}\n`);
-      const bucket = perParcel.get(boundKey) ?? { permits: 0, failures: 0, contractors: 0 };
+      await writeClermontPermitArtifactPair({
+        rawPath: path.join(root, "raw", `${permitKey}.html`),
+        extractedPath: path.join(root, "extracted", `${permitKey}.json`),
+        rawBody: html,
+        extractedBody: `${JSON.stringify(record, null, 2)}\n`,
+      });
+      const bucketKey = boundKey ?? `permit:${row.permitNumber}`;
+      const bucket = perParcel.get(bucketKey) ?? {
+        permits: 0,
+        failures: 0,
+        contractors: 0,
+        parcelIdentifier: boundKey,
+        permitNumber: boundKey === null ? row.permitNumber : null,
+      };
       bucket.permits += 1;
       if (record.sourcePayload.contractorOfRecord !== null) {
         bucket.contractors += 1;
         contractorCount += 1;
       }
-      perParcel.set(boundKey, bucket);
+      perParcel.set(bucketKey, bucket);
     } catch (error) {
+      const observedAt = new Date().toISOString();
+      const terminalEvidence = buildClermontPermanentDeadEvidence({ row, error, observedAt });
       const entry = {
         permitNumber: row.permitNumber,
         alternateKey,
-        classification: error?.classification ?? "transient",
+        classification:
+          terminalEvidence !== null
+            ? "permanent"
+            : error?.classification === "permanent"
+              ? "blocked"
+              : (error?.classification ?? "transient"),
         errorCode: error?.code ?? "unexpected_source_error",
         message: error?.message ?? String(error),
-        observedAt: new Date().toISOString(),
+        attempts: Array.isArray(error?.attemptEvidence) ? error.attemptEvidence : [],
+        observedAt,
       };
       failures.push(entry);
-      if (entry.classification === "permanent") {
-        // The enumeration row is kept alongside the reason. A permit the
-        // portal will never attach to a parcel is still a permit that exists,
-        // and the coverage snapshot reports it as one; dropping the row here
-        // would turn a known record into an absence nobody could audit.
-        await writeFile(
+      if (terminalEvidence !== null) {
+        await atomicWriteArtifact(
           path.join(root, "dead", `${permitKey}.json`),
-          `${JSON.stringify({ ...entry, searchRow: row }, null, 2)}\n`,
+          `${JSON.stringify(terminalEvidence, null, 2)}\n`,
         );
       }
       if (alternateKey) {
-        const bucket = perParcel.get(alternateKey) ?? { permits: 0, failures: 0, contractors: 0 };
+        const bucket = perParcel.get(alternateKey) ?? {
+          permits: 0,
+          failures: 0,
+          contractors: 0,
+          parcelIdentifier: alternateKey,
+          permitNumber: null,
+        };
         bucket.failures += 1;
         perParcel.set(alternateKey, bucket);
       }
@@ -591,7 +1122,12 @@ export async function harvestPermits({
     }
     processed += 1;
     if (processed % 100 === 0) {
-      log("harvest.progress", { processed, queued: queue.length, contractors: contractorCount, failures: failures.length });
+      log("harvest.progress", {
+        processed,
+        queued: queue.length,
+        contractors: contractorCount,
+        failures: failures.length,
+      });
     }
     // Politeness, not pacing: the portal's observed ceiling is cumulative
     // request volume rather than instantaneous concurrency (see
@@ -607,7 +1143,14 @@ export async function harvestPermits({
     name.endsWith(".json"),
   )) {
     const record = JSON.parse(await readFile(path.join(root, "extracted", file), "utf8"));
-    const bucket = perParcel.get(record.parcel_identifier) ?? { permits: 0, failures: 0, contractors: 0 };
+    const bucketKey = record.parcel_identifier ?? `permit:${record.permit_number}`;
+    const bucket = perParcel.get(bucketKey) ?? {
+      permits: 0,
+      failures: 0,
+      contractors: 0,
+      parcelIdentifier: record.parcel_identifier,
+      permitNumber: record.parcel_identifier === null ? record.permit_number : null,
+    };
     if (!bucket.fromDisk) {
       bucket.permits = 0;
       bucket.contractors = 0;
@@ -615,18 +1158,28 @@ export async function harvestPermits({
     }
     bucket.permits += 1;
     if (record.sourcePayload.contractorOfRecord !== null) bucket.contractors += 1;
-    perParcel.set(record.parcel_identifier, bucket);
+    perParcel.set(bucketKey, bucket);
   }
 
-  for (const [alternateKey, bucket] of perParcel) {
-    const seedRow = seed.get(alternateKey) ?? null;
-    await writeFile(
-      path.join(root, "status", `${safeKeyPart(alternateKey)}.json`),
+  for (const bucket of perParcel.values()) {
+    const seedRow =
+      bucket.parcelIdentifier === null ? null : (seed.get(bucket.parcelIdentifier) ?? null);
+    const statusKey =
+      bucket.parcelIdentifier ?? `permit-without-parcel-${String(bucket.permitNumber)}`;
+    await atomicWriteArtifact(
+      path.join(root, "status", `${safeKeyPart(statusKey)}.json`),
       `${JSON.stringify(
         {
           countyKey: "lake",
           jobId,
-          parcelIdentifier: alternateKey,
+          parcelIdentifier: bucket.parcelIdentifier,
+          permitNumber: bucket.permitNumber,
+          linkage:
+            seedRow !== null
+              ? "linked"
+              : bucket.parcelIdentifier === null
+                ? "valid-unlinked-no-parcel-identifier"
+                : "valid-unlinked",
           parcelId: seedRow?.parcelId ?? null,
           jurisdictionKey: JURISDICTION_KEY,
           status: bucket.failures > 0 && bucket.permits === 0 ? "failed" : "done",
@@ -642,9 +1195,7 @@ export async function harvestPermits({
     );
   }
 
-  const deadCount = (await readdir(path.join(root, "dead")).catch(() => [])).filter((name) =>
-    name.endsWith(".json"),
-  ).length;
+  const deadCount = (await readValidatedDeadEvidence(root, index)).length;
   const summary = {
     jobId,
     queued: queue.length,
@@ -664,7 +1215,10 @@ export async function harvestPermits({
     ),
     sessionStats: session.stats(),
   };
-  await writeFile(path.join(root, "harvest-summary.json"), `${JSON.stringify({ ...summary, failures }, null, 2)}\n`);
+  await atomicWriteArtifact(
+    path.join(root, "harvest-summary.json"),
+    `${JSON.stringify({ ...summary, failures }, null, 2)}\n`,
+  );
   log("harvest.done", summary);
   return summary;
 }
@@ -683,12 +1237,17 @@ export async function harvestPermits({
  */
 export async function renormalizePermits({ jobId }) {
   const root = jobDir(jobId);
-  const index = JSON.parse(await readFile(path.join(root, "permit-lists", "clermont-permit-index.json"), "utf8"));
+  const index = JSON.parse(
+    await readFile(path.join(root, "permit-lists", "clermont-permit-index.json"), "utf8"),
+  );
   const rows = new Map(index.permits.map((row) => [safeKeyPart(row.permitNumber), row]));
   const seed = await loadSeedIndex();
-  const licenseIndex = licenseIndexFromSearchPage(
-    await readFile(path.join(root, "license-directory.html"), "utf8").catch(() => ""),
-  );
+  const licenseDirectory = validateClermontLicenseDirectoryPair({
+    html: await readFile(path.join(root, "license-directory.html"), "utf8"),
+    metadata: JSON.parse(await readFile(path.join(root, "license-directory.meta.json"), "utf8")),
+    jobId,
+  });
+  const licenseIndex = licenseDirectory.licenseIndex;
 
   let rewritten = 0;
   let unchanged = 0;
@@ -709,23 +1268,14 @@ export async function renormalizePermits({ jobId }) {
         row: rows.get(key),
         requestedAlternateKey: boundKey,
         requestedParcelId: seedRow?.parcelId ?? null,
-        // The licence index is rebuilt from a saved page when one exists. When
-        // it does not, a licence already resolved on the harvest pass is kept
-        // rather than dropped: re-normalizing must never lose a fact.
-        licenseIndex:
-          licenseIndex.size > 0
-            ? licenseIndex
-            : new Map(
-                (previous.contractors ?? [])
-                  .filter((contractor) => contractor.licenseNumber !== null)
-                  .map((contractor) => [contractorMatchKey(contractor.businessName), contractor.licenseNumber]),
-              ),
+        licenseIndex,
+        licenseDirectorySha256: licenseDirectory.metadata.sha256,
       });
       const next = `${JSON.stringify(record, null, 2)}\n`;
       if (next === `${JSON.stringify(previous, null, 2)}\n`) {
         unchanged += 1;
       } else {
-        await writeFile(extractedPath, next);
+        await atomicWriteArtifact(extractedPath, next);
         rewritten += 1;
       }
     } catch (error) {
@@ -754,7 +1304,8 @@ export async function renormalizePermits({ jobId }) {
  */
 export async function exportPermitLoadCsv({ jobId, outPath }) {
   const root = jobDir(jobId);
-  const destination = outPath ?? path.join(RUNTIME_ROOT, "data", "downloads", "lake", "clermont-permits.csv");
+  const destination =
+    outPath ?? path.join(RUNTIME_ROOT, "data", "downloads", "lake", "clermont-permits.csv");
   const files = (await readdir(path.join(root, "extracted")).catch(() => [])).filter((name) =>
     name.endsWith(".json"),
   );
@@ -787,12 +1338,13 @@ export async function exportPermitLoadCsv({ jobId, outPath }) {
   // it. Without this the publish set would have to infer "everything the
   // portal had" from "everything that loaded", which is the exact substitution
   // the coverage contract forbids.
-  const index = await readFile(path.join(root, "permit-lists", "clermont-permit-index.json"), "utf8")
+  const index = await readFile(
+    path.join(root, "permit-lists", "clermont-permit-index.json"),
+    "utf8",
+  )
     .then((text) => JSON.parse(text))
     .catch(() => null);
-  const deadPermits = (await readdir(path.join(root, "dead")).catch(() => [])).filter((name) =>
-    name.endsWith(".json"),
-  ).length;
+  const deadPermits = (await readValidatedDeadEvidence(root, index)).length;
 
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, `${lines.join("\n")}\n`);
@@ -807,8 +1359,17 @@ export async function exportPermitLoadCsv({ jobId, outPath }) {
     achievablePermits: (index?.permitCount ?? files.length + deadPermits) - deadPermits,
     loadedPermits: files.length,
   };
-  await writeFile(`${destination.replace(/\.csv$/, "")}.meta.json`, `${JSON.stringify(meta, null, 2)}\n`);
-  const summary = { rows: files.length, parcels: parcels.size, withContractor, outPath: destination, ...meta };
+  await writeFile(
+    `${destination.replace(/\.csv$/, "")}.meta.json`,
+    `${JSON.stringify(meta, null, 2)}\n`,
+  );
+  const summary = {
+    rows: files.length,
+    parcels: parcels.size,
+    withContractor,
+    outPath: destination,
+    ...meta,
+  };
   log("export.done", summary);
   return summary;
 }
@@ -825,36 +1386,41 @@ export async function exportPermitLoadCsv({ jobId, outPath }) {
  * a blocked source is never allowed to read as zero records.
  *
  * Completion is judged against `achievable`, not against the enumerated total:
- * `achievable = enumerated - dead`, and a permit the portal will not attach to
- * any parcel is dead by the source's own answer.
+ * `achievable = enumerated - dead`. Missing parcel linkage never makes a
+ * successfully captured permit dead; it remains valid-unlinked.
  *
  * @param {object} options - Options.
  * @param {string} options.jobId - Job id.
+ * @param {string} [options.artifactRoot] - Injected artifact root for offline verification.
+ * @param {string} [options.seedPath] - Injected seed path for offline verification.
  * @returns {Promise<object>} Coverage snapshot.
  */
-export async function summarizeCoverage({ jobId }) {
-  const root = jobDir(jobId);
+export async function summarizeCoverage({ jobId, artifactRoot, seedPath }) {
+  const root = artifactRoot ?? jobDir(jobId);
   const extractedDir = path.join(root, "extracted");
-  const files = (await readdir(extractedDir).catch(() => [])).filter((name) => name.endsWith(".json"));
-  const seed = await loadSeedIndex();
+  const files = (await readdir(extractedDir).catch(() => [])).filter((name) =>
+    name.endsWith(".json"),
+  );
+  const seed = await loadSeedIndex(seedPath === undefined ? {} : { seedPath });
 
-  const index = await readFile(path.join(root, "permit-lists", "clermont-permit-index.json"), "utf8")
+  const index = await readFile(
+    path.join(root, "permit-lists", "clermont-permit-index.json"),
+    "utf8",
+  )
     .then((text) => JSON.parse(text))
     .catch(() => null);
 
   /** @type {Record<string, number>} */
   const deadByReason = {};
-  const deadFiles = (await readdir(path.join(root, "dead")).catch(() => [])).filter((name) =>
-    name.endsWith(".json"),
-  );
-  for (const file of deadFiles) {
-    const entry = JSON.parse(await readFile(path.join(root, "dead", file), "utf8"));
+  const deadEvidence = await readValidatedDeadEvidence(root, index);
+  for (const entry of deadEvidence) {
     deadByReason[entry.errorCode] = (deadByReason[entry.errorCode] ?? 0) + 1;
   }
 
   let contractorPermits = 0;
   let roofPermits = 0;
   let linkedPermits = 0;
+  let permitsWithoutParcelIdentifier = 0;
   let licensedContractors = 0;
   const parcels = new Set();
   const contractors = new Set();
@@ -864,7 +1430,8 @@ export async function summarizeCoverage({ jobId }) {
 
   for (const file of files) {
     const record = JSON.parse(await readFile(path.join(extractedDir, file), "utf8"));
-    parcels.add(record.parcel_identifier);
+    if (record.parcel_identifier === null) permitsWithoutParcelIdentifier += 1;
+    else parcels.add(record.parcel_identifier);
     if (record.property_id !== null) linkedPermits += 1;
     if (record.isRoofPermit) roofPermits += 1;
     const name = record.sourcePayload.contractorOfRecord;
@@ -881,8 +1448,8 @@ export async function summarizeCoverage({ jobId }) {
     }
   }
 
-  const enumerated = index?.permitCount ?? files.length + deadFiles.length;
-  const achievable = enumerated - deadFiles.length;
+  const enumerated = index?.permitCount ?? files.length + deadEvidence.length;
+  const achievable = enumerated - deadEvidence.length;
   const linkedParcels = [...parcels].filter((key) => seed.has(key)).length;
 
   const coverage = {
@@ -897,7 +1464,7 @@ export async function summarizeCoverage({ jobId }) {
     // a sentence somebody has to read.
     availability: "supported_partial",
     enumeratedPermits: enumerated,
-    deadPermits: deadFiles.length,
+    deadPermits: deadEvidence.length,
     deadByReason,
     achievablePermits: achievable,
     permitCount: files.length,
@@ -911,6 +1478,7 @@ export async function summarizeCoverage({ jobId }) {
     parcelsValidUnlinked: parcels.size - linkedParcels,
     permitsLinkedToSeedParcel: linkedPermits,
     permitsValidUnlinked: files.length - linkedPermits,
+    permitsWithoutParcelIdentifier,
     countySeedParcels: seed.size,
     countyParcelSharePct:
       seed.size > 0 ? Number(((linkedParcels / seed.size) * 100).toFixed(3)) : null,
@@ -934,10 +1502,13 @@ export async function summarizeCoverage({ jobId }) {
       "Enumerated by permit-number prefix over the requested years only. The portal holds permit years 15 through 26 (earliest issue date observed 2015-01-02; prefixes 90-, 95-, 00-, 05-, 08-, 10- and 12- all return no results), so any year not listed in permitYearsEnumerated is absent from this job.",
       "The portal's contact grid carries no licence column. Licences shown are either printed inside the contractor name or resolved against the portal's own registered-contractor directory; unmatched contractors keep a null licence rather than a guessed one.",
       "Permits whose parcel key is absent from the Lake seed are captured with a null property_id and are NOT counted as linked.",
-      "Permits the portal files against no parcel key at all are recorded under dead/ with their enumeration row and counted in deadPermits. They are real permits that attach to no property, never a property with no permits.",
+      "Successfully fetched permits with no parcel key are retained as valid-unlinked records with null property_id. Only genuine permanent source failures are recorded under dead/ with diagnostic evidence and their enumeration row.",
     ],
   };
-  await writeFile(path.join(root, "coverage.json"), `${JSON.stringify(coverage, null, 2)}\n`);
+  await atomicWriteArtifact(
+    path.join(root, "coverage.json"),
+    `${JSON.stringify(coverage, null, 2)}\n`,
+  );
   log("coverage.done", {
     availability: coverage.availability,
     permitCount: coverage.permitCount,
@@ -994,10 +1565,17 @@ async function main() {
             .map((level) => Number(level.trim()))
         : [1, 2];
     if (concurrencies.some((level) => !Number.isInteger(level) || level < 1 || level > 4)) {
-      throw new Error("Concurrency levels must be integers between 1 and 4; the portal is a municipal server");
+      throw new Error(
+        "Concurrency levels must be integers between 1 and 4; the portal is a municipal server",
+      );
     }
 
-    const measurements = await measureThroughput({ permitNumbers, alternateKeys, prefixes, concurrencies });
+    const measurements = await measureThroughput({
+      permitNumbers,
+      alternateKeys,
+      prefixes,
+      concurrencies,
+    });
     const bytes = await measureBytesWritten(jobId);
 
     // The estimate is built on the SLOWEST measured detail level that did not
@@ -1005,11 +1583,15 @@ async function main() {
     const safe = measurements.detail
       .filter((level) => level.failureRate <= 0.05)
       .sort((left, right) => right.concurrency - left.concurrency)[0];
-    if (safe === undefined) throw new Error("No concurrency level met the 5% failure-rate bar; do not scale");
+    if (safe === undefined)
+      throw new Error("No concurrency level met the 5% failure-rate bar; do not scale");
 
     const seed = await loadSeedIndex();
     const candidateParcels = [...seed.values()].filter(
-      (row) => String(row.city ?? "").trim().toUpperCase() === "CLERMONT",
+      (row) =>
+        String(row.city ?? "")
+          .trim()
+          .toUpperCase() === "CLERMONT",
     ).length;
     const strategies = sizeClermontStrategies({
       candidateParcels,
@@ -1054,7 +1636,8 @@ async function main() {
       parcelKeyedYearsInScope: {
         total: estimate(
           strategies.parcelKeyed.requests,
-          (parcelSearchLatency * strategies.parcelKeyed.searches + detailLatency * strategies.parcelKeyed.details) /
+          (parcelSearchLatency * strategies.parcelKeyed.searches +
+            detailLatency * strategies.parcelKeyed.details) /
             Math.max(1, strategies.parcelKeyed.requests),
         ),
       },
@@ -1087,8 +1670,15 @@ async function main() {
     return;
   }
   if (command === "enumerate") {
-    const years = String(flags.years ?? "25,26").split(",").map((year) => year.trim());
-    await enumeratePermits({ jobId, years, concurrency: Number(flags.concurrency ?? 2) });
+    const years = String(flags.years ?? "25,26")
+      .split(",")
+      .map((year) => year.trim());
+    await enumeratePermits({
+      jobId,
+      years,
+      concurrency: Number(flags.concurrency ?? 2),
+      maxAttempts: Number(flags["max-attempts"] ?? 4),
+    });
     return;
   }
   if (command === "harvest") {
@@ -1098,6 +1688,7 @@ async function main() {
       limit: flags.limit === undefined ? Infinity : Number(flags.limit),
       onlyRoofing: flags["only-roofing"] === true,
       delayMs: Number(flags["delay-ms"] ?? 0),
+      maxAttempts: Number(flags["max-attempts"] ?? 4),
     });
     return;
   }

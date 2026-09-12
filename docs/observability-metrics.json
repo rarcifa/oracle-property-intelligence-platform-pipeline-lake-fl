@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "oracle.observability-metrics.v1",
+  "namespace": "OracleLake",
+  "registrationMode": "repository-equivalent",
+  "externalTargets": {
+    "lexicon": "Spring-Oaks-Capital-LLC/lexicon:src/data/cloudwatch-metrics.json",
+    "dashboard": "Spring-Oaks-Capital-LLC/main-dashboard"
+  },
+  "metrics": [
+    { "name": "RequestsServed", "unit": "Count", "service": "runtime" },
+    { "name": "RequestsFailed", "unit": "Count", "service": "runtime" },
+    { "name": "RequestDuration", "unit": "Milliseconds", "service": "runtime" },
+    { "name": "ColdStart", "unit": "Count", "service": "runtime" },
+    { "name": "DatasetOpenMs", "unit": "Milliseconds", "service": "runtime" },
+    { "name": "PointerResolveMs", "unit": "Milliseconds", "service": "runtime" },
+    { "name": "DatasetUpgraded", "unit": "Count", "service": "runtime" },
+    { "name": "PointerRefreshFailed", "unit": "Count", "service": "runtime" },
+    { "name": "DatasetUnavailable", "unit": "Count", "service": "runtime" },
+    {
+      "name": "NotificationProcessed",
+      "unit": "Count",
+      "service": "pagerduty-notifier"
+    },
+    { "name": "NotificationFailed", "unit": "Count", "service": "pagerduty-notifier" },
+    {
+      "name": "ProcessingDuration",
+      "unit": "Milliseconds",
+      "service": "pagerduty-notifier"
+    },
+    { "name": "CostPredicted", "unit": "None", "service": "county-enrichment" },
+    {
+      "name": "StageProcessed",
+      "unit": "Count",
+      "service": "county-enrichment-sunbiz",
+      "operation": "sunbiz"
+    },
+    {
+      "name": "StageFailed",
+      "unit": "Count",
+      "service": "county-enrichment-sunbiz",
+      "operation": "sunbiz"
+    },
+    {
+      "name": "ProcessingDuration",
+      "unit": "Milliseconds",
+      "service": "county-enrichment-sunbiz",
+      "operation": "sunbiz"
+    },
+    {
+      "name": "StageProcessed",
+      "unit": "Count",
+      "service": "county-enrichment-bbb",
+      "operation": "bbb"
+    },
+    {
+      "name": "StageFailed",
+      "unit": "Count",
+      "service": "county-enrichment-bbb",
+      "operation": "bbb"
+    },
+    {
+      "name": "ProcessingDuration",
+      "unit": "Milliseconds",
+      "service": "county-enrichment-bbb",
+      "operation": "bbb"
+    },
+    {
+      "name": "StageProcessed",
+      "unit": "Count",
+      "service": "county-enrichment-reconciliation",
+      "operation": "reconciliation"
+    },
+    {
+      "name": "StageFailed",
+      "unit": "Count",
+      "service": "county-enrichment-reconciliation",
+      "operation": "reconciliation"
+    },
+    {
+      "name": "ProcessingDuration",
+      "unit": "Milliseconds",
+      "service": "county-enrichment-reconciliation",
+      "operation": "reconciliation"
+    },
+    {
+      "name": "StageProcessed",
+      "unit": "Count",
+      "service": "county-enrichment-permit",
+      "operation": "permit"
+    },
+    {
+      "name": "StageFailed",
+      "unit": "Count",
+      "service": "county-enrichment-permit",
+      "operation": "permit"
+    },
+    {
+      "name": "ProcessingDuration",
+      "unit": "Milliseconds",
+      "service": "county-enrichment-permit",
+      "operation": "permit"
+    }
+  ]
+}

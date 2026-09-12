@@ -125,14 +125,13 @@ export type SourcesYaml = z.infer<typeof sourcesYamlSchema>;
 export type Jurisdiction = z.infer<typeof jurisdictionSchema>;
 
 /**
- * Whether a jurisdiction's permits are actually in the published dataset.
+ * Whether a jurisdiction's permits are actually in the selected run.
  *
- * `status: supported` is not the same thing as harvested. Clermont is
- * catalogued as supported because its portal is open and machine-readable, but
- * its `implementation_status` is `discovered`: no adapter was built and none of
- * its permits were fetched. Reading status alone would generate a document
- * claiming Clermont's permits are published, which is exactly the kind of
- * confident falsehood this corpus exists to prevent.
+ * `status: supported` is not the same thing as harvested. Clermont's eTRAKiT
+ * adapter is implemented and certified, but a selected run is described as
+ * harvested only when the catalog also marks that exact evidence certified.
+ * Reading status alone would generate a document claiming permits are loaded,
+ * which is exactly the kind of confident falsehood this corpus exists to prevent.
  */
 function isHarvested(jurisdiction: Jurisdiction): boolean {
   return jurisdiction.status === "supported" && jurisdiction.implementation_status === "certified";
@@ -142,16 +141,16 @@ function isHarvested(jurisdiction: Jurisdiction): boolean {
 function statusSentence(jurisdiction: Jurisdiction): string {
   if (jurisdiction.status === "supported") {
     return isHarvested(jurisdiction)
-      ? "This jurisdiction IS harvested: its permit data is in the published dataset."
-      : "This jurisdiction's portal is OPEN and machine-readable, but it has NOT been harvested: no adapter was built for it, so none of its permits are in the published dataset. It is catalogued as a discovered source, not a loaded one.";
+      ? "This jurisdiction IS harvested: its permit data is in the selected run."
+      : "This jurisdiction's portal is OPEN and machine-readable, but it has NOT been harvested: no adapter was built for it, so none of its permits are in the selected run. It is catalogued as a discovered source, not a loaded one.";
   }
   switch (jurisdiction.status) {
     case "blocked":
-      return "This jurisdiction is BLOCKED: its permit portal exists but cannot be read by an automated client from this egress, so none of its permits are in the published dataset.";
+      return "This jurisdiction is BLOCKED: its permit portal exists but cannot be read by an automated client from this egress, so none of its permits are in the selected run.";
     case "unavailable":
-      return "This jurisdiction is UNAVAILABLE: its permit portal could not be reached at all from this egress, so none of its permits are in the published dataset.";
+      return "This jurisdiction is UNAVAILABLE: its permit portal could not be reached at all from this egress, so none of its permits are in the selected run.";
     case "manual-only":
-      return "This jurisdiction is MANUAL-ONLY: it publishes no searchable permit history online at all, so none of its permits are in the published dataset.";
+      return "This jurisdiction is MANUAL-ONLY: it publishes no searchable permit history online at all, so none of its permits are in the selected run.";
     default:
       return `Status: ${jurisdiction.status}.`;
   }
@@ -202,8 +201,8 @@ export function buildJurisdictionDocs(
         "Permit jurisdictions in Lake County, Florida — who issues permits and which ones are blocked",
       lines: [
         `Lake County permitting is not a single countywide system. There are ${count(permits.expected_jurisdiction_count)} permit-issuing jurisdictions: unincorporated Lake County plus ${permits.jurisdictions.length - 1} independent municipalities, each running its own building department and its own permit software.`,
-        `Exactly ${harvested.length === 1 ? "one jurisdiction is" : `${harvested.length} jurisdictions are`} harvested into the published dataset: ${harvested.map((entry) => entry.jurisdiction).join(", ")}, through the Perconti CD Plus permit layer. The other ${missing.length} are blocked, unavailable, manual-only, or open but never harvested.`,
-        `Jurisdictions that are NOT in the published data: ${missing.map((entry) => `${entry.jurisdiction} (${entry.status === "supported" ? "open portal, not harvested" : entry.status}, ${entry.enumeration_status ?? "no enumeration route"})`).join("; ")}.`,
+        `Exactly ${harvested.length === 1 ? "one jurisdiction is" : `${harvested.length} jurisdictions are`} harvested into the selected run: ${harvested.map((entry) => `${entry.jurisdiction} (${entry.adapter === "cdplus" ? "Perconti CD Plus county layer" : entry.adapter === "etrakit" ? "CentralSquare eTRAKiT portal" : (entry.vendor ?? "source recorded in the catalog")})`).join(", ")}. The other ${missing.length} are blocked, unavailable, manual-only, or open but never harvested.`,
+        `Jurisdictions that are NOT in the selected run: ${missing.map((entry) => `${entry.jurisdiction} (${entry.status === "supported" ? "open portal, not harvested" : entry.status}, ${entry.enumeration_status ?? "no enumeration route"})`).join("; ")}.`,
         `Every blocked jurisdiction has a named public-records request recipient in the source catalog, so the records can still be obtained by a Chapter 119 request. Ask for the jurisdiction by name to get its recipient office, request channel and system scope.`,
         permits.coverage_finding ? `Measured coverage finding: ${permits.coverage_finding}` : null,
         permits.roofing_permit_types
@@ -328,7 +327,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
         `Sale window published: ${String(sales.window_first ?? "?")} to ${String(sales.window_last ?? "?")} only.`,
         `Ten-year ownership tenure provable from published sources: ${sales.ten_year_tenure_provable ? "yes" : "NO"}.`,
         sales.ten_year_tenure_evidence ? `Evidence: ${sales.ten_year_tenure_evidence}` : null,
-        "Consequence for the query table: no_recorded_sale_in_dor_window is a lower bound on tenure, never a tenure length. A property with no sale in the window may have changed hands in 2019 and the published data cannot tell.",
+        "Consequence for the query table: no_recorded_sale_in_dor_window is a lower bound on tenure, never a tenure length. A property with no sale in the window may have changed hands in 2019 and the loaded data cannot tell.",
       ],
       aliases: ["SDF", "sales file", "fl_dor_sdf_2026p", "sale records", "tenure"],
       metadata: { family: "sources", token: "fl_dor_sdf_2026p", status: "ingested" },
@@ -367,7 +366,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
         parcel.discrepancy_explanation
           ? `Why the gap is acceptable: ${parcel.discrepancy_explanation}`
           : null,
-        "Consequence for the query table: latitude and longitude are null for parcels first assessed in 2026. Those rows are published with null coordinates rather than dropped, so a radius search silently excludes them unless requireCoordinates is understood.",
+        "Consequence for the query table: latitude and longitude are null for parcels first assessed in 2026. Those rows remain in the selected run with null coordinates rather than being dropped, so a radius search silently excludes them unless requireCoordinates is understood.",
         `Endpoint: ${inventory.parcel_geometry ?? "Florida GIO parcel centroid FeatureServer"}. Offset paging breaks past 20,000 rows, so the fetch uses ids-only plus OBJECTID ranges.`,
       ],
       aliases: [
@@ -386,11 +385,11 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
       docType: "source",
       title: "Data source: Lake County CD Plus permit layer (lake_cdplus_permits)",
       lines: [
-        `The only permit source in the published dataset. ${count(permits.countywide_layer_record_count)} features, ${count(permits.countywide_distinct_permit_count)} distinct permit numbers, ${count(permits.countywide_distinct_parcel_count)} distinct parcels.`,
+        `One of the selected run's two permit sources, covering the unincorporated-county layer. It contains ${count(permits.countywide_layer_record_count)} features, ${count(permits.countywide_distinct_permit_count)} distinct permit numbers and ${count(permits.countywide_distinct_parcel_count)} distinct parcels. Clermont is loaded separately from its eTRAKiT portal.`,
         `Roofing permits: ${count(permits.roofing_permit_count)}. Open permits: ${count(permits.open_permit_count)}. Open roofing permits: ${count(permits.open_roofing_permit_count)}.`,
         `Join: the permit layer's Alternate_Key matches the NAL ALT_KEY column; the undashed PARCEL_ID matches the layer's Parcel_ID. Alternate_Key is the better join because it is populated on 100% of permit features.`,
         permits.coverage_finding ? `Two measured limits: ${permits.coverage_finding}` : null,
-        "Contractor of record is NOT exposed by this layer. For unincorporated Lake County it lives on the county permit detail pages, which sit behind a Cloudflare managed challenge, so contractor_name is published null on every parcel this layer is the only permit source for. Clermont's own portal is the exception and is harvested separately.",
+        "Contractor of record is NOT exposed by this layer. For unincorporated Lake County it lives on the county permit detail pages, which sit behind a Cloudflare managed challenge, so contractor_name remains null on every parcel where this layer is the only loaded permit source. Clermont's eTRAKiT portal is the separately harvested exception.",
         `Endpoint: ${inventory.permits_unincorporated ?? "Esri MapServer proxy on utility.arcgis.com"}. IN lists longer than about 50 values return HTTP 500, so paging is done by OBJECTID range.`,
       ],
       aliases: [
@@ -411,8 +410,8 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
       lines: [
         `BBB enrichment status: ${sources.enrichment?.bbb?.status ?? "gated"}.`,
         sources.enrichment?.bbb?.blocker ? `Blocker: ${sources.enrichment.bbb.blocker}` : null,
-        "Consequence: bbb_rating and has_bbb_contractor are real published columns that stay null / false for every row. They are not missing by accident and they must never be read as 'this contractor has no rating'.",
-        `Endpoint that refuses this egress: ${inventory.bbb ?? "https://www.bbb.org"}.`,
+        "Consequence: bbb_rating and has_bbb_contractor are real selected-table columns that stay null for every row. Null means unknown/not established, never false, and must not be read as 'this contractor has no rating' or 'this contractor has no BBB record'.",
+        `Policy/API-gated endpoint: ${inventory.bbb ?? "https://www.bbb.org"}. The default route returned 403; the one 200 response used a prohibited browser-fingerprint spoof and supplied no ingested data.`,
       ],
       aliases: ["BBB", "better business bureau", "bbb rating", "contractor reputation", "bbb.org"],
       metadata: { family: "sources", token: "bbb", status: "gated" },
@@ -427,7 +426,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
         sources.enrichment?.contractor_identity?.blocker
           ? `Blocker: ${sources.enrichment.contractor_identity.blocker}`
           : null,
-        "Consequence: contractor_name is a real published column that is populated for parcels in Clermont and null on the rest of the county. Clermont is one of fifteen permitting jurisdictions in Lake County, so a contractor count is never countywide coverage and must never be reported as one.",
+        "Consequence: contractor_name is a real selected-table column that is populated for parcels in Clermont and null on the rest of the county. Clermont is one of fifteen permitting jurisdictions in Lake County, so a contractor count is never countywide coverage and must never be reported as one.",
         "Clermont's eTRAKiT portal is the one open route to contractor names anywhere in the county: its permit detail pages render the contact grid server-side to plain HTTP, and they are harvested. Every other jurisdiction is blocked, unavailable or manual-only.",
         "Outside Clermont a null carries enrichment_status contractor_gated_403 and means 'no source covering this parcel publishes a contractor', not 'no contractor worked on this property'. On a Clermont parcel whose permits named nobody the token is contractor_absent_on_permit, which is an established absence - the source does carry contractors and named none.",
         "For unincorporated Lake County, the route to contractor names is a Chapter 119 records request to the Lake County Office of Building Services for the complete CD Plus permit history including contractor of record.",
@@ -449,8 +448,8 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
       docType: "source",
       title: "Data source: Florida Sunbiz corporate registration — NOT ingested for this run",
       lines: [
-        "Sunbiz corporate registration is a Florida statewide bulk source. It was deliberately not ingested for this run: it is not in this assignment's acceptance criteria, and Sunbiz search is gated from this egress.",
-        "Consequence: has_sunbiz_tenant is a real published column that is false for every row. False there means 'not ingested', not 'no company is registered at this address'.",
+        "Sunbiz corporate registration is a Florida statewide bulk source. It was deliberately not ingested for this run: it is outside this assignment's acceptance criteria, and the kit's bulk data-download portal is Cloudflare-challenged from this egress. Sunbiz name search is reachable, but it is not the approved bulk ingest channel.",
+        "Consequence: has_sunbiz_tenant is a real selected-table column that is null for every row. Null means unknown/not established because Sunbiz was not ingested; it must never be rendered or interpreted as false or as 'no company is registered at this address'.",
         "Business activity at an address is instead evidenced by business_account_count, from the DOR tangible-personal-property roll.",
       ],
       aliases: ["Sunbiz", "corporate registration", "has_sunbiz_tenant", "company registry"],
@@ -497,7 +496,7 @@ export function buildAccessDocs(sources: SourcesYaml, provenance: Provenance): C
             ? `Consequence: ${access.cloudflare_challenged.consequence}.`
             : null,
           "The CD Plus permit data is still readable because the Esri MapServer proxy is vendor-hosted on utility.arcgis.com and does not sit behind that estate. It is the permit detail pages, not the permit records, that are blocked.",
-          "This single access state is what removes contractor of record from the published dataset.",
+          "This access state blocks contractor-of-record enrichment for the county CD Plus layer. It does not remove the contractor names harvested separately from Clermont eTRAKiT permits, so the selected run has partial Clermont-only contractor coverage rather than no contractor data.",
         ],
         aliases: ["cloudflare", "403", "lakecountyfl.gov", "managed challenge", "blocked host"],
         metadata: { family: "access", severity: "gated" },

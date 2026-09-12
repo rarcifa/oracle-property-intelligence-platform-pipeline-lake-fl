@@ -11,8 +11,9 @@ it — that is the point of running it this way rather than from a checkout.
 
 ```bash
 U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
-RUN=$(curl -s "$U/api/meta/run" | jq -r .run.runId)
-ROOT=$(curl -s "$U/api/meta/run" | jq -r .run.rootCid)
+META=$(curl -fsS "$U/api/meta/run")
+RUN=$(printf '%s' "$META" | jq -er .run.runId)
+ROOT=$(printf '%s' "$META" | jq -er .run.rootCid)
 
 DEMO_BASE_URL="$U" DEMO_RUN_ID="$RUN" DEMO_ROOT_CID="$ROOT" \
   pnpm --filter @oracle-lake/ui exec node scripts/record-demo.mjs out/
@@ -21,7 +22,7 @@ DEMO_BASE_URL="$U" DEMO_RUN_ID="$RUN" DEMO_ROOT_CID="$ROOT" \
 Before Playwright creates a video, the recorder asserts `/api/meta/run` names exactly
 `$RUN/$ROOT`, `/mcp` exposes the expected nine tools, and the contractor view and coverage
 snapshot report complete 2015–2026 Clermont evidence as one of 15 jurisdictions while BBB
-remains zero and HTTP-403-gated. Any missed beat exits non-zero; an incomplete take is never
+remains zero and policy/API-gated. Any missed beat exits non-zero; an incomplete take is never
 reported as a successful recording.
 
 ## 1. The published run
@@ -47,11 +48,18 @@ carry roof age, the basis that age was derived from, coordinates, and per-row so
 ```bash
 curl -s "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=5&minRoofAge=15&limit=5" \
   | jq '{matched, first: .rows[0] | {parcel_identifier, roof_age_years, roof_age_basis}}'
+
+COUNTY=$(curl -fsS "$U/api/properties?minRoofAge=15&limit=1" | jq -er '.matched')
+FIVE=$(curl -fsS "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=5&minRoofAge=15&limit=1" | jq -er '.matched')
+ONE=$(curl -fsS "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=1&minRoofAge=15&limit=1" | jq -er '.matched')
+test "$ONE" -le "$FIVE" && test "$FIVE" -le "$COUNTY"
+printf 'aged roofs: county=%s five_miles=%s one_mile=%s\n' "$COUNTY" "$FIVE" "$ONE"
 ```
 
-County-wide, 117,605 parcels meet the 15-year threshold; 23,638 fall within five miles of
-Clermont, 1,403 within one mile — monotonic, because the radius is a real great-circle
-distance and not a bounding box.
+The displayed counts are read from this exact finalized runtime instead of copied from an
+older candidate. The one-mile count must not exceed the five-mile count, which must not
+exceed the county count; the radius is a real great-circle distance rather than a bounding
+box.
 
 ## 3. What the data cannot say
 
@@ -75,12 +83,26 @@ Where Clermont publishes a permit but no contractor, the row records
 Open `/#/business`.
 
 ```bash
-curl -sL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq '.tables.businessAccounts'
+BUSINESS=$(curl -fsS "$U/api/views/business")
+COVERAGE=$(curl -fsSL "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json")
+
+# Refuse figures from another runtime/run/root, then print only internally consistent values.
+jq -en --arg run "$RUN" --arg root "$ROOT" \
+  --argjson business "$BUSINESS" --argjson coverage "$COVERAGE" '
+  ($business.provenance.runId == $run and $business.provenance.rootCid == $root) and
+  ($coverage.runId == $run) and
+  ($business.totals.business_accounts == $coverage.tables.businessAccounts.attributedAcrossParcels) and
+  ($business.totals.properties_with_accounts == $coverage.tables.businessAccounts.propertiesWithAccount) and
+  ($coverage.tables.businessAccounts.matchedToParcel <= $coverage.tables.businessAccounts.withSitusAddress) and
+  ($coverage.tables.businessAccounts.withSitusAddress <= $coverage.tables.businessAccounts.rows)
+  | if . then $coverage.tables.businessAccounts else error("business release mismatch") end'
 ```
 
-33,346 accounts in the TPP roll; 32,738 carry a situs address; 2,060 match a parcel. Summing
-per-parcel counts gives 4,451 across 2,726 parcels, because 90 shared-address groups are
-attributed to every parcel at that address. Published, not hidden.
+Read the six figures from that command's output: source accounts, accounts with a situs
+address, distinct accounts matched to a parcel, account-to-parcel attributions, properties
+with an account, and shared-address groups. The recorder uses those same fields from the
+selected runtime and fails before opening a browser if their provenance or arithmetic does
+not match `$RUN/$ROOT`.
 
 ## 5. Read-only SQL, in the browser
 

@@ -9,6 +9,7 @@ import {
   CLERMONT_PARTITION_HANDOFF_SCHEMA_VERSION,
   CLERMONT_PERMIT_YEARS,
   CLERMONT_REQUEST_SCHEMA_VERSION,
+  CLERMONT_REMOTE_STORAGE_LIMIT_BYTES,
   clermontBaselineDigest,
   clermontCertifiedBaselineSchema,
   clermontPartitionHandoffSchema,
@@ -41,6 +42,8 @@ const syntheticArtifactContents = {
   raw: '{"synthetic":"raw"}\n',
   extracted: '{"synthetic":"extracted"}\n',
   status: '{"synthetic":"status"}\n',
+  licenseDirectory:
+    '<html><select name="ddlSelContractor"><option value="CCC000000">EXAMPLE ROOFING</option></select></html>\n',
   mergedExport: `${[
     "permit_number,alternate_key",
     ...Array.from(
@@ -59,6 +62,10 @@ export async function writeSyntheticClermontArtifacts(artifactRoot: string): Pro
       writeFile(path.join(partitionRoot, "raw.ndjson"), syntheticArtifactContents.raw),
       writeFile(path.join(partitionRoot, "extracted.ndjson"), syntheticArtifactContents.extracted),
       writeFile(path.join(partitionRoot, "status.ndjson"), syntheticArtifactContents.status),
+      writeFile(
+        path.join(partitionRoot, "license-directory.html"),
+        syntheticArtifactContents.licenseDirectory,
+      ),
     ]);
   }
   const exportRoot = path.join(artifactRoot, "exports");
@@ -112,6 +119,11 @@ export function syntheticClermontBaseline(
       year,
       partitionId: clermontPartitionId(year),
       createdAt: "2026-09-11T08:10:00.000Z",
+      producerLease: {
+        owner: "synthetic-fixture",
+        fencingToken: 1,
+        heartbeatAt: "2026-09-11T08:09:59.000Z",
+      },
       sourceWindowState: year >= 2025 ? "active" : "closed",
       status: "captured_complete",
       cappedOrTruncated: false,
@@ -154,6 +166,18 @@ export function syntheticClermontBaseline(
           sha256: sha256Text(syntheticArtifactContents.status),
           bytes: Buffer.byteLength(syntheticArtifactContents.status),
         },
+        licenseDirectory: {
+          logicalPath: `partitions/${year}/license-directory.html`,
+          sha256: sha256Text(syntheticArtifactContents.licenseDirectory),
+          bytes: Buffer.byteLength(syntheticArtifactContents.licenseDirectory),
+        },
+      },
+      licenseDirectory: {
+        sourceUrl: "https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx",
+        capturedAt: "2026-09-11T08:09:00.000Z",
+        entries: 1,
+        validityBoundary: "contractor-registration-at-capture-not-historical-license-validity",
+        sha256: sha256Text(syntheticArtifactContents.licenseDirectory),
       },
       signatures,
     });
@@ -209,6 +233,18 @@ export function syntheticClermontRequest(
     requestedYears: [...CLERMONT_PERMIT_YEARS],
     refreshMode,
     asOfYear: 2026,
+    runtime: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      architecture: process.arch,
+    },
+    remoteBaseline: {
+      accountId: "122610508924",
+      region: "us-east-2",
+      bucket: "clermont-baseline-test-bucket",
+      prefix: "clermont",
+      maxRetainedBytes: CLERMONT_REMOTE_STORAGE_LIMIT_BYTES,
+    },
     signatures: options.signatures ?? clermontSignatures,
     baseline: {
       requiredSha256: refreshMode === "incremental" ? clermontBaselineDigest(baselineValue) : null,
@@ -219,7 +255,7 @@ export function syntheticClermontRequest(
       terminalRecordsPerHour: options.terminalRecordsPerHour ?? benchmark.terminalRecordsPerHour,
     },
     limits: {
-      costCeilingUsd: options.costCeilingUsd ?? 5,
+      costCeilingUsd: options.costCeilingUsd ?? 50,
       maxAutomaticHours: 48,
       runnerHourlyUsd: options.runnerHourlyUsd ?? 0.1,
       requestCostPerThousandUsd: 0.01,

@@ -4,16 +4,20 @@ import { canonicalJson, sha256Text } from "./contracts.js";
 
 export const CLERMONT_REQUEST_SCHEMA_VERSION = "elephant.clermont-permit-run-request.v1";
 export const CLERMONT_PARTITION_HANDOFF_SCHEMA_VERSION =
-  "elephant.clermont-permit-partition-handoff.v1";
+  "elephant.clermont-permit-partition-handoff.v2";
 export const CLERMONT_BASELINE_SCHEMA_VERSION = "elephant.clermont-permit-certified-baseline.v1";
 export const CLERMONT_BASELINE_POINTER_SCHEMA_VERSION =
   "elephant.clermont-permit-last-good-pointer.v1";
 export const CLERMONT_MERGED_EXPORT_METADATA_SCHEMA_VERSION =
   "elephant.clermont-permit-load-meta.v1";
+export const CLERMONT_REMOTE_STORAGE_LIMIT_BYTES = 150 * 1024 ** 3;
 
 export const CLERMONT_PERMIT_YEARS = Object.freeze([
   2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026,
 ] as const);
+export const CLERMONT_HARVESTER_REQUEST_ATTEMPTS = 4 as const;
+export const CLERMONT_MAX_ENUMERATION_PREFIXES_PER_YEAR = 11_111 as const;
+export const CLERMONT_ENUMERATION_RESULT_CAP = 100 as const;
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const runIdSchema = z
@@ -27,6 +31,34 @@ const stablePermitIdSchema = z
   .max(240)
   .regex(/^lake:clermont:etrakit:[A-Za-z0-9._:/-]+$/);
 const permitYearSchema = z.number().int().min(2015).max(2026);
+
+export const clermontCostAuthorizationSchema = z
+  .object({
+    authorizationId: z.string().regex(/^[a-z0-9][a-z0-9-]{15,119}$/),
+    runId: runIdSchema,
+    requestScopeSha256: sha256Schema,
+    provenanceSha256: sha256Schema,
+    estimateSha256: sha256Schema,
+    maxExecutionHours: z
+      .number()
+      .positive()
+      .finite()
+      .max(24 * 24),
+    maxCostUsd: z.number().positive().finite().max(1_000),
+    approvedBy: z.string().min(1).max(200),
+    approvedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .superRefine((authorization, context) => {
+    if (Date.parse(authorization.expiresAt) <= Date.parse(authorization.approvedAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "Cost authorization must expire after approval",
+      });
+    }
+  });
 
 export function clermontPartitionId(year: number): string {
   permitYearSchema.parse(year);
@@ -42,6 +74,34 @@ export const clermontSignatureSetSchema = z
   .strict();
 
 export type ClermontSignatureSet = z.infer<typeof clermontSignatureSetSchema>;
+
+export const clermontRemoteBaselineSchema = z
+  .object({
+    accountId: z.string().regex(/^[0-9]{12}$/),
+    region: z.string().regex(/^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]$/),
+    bucket: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/),
+    prefix: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine(
+        (value) =>
+          !value.startsWith("/") &&
+          !value.endsWith("/") &&
+          !value.split("/").some((part) => part === "" || part === ".."),
+        "Remote baseline prefix must be canonical, relative, and cannot traverse parents",
+      ),
+    maxRetainedBytes: z.literal(CLERMONT_REMOTE_STORAGE_LIMIT_BYTES),
+  })
+  .strict();
+
+export const clermontRuntimeSchema = z
+  .object({
+    nodeVersion: z.string().regex(/^v22\.[0-9]+\.[0-9]+$/),
+    platform: z.enum(["darwin", "linux"]),
+    architecture: z.enum(["arm64", "x64"]),
+  })
+  .strict();
 
 export const clermontImmutableArtifactSchema = z
   .object({
@@ -59,6 +119,19 @@ export const clermontImmutableArtifactSchema = z
   .strict();
 
 export type ClermontImmutableArtifact = z.infer<typeof clermontImmutableArtifactSchema>;
+
+export const CLERMONT_LICENSE_DIRECTORY_VALIDITY_BOUNDARY =
+  "contractor-registration-at-capture-not-historical-license-validity" as const;
+
+export const clermontLicenseDirectoryProvenanceSchema = z
+  .object({
+    sourceUrl: z.literal("https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx"),
+    capturedAt: z.string().datetime({ offset: true }),
+    entries: z.number().int().nonnegative(),
+    validityBoundary: z.literal(CLERMONT_LICENSE_DIRECTORY_VALIDITY_BOUNDARY),
+    sha256: sha256Schema,
+  })
+  .strict();
 
 export const clermontCheckpointSchema = z
   .object({
@@ -142,6 +215,13 @@ export const clermontPartitionHandoffSchema = z
     year: permitYearSchema,
     partitionId: z.string().min(1),
     createdAt: z.string().datetime({ offset: true }),
+    producerLease: z
+      .object({
+        owner: z.string().min(1).max(200),
+        fencingToken: z.number().int().positive(),
+        heartbeatAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
     sourceWindowState: z.enum(["closed", "active"]),
     status: z.enum([
       "enumerating",
@@ -160,8 +240,10 @@ export const clermontPartitionHandoffSchema = z
         raw: clermontImmutableArtifactSchema,
         extracted: clermontImmutableArtifactSchema,
         status: clermontImmutableArtifactSchema,
+        licenseDirectory: clermontImmutableArtifactSchema,
       })
       .strict(),
+    licenseDirectory: clermontLicenseDirectoryProvenanceSchema,
     signatures: clermontSignatureSetSchema,
   })
   .strict()
@@ -171,6 +253,13 @@ export const clermontPartitionHandoffSchema = z
         code: "custom",
         path: ["partitionId"],
         message: "Partition ID is not the stable Clermont year identity",
+      });
+    }
+    if (Date.parse(handoff.producerLease.heartbeatAt) > Date.parse(handoff.createdAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["producerLease", "heartbeatAt"],
+        message: "Producer lease heartbeat cannot postdate the fenced handoff",
       });
     }
     if (new Set(handoff.openPermitStableIds).size !== handoff.openPermitStableIds.length) {
@@ -192,6 +281,20 @@ export const clermontPartitionHandoffSchema = z
         code: "custom",
         path: ["checkpoint", "signatures"],
         message: "Checkpoint signatures must match the handoff exactly",
+      });
+    }
+    if (handoff.licenseDirectory.sha256 !== handoff.artifacts.licenseDirectory.sha256) {
+      context.addIssue({
+        code: "custom",
+        path: ["licenseDirectory", "sha256"],
+        message: "License-directory provenance must bind the exact immutable artifact digest",
+      });
+    }
+    if (Date.parse(handoff.licenseDirectory.capturedAt) > Date.parse(handoff.createdAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["licenseDirectory", "capturedAt"],
+        message: "License-directory capture cannot postdate its partition handoff",
       });
     }
     if (handoff.status === "captured_complete") {
@@ -412,6 +515,8 @@ export const clermontRunRequestSchema = z
     requestedYears: z.array(permitYearSchema).length(12),
     refreshMode: z.enum(["full", "incremental"]),
     asOfYear: z.literal(2026),
+    runtime: clermontRuntimeSchema,
+    remoteBaseline: clermontRemoteBaselineSchema,
     signatures: clermontSignatureSetSchema,
     baseline: z
       .object({
@@ -431,6 +536,15 @@ export const clermontRunRequestSchema = z
         requestCostPerThousandUsd: z.number().nonnegative().finite(),
         storagePerGbUsd: z.number().nonnegative().finite(),
         maxAttempts: z.number().int().min(1).max(12),
+        requestAttemptsPerOperation: z
+          .literal(CLERMONT_HARVESTER_REQUEST_ATTEMPTS)
+          .default(CLERMONT_HARVESTER_REQUEST_ATTEMPTS),
+        maxEnumerationPrefixesPerYear: z
+          .literal(CLERMONT_MAX_ENUMERATION_PREFIXES_PER_YEAR)
+          .default(CLERMONT_MAX_ENUMERATION_PREFIXES_PER_YEAR),
+        enumerationResultCap: z
+          .literal(CLERMONT_ENUMERATION_RESULT_CAP)
+          .default(CLERMONT_ENUMERATION_RESULT_CAP),
         baseBackoffMs: z.number().int().min(100).max(60_000),
         maxBackoffMs: z
           .number()
@@ -450,15 +564,7 @@ export const clermontRunRequestSchema = z
           .max(15 * 60 * 1_000),
       })
       .strict(),
-    authorization: z
-      .object({
-        estimateSha256: sha256Schema,
-        approvedBy: z.string().min(1).max(200),
-        approvedAt: z.string().datetime({ offset: true }),
-        expiresAt: z.string().datetime({ offset: true }),
-      })
-      .strict()
-      .nullable(),
+    authorization: clermontCostAuthorizationSchema.nullable(),
   })
   .strict()
   .superRefine((request, context) => {
@@ -490,9 +596,30 @@ export const clermontRunRequestSchema = z
         message: "Lease duration must exceed two heartbeat intervals",
       });
     }
+    if (request.authorization !== null) {
+      if (request.authorization.runId !== request.runId) {
+        context.addIssue({
+          code: "custom",
+          path: ["authorization", "runId"],
+          message: "Cost authorization must bind the exact run ID",
+        });
+      }
+      if (request.authorization.requestScopeSha256 !== clermontAuthorizationScopeDigest(request)) {
+        context.addIssue({
+          code: "custom",
+          path: ["authorization", "requestScopeSha256"],
+          message: "Cost authorization must bind the exact request scope",
+        });
+      }
+    }
   });
 
 export type ClermontRunRequest = z.infer<typeof clermontRunRequestSchema>;
+
+export function clermontAuthorizationScopeDigest(request: ClermontRunRequest): string {
+  const { authorization: _authorization, ...scope } = request;
+  return sha256Text(canonicalJson(scope));
+}
 
 export const clermontRecordEvidenceSchema = z
   .object({

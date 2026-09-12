@@ -7,7 +7,11 @@
  * breaks.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DEFAULT_ROOF_AGE_THRESHOLD_YEARS, PROPERTIES_VIEW } from "@oracle-lake/shared";
+import {
+  CONTRACTOR_VIEW_NOTE,
+  DEFAULT_ROOF_AGE_THRESHOLD_YEARS,
+  PROPERTIES_VIEW,
+} from "@oracle-lake/shared";
 import {
   getCityCentre,
   getBusinessView,
@@ -222,6 +226,7 @@ describe.skipIf(!hasParquet)("query layer over the published Parquet", () => {
     expect(view.posture.properties_with_permits).toBeGreaterThan(0);
     expect(view.posture.contractor_names_present).toBe(await clermontContractorRows(store));
     expect(view.posture.bbb_ratings_present).toBe(0);
+    expect(view.note).toBe(CONTRACTOR_VIEW_NOTE);
     // The view has no row to read a status off, so it asks for the majority
     // case explicitly: both columns are gated for every parcel outside
     // Clermont, and the notices say so in the same words a row would.

@@ -12,8 +12,11 @@ const RATES = {
   gbHourUsd: 0.006,
   extraEphemeralGbHourUsd: 0.0002,
   fixedS3LogsAndRequestsUsd: 0.6,
+  permitInputGiBUsd: 0.01,
   contingencyMultiplier: 1.25,
 } as const;
+
+export const PERMIT_BATCH_MAXIMUM_HOURS = 4;
 
 export interface CostComponent {
   name: string;
@@ -87,6 +90,52 @@ export function planBatchCost(request: BatchRequest): CostPlan {
     ceilingUsd: request.costCeilingUsd,
     estimatedUsd,
     allowed: estimatedUsd <= request.costCeilingUsd,
+    components,
+    assumptions: RATES,
+  };
+}
+
+/** Conservative upper bound for the separately deployed permit Batch worker. */
+export function planPermitBatchCost(
+  queryTableBytes: number,
+  coverageBytes: number,
+  ceilingUsd: number,
+): CostPlan {
+  for (const [name, value] of Object.entries({ queryTableBytes, coverageBytes })) {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${name} must be a positive integer`);
+    }
+  }
+  if (!Number.isFinite(ceilingUsd) || ceilingUsd <= 0) {
+    throw new Error("Permit deployment cost ceiling must be a positive finite number");
+  }
+  const inputGiB = (queryTableBytes + coverageBytes) / 1024 ** 3;
+  const components: CostComponent[] = [
+    {
+      name: "permit-transform",
+      maximumHours: PERMIT_BATCH_MAXIMUM_HOURS,
+      estimatedUsd: rounded(fargateCost(PERMIT_BATCH_MAXIMUM_HOURS, 4, 16, 80)),
+    },
+    {
+      name: "permit-input-volume",
+      maximumHours: 0,
+      estimatedUsd: rounded(inputGiB * RATES.permitInputGiBUsd),
+    },
+    {
+      name: "s3-logs-requests",
+      maximumHours: 0,
+      estimatedUsd: RATES.fixedS3LogsAndRequestsUsd,
+    },
+  ];
+  const estimatedUsd = rounded(
+    components.reduce((sum, component) => sum + component.estimatedUsd, 0) *
+      RATES.contingencyMultiplier,
+  );
+  return {
+    schemaVersion: COST_PLAN_SCHEMA_VERSION,
+    ceilingUsd,
+    estimatedUsd,
+    allowed: estimatedUsd <= ceilingUsd,
     components,
     assumptions: RATES,
   };

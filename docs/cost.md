@@ -45,13 +45,24 @@ harvest. The measured year-26 capture used 4,622 requests, about 0.6 hours, and 
 3.6 GB of raw HTML. The known permit-year 15–26 history is estimated at about 66,000
 requests, 8–9 hours, and 50 GB before retry headroom. The durable coordinator evaluates a
 conservative upper bound first and pauses for explicit approval when the job exceeds 48
-hours or the request's cost ceiling.
+hours or the request's cost ceiling. Execution then persists a single hard deadline across
+resumes, rejects clocks behind that budget, and stops before another partition when the
+approved duration or cost-derived runtime window is exhausted.
 
 Scheduled clean runners do not redo that harvest and do not substitute an empty file. They
 restore one exact content-addressed last-good baseline through a read-only OIDC role, verify
 every partition and digest, and fail before consolidation if the baseline is missing,
 stale, or incompatible. Storage, egress, and runner minutes belong to the account chosen by
-the release owner and must be estimated before enabling the schedule.
+the release owner and must be estimated before enabling the schedule. The Clermont request
+fixes a 150 GiB retained-object ceiling (about US$4.50/month at the deliberately conservative
+US$0.03/GiB model); remote promotion lists existing content-addressed objects and fails before
+upload if the candidate would exceed it. The preflight counts current and noncurrent object
+versions across the whole Clermont prefix and reserves space for the promotion intent and
+last-good pointer. A failed candidate keeps an exclusive six-hour intent lease; the same
+candidate can resume immediately, while a different candidate can take over only after expiry
+through an ETag-fenced write. The CDK stack sends its S3 storage alarm to the approved SNS email
+and gives the branch-bound workflow role permission to notify that same topic after an
+ingestion failure. It does not silently delete old certified evidence.
 
 ## Optional costs deliberately outside the default path
 
@@ -59,8 +70,9 @@ the release owner and must be estimated before enabling the schedule.
   the request and model-spend blast radius.
 - Natural-language chat uses an OpenAI model only when the owner configures a Secrets
   Manager key. REST, MCP, SQL, RAG retrieval, and the UI remain usable without it.
-- BBB enrichment requires approved AWS-managed remote browser compute under the Soofi kit.
-  It was not run, and the affected values stay null with a source-gating reason.
+- BBB enrichment is policy/API-gated under the Soofi kit. The default route returned 403;
+  one prohibited browser-fingerprint spoof returned 200, but no data was retained and no
+  approved official-API harvest was run. The affected values stay null with that reason.
 - PagerDuty, a shared dashboard, the durable Clermont baseline bucket, and a second pinning
   provider are owner control-plane choices. Their repository contracts are implemented;
   no account or cost is silently created.

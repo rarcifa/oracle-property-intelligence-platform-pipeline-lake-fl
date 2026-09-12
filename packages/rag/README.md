@@ -79,30 +79,29 @@ not.
 
 ## Measured quality
 
-25-question evaluation set (`src/eval/questions.ts`): 20 answerable questions
+29-question evaluation set (`src/eval/questions.ts`): 24 answerable questions
 with expected documents, 5 unanswerable controls.
 
-| Metric                                    | Value       |
-| ----------------------------------------- | ----------- |
-| Precision@1                               | **0.90**    |
-| Hit rate @3                               | **1.00**    |
-| Hit rate @5                               | **1.00**    |
-| Mean reciprocal rank                      | **0.95**    |
-| Normalised precision@3                    | 0.875       |
-| Normalised precision@5                    | 0.888       |
-| Strict precision@3 / @5                   | 0.50 / 0.31 |
-| Abstention rate on unanswerable questions | **1.00**    |
-| Unanswerable questions given any answer   | **0**       |
+| Metric                                    | Value         |
+| ----------------------------------------- | ------------- |
+| Precision@1                               | **0.9583**    |
+| Hit rate @3                               | **1.00**      |
+| Hit rate @5                               | **1.00**      |
+| Mean reciprocal rank                      | **0.9792**    |
+| Normalised precision@3                    | 0.8403        |
+| Normalised precision@5                    | 0.8715        |
+| Strict precision@3 / @5                   | 0.50 / 0.3333 |
+| Abstention rate on unanswerable questions | **1.00**      |
+| Unanswerable questions given any answer   | **0**         |
 
 Strict precision divides by _k_, so a question with one relevant document can
 never exceed 1/_k_; the normalised figures divide by the number of relevant
 documents that could fit in _k_, which is the number worth calibrating against.
 Both are reported because quoting only one would flatter the result.
 
-Threshold calibration is tight: the best-scoring unanswerable question reaches
-0.221 and the weakest answerable one reaches 0.299, with the floor at 0.23.
-That margin is thin enough to be worth re-measuring whenever the corpus changes,
-which `pnpm --filter @oracle-lake/rag eval` does in one command.
+The confidence floor is 0.23. Re-measure the evaluation whenever the corpus
+changes with `pnpm --filter @oracle-lake/rag eval`; below-floor candidates are
+intentionally reported as abstentions rather than exposed as weak answers.
 
 ## Layout
 
@@ -123,7 +122,7 @@ src/retrieve.ts          the pipeline and the confidence policy
 src/eval/                the evaluation set and its harness
 src/promote.ts           validate a finalized public release, receipt, and index promotion
 src/cli.ts               inspect | query | eval | build | promote
-index-data/lake-rag-index.json   committed build output (744 KB)
+index-data/lake-rag-index.json   committed build output (1,291,311 bytes)
 ```
 
 Agent-facing usage instructions are in [`AGENTS.md`](AGENTS.md).

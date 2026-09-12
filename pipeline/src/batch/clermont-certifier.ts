@@ -3,6 +3,8 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
+import { z } from "zod";
+
 import { canonicalJson, sha256Text } from "./contracts.js";
 import {
   CLERMONT_BASELINE_SCHEMA_VERSION,
@@ -22,12 +24,13 @@ import {
   reconcileClermontPartitionRecords,
   startClermontStage,
 } from "./clermont-coordinator.js";
-import { countEvidenceLines, readEvidenceLines } from "./clermont-executor.js";
+import { readEvidenceLines, verifyClermontEvidenceCorrelation } from "./clermont-executor.js";
 import { verifyClermontPreparedScopes } from "./clermont-preparation.js";
 import {
   clermontRunDirectory,
   loadClermontCoordinator,
   loadClermontPreparedRun,
+  loadClermontWorker,
   writeClermontRunArtifact,
   updateClermontCoordinator,
 } from "./clermont-run-store.js";
@@ -39,6 +42,16 @@ interface ClermontPermitProjectionModule {
     options: { nowMs: number },
   ) => Record<string, unknown>;
 }
+
+const certificationIntentSchema = z
+  .object({
+    schemaVersion: z.literal("elephant.clermont-certification-intent.v1"),
+    runId: z.string().min(8).max(120),
+    requestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    provenanceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    effectiveAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
 
 async function sha256File(filePath: string): Promise<string> {
   const hash = createHash("sha256");
@@ -68,7 +81,9 @@ function csvCell(value: unknown): string {
 
 async function loadHandoffs(options: {
   candidateRoot: string;
+  runStore: string;
   runId: string;
+  expectedSignatures: ClermontPartitionHandoff["signatures"];
 }): Promise<ClermontPartitionHandoff[]> {
   const handoffs: ClermontPartitionHandoff[] = [];
   for (const year of CLERMONT_PERMIT_YEARS) {
@@ -95,8 +110,22 @@ async function loadHandoffs(options: {
     if (handoff.status !== "captured_complete" || !handoff.checkpoint.terminal) {
       throw new Error(`Year ${year} is not terminal and cannot be certified`);
     }
-    const evidence = (await readEvidenceLines(options.candidateRoot, handoff.artifacts.status)).map(
-      (value) => clermontRecordEvidenceSchema.parse(value),
+    const worker = await loadClermontWorker(options.runStore, options.runId, handoff.partitionId);
+    if (
+      worker.status !== "idle" ||
+      worker.leaseOwner !== null ||
+      worker.leaseExpiresAt !== null ||
+      worker.checkpointSha256 !== handoff.checkpoint.checkpointSha256 ||
+      canonicalJson(worker.signatures) !== canonicalJson(options.expectedSignatures)
+    ) {
+      throw new Error(`Year ${year} has no terminal fenced worker checkpoint`);
+    }
+    const correlation = await verifyClermontEvidenceCorrelation({
+      candidateRoot: options.candidateRoot,
+      handoff,
+    });
+    const evidence = correlation.statusRecords.map((value) =>
+      clermontRecordEvidenceSchema.parse(value),
     );
     const reconciled = reconcileClermontPartitionRecords(evidence);
     if (
@@ -106,17 +135,31 @@ async function loadHandoffs(options: {
     ) {
       throw new Error(`Year ${year} status evidence does not reconcile to its handoff`);
     }
-    const rawCount = await countEvidenceLines(options.candidateRoot, handoff.artifacts.raw);
-    const extractedCount = await countEvidenceLines(
-      options.candidateRoot,
-      handoff.artifacts.extracted,
-    );
-    if (rawCount !== handoff.counts.rawEvidence || extractedCount !== handoff.counts.completed) {
+    if (
+      correlation.rawCount !== handoff.counts.rawEvidence ||
+      correlation.extractedCount !== handoff.counts.completed
+    ) {
       throw new Error(`Year ${year} raw/extracted evidence counts do not reconcile`);
     }
     handoffs.push(handoff);
   }
   return handoffs;
+}
+
+export function clermontCertificationEvidenceDigest(options: {
+  requestSha256: string;
+  provenanceSha256: string;
+  handoffs: ClermontPartitionHandoff[];
+  mergedExport: ClermontCertifiedBaseline["mergedExport"];
+}): string {
+  return sha256Text(
+    canonicalJson({
+      requestSha256: options.requestSha256,
+      provenanceSha256: options.provenanceSha256,
+      handoffs: options.handoffs,
+      mergedExport: options.mergedExport,
+    }),
+  );
 }
 
 export async function certifyClermontRun(options: {
@@ -129,12 +172,14 @@ export async function certifyClermontRun(options: {
   candidateRoot: string;
   baselinePath: string;
 }> {
-  const nowMs = Date.parse(options.now);
-  if (!Number.isFinite(nowMs)) throw new Error("now must be ISO-8601");
+  if (!Number.isFinite(Date.parse(options.now))) throw new Error("now must be ISO-8601");
   const prepared = await loadClermontPreparedRun(options.runStore, options.runId);
   await verifyClermontPreparedScopes({ repoRoot: options.repoRoot, prepared });
   let coordinator = await loadClermontCoordinator(options.runStore, options.runId);
-  if (coordinator.stages.certification.status !== "running") {
+  if (
+    coordinator.stages.certification.status !== "running" &&
+    coordinator.stages.certification.status !== "complete"
+  ) {
     coordinator = await updateClermontCoordinator({
       storeRoot: options.runStore,
       runId: options.runId,
@@ -146,7 +191,40 @@ export async function certifyClermontRun(options: {
     clermontRunDirectory(options.runStore, options.runId),
     "candidate",
   );
-  const handoffs = await loadHandoffs({ candidateRoot, runId: options.runId });
+  const intentPath = path.join(candidateRoot, "certification-intent.json");
+  let intent: z.infer<typeof certificationIntentSchema>;
+  try {
+    intent = certificationIntentSchema.parse(JSON.parse(await readFile(intentPath, "utf8")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    intent = certificationIntentSchema.parse({
+      schemaVersion: "elephant.clermont-certification-intent.v1",
+      runId: options.runId,
+      requestSha256: prepared.requestSha256,
+      provenanceSha256: prepared.provenanceSha256,
+      effectiveAt: coordinator.stages.certification.updatedAt,
+    });
+    await writeClermontRunArtifact({
+      storeRoot: options.runStore,
+      runId: options.runId,
+      relativePath: "candidate/certification-intent.json",
+      value: intent,
+    });
+  }
+  if (
+    intent.runId !== options.runId ||
+    intent.requestSha256 !== prepared.requestSha256 ||
+    intent.provenanceSha256 !== prepared.provenanceSha256
+  ) {
+    throw new Error("Certification intent does not bind the exact prepared run");
+  }
+  const nowMs = Date.parse(intent.effectiveAt);
+  const handoffs = await loadHandoffs({
+    candidateRoot,
+    runStore: options.runStore,
+    runId: options.runId,
+    expectedSignatures: prepared.request.signatures,
+  });
   if (
     handoffs.some(
       (handoff) => canonicalJson(handoff.signatures) !== canonicalJson(prepared.request.signatures),
@@ -205,7 +283,7 @@ export async function certifyClermontRun(options: {
   const metadata = clermontMergedExportMetadataSchema.parse({
     schemaVersion: CLERMONT_MERGED_EXPORT_METADATA_SCHEMA_VERSION,
     jobId: options.runId,
-    exportedAt: options.now,
+    exportedAt: intent.effectiveAt,
     sourceUrl: "https://etrakit.clermontfl.org/eTRAKiT3/Search/permit.aspx",
     permitYears: CLERMONT_PERMIT_YEARS.map((year) => String(year).slice(-2)),
     enumeratedPermits,
@@ -228,14 +306,12 @@ export async function certifyClermontRun(options: {
     metadata: await artifact(candidateRoot, metadataPath),
     rows: projected.length,
   };
-  const evidenceSha256 = sha256Text(
-    canonicalJson({
-      requestSha256: prepared.requestSha256,
-      provenanceSha256: prepared.provenanceSha256,
-      handoffs,
-      mergedExport,
-    }),
-  );
+  const evidenceSha256 = clermontCertificationEvidenceDigest({
+    requestSha256: prepared.requestSha256,
+    provenanceSha256: prepared.provenanceSha256,
+    handoffs,
+    mergedExport,
+  });
   const expiresAt = new Date(
     nowMs + prepared.request.baseline.maxAgeHours * 60 * 60 * 1_000,
   ).toISOString();
@@ -251,7 +327,7 @@ export async function certifyClermontRun(options: {
     jurisdiction: "clermont",
     sourceSystem: "lake_clermont_etrakit_permits",
     requiredHistory: { firstYear: 2015, lastYear: 2026 },
-    certifiedAt: options.now,
+    certifiedAt: intent.effectiveAt,
     expiresAt,
     status: "certified",
     evidenceSha256,

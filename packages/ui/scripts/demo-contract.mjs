@@ -31,6 +31,11 @@ function assertIdentity(value, expectedRunId, expectedRootCid, label) {
   }
 }
 
+function requiredCount(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) fail(`${label} must be a non-negative integer`);
+  return value;
+}
+
 /**
  * Assert that all public surfaces describe the exact finalized release the
  * operator intended to record.
@@ -39,11 +44,19 @@ function assertIdentity(value, expectedRunId, expectedRootCid, label) {
  *   meta: any,
  *   tools: any,
  *   contractor: any,
+ *   business: any,
  *   expectedRunId: string,
  *   expectedRootCid: string,
  * }} input
  */
-export function assertDemoContract({ meta, tools, contractor, expectedRunId, expectedRootCid }) {
+export function assertDemoContract({
+  meta,
+  tools,
+  contractor,
+  business,
+  expectedRunId,
+  expectedRootCid,
+}) {
   if (!/^\d{8}T\d{6}Z$/.test(expectedRunId)) fail("DEMO_RUN_ID is not a run ID");
   if (!/^b[a-z2-7]{20,}$/.test(expectedRootCid)) fail("DEMO_ROOT_CID is not a CID");
 
@@ -53,6 +66,12 @@ export function assertDemoContract({ meta, tools, contractor, expectedRunId, exp
     expectedRunId,
     expectedRootCid,
     "/api/views/contractor provenance",
+  );
+  assertIdentity(
+    business?.provenance,
+    expectedRunId,
+    expectedRootCid,
+    "/api/views/business provenance",
   );
 
   const toolNames = tools?.result?.tools?.map((tool) => tool?.name).sort();
@@ -79,12 +98,56 @@ export function assertDemoContract({ meta, tools, contractor, expectedRunId, exp
   if (contractor?.posture?.bbb_ratings_present !== 0) {
     fail("BBB ratings must remain honestly absent");
   }
-  if (!/Clermont is the only municipality/i.test(contractor?.note ?? "")) {
+  const contractorNote = contractor?.note ?? "";
+  if (
+    !/Clermont/i.test(contractorNote) ||
+    !/(one|1)[^.!]{0,80}(fifteen|15)|(only)[^.!]{0,80}(jurisdiction|municipality)/i.test(
+      contractorNote,
+    )
+  ) {
     fail("contractor view must state that contractor coverage is Clermont-only");
   }
   const bbbNotice = contractor?.gating?.find((notice) => notice?.field === "bbb_rating");
-  if (!bbbNotice || !/403/.test(bbbNotice.detail ?? "")) {
-    fail("contractor view must preserve the BBB HTTP 403 limitation");
+  if (!bbbNotice || !/403/.test(bbbNotice.detail ?? "") || !/policy|API/i.test(bbbNotice.detail)) {
+    fail("contractor view must preserve the BBB policy/API gate and default-route HTTP 403");
+  }
+
+  const businessCoverage = meta?.coverage?.tables?.businessAccounts;
+  const sourceAccounts = requiredCount(businessCoverage?.rows, "business source accounts");
+  const withSitusAddress = requiredCount(
+    businessCoverage?.withSitusAddress,
+    "business accounts with situs address",
+  );
+  const matchedToParcel = requiredCount(
+    businessCoverage?.matchedToParcel,
+    "business accounts matched to a parcel",
+  );
+  const attributedAcrossParcels = requiredCount(
+    businessCoverage?.attributedAcrossParcels,
+    "business account-to-parcel matches",
+  );
+  const propertiesWithAccount = requiredCount(
+    businessCoverage?.propertiesWithAccount,
+    "properties with a business account",
+  );
+  const sharedAddressGroups = requiredCount(
+    businessCoverage?.sharedAddressGroups,
+    "shared-address groups",
+  );
+  if (
+    sourceAccounts === 0 ||
+    withSitusAddress > sourceAccounts ||
+    matchedToParcel > withSitusAddress ||
+    attributedAcrossParcels < matchedToParcel ||
+    propertiesWithAccount === 0
+  ) {
+    fail("business coverage counts are internally inconsistent");
+  }
+  if (
+    business?.totals?.business_accounts !== attributedAcrossParcels ||
+    business?.totals?.properties_with_accounts !== propertiesWithAccount
+  ) {
+    fail("business view totals do not match this release's coverage snapshot");
   }
 
   return {
@@ -95,5 +158,13 @@ export function assertDemoContract({ meta, tools, contractor, expectedRunId, exp
     contractorJurisdictions: "1/15",
     contractorPermitYears: [...EXPECTED_CLERMONT_YEARS],
     bbbRatings: 0,
+    business: {
+      sourceAccounts,
+      withSitusAddress,
+      matchedToParcel,
+      attributedAcrossParcels,
+      propertiesWithAccount,
+      sharedAddressGroups,
+    },
   };
 }

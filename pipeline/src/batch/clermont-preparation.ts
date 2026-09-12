@@ -14,40 +14,30 @@ import {
 import { createClermontWorkerState, prepareClermontCoordinator } from "./clermont-coordinator.js";
 import { loadLastGoodClermontBaseline } from "./clermont-baseline-store.js";
 import {
+  CLERMONT_CONFIGURATION_SCOPE_FILES,
+  CLERMONT_EXECUTOR_SCOPE_PATH,
   CLERMONT_PREPARED_RUN_SCHEMA_VERSION,
+  CLERMONT_SCHEMA_SCOPE_FILES,
+  CLERMONT_SOURCE_SCOPE_FILES,
   clermontPreparedRunSchema,
   clermontPrepareTemplateSchema,
   type ClermontPreparedRun,
-  type ClermontPrepareTemplate,
 } from "./clermont-run-contracts.js";
 import { initializeClermontRun } from "./clermont-run-store.js";
-
-const SOURCE_SCOPE_FILES = Object.freeze([
-  "pipeline/docs/lake-sources.yaml",
-  "pipeline/scripts/lake/clermont-permits.mjs",
-  "pipeline/src/counties/lake/clermont-permits.mjs",
-  "pipeline/src/counties/lake/etrakit-adapter.mjs",
-  "pipeline/src/counties/lake/permit-routing.mjs",
-] as const);
-
-const CONFIGURATION_SCOPE_FILES = Object.freeze([
-  "pipeline/src/batch/clermont-preparation.ts",
-  "pipeline/src/batch/clermont-executor.ts",
-  "pipeline/src/batch/clermont-certifier.ts",
-  "pipeline/src/batch/clermont-run-store.ts",
-] as const);
-
-const SCHEMA_SCOPE_FILES = Object.freeze([
-  "pipeline/src/batch/clermont-contracts.ts",
-  "pipeline/src/batch/clermont-run-contracts.ts",
-  "pipeline/src/counties/lake/query-table.mjs",
-  "pipeline/scripts/lake/build-query-table.sql",
-] as const);
 
 interface ScopeEntry {
   logicalPath: string;
   sha256: string;
   bytes: number;
+}
+
+function virtualScopeEntry(logicalPath: string, value: unknown): ScopeEntry {
+  const encoded = canonicalJson(value);
+  return {
+    logicalPath,
+    sha256: sha256Text(encoded),
+    bytes: Buffer.byteLength(encoded),
+  };
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -83,17 +73,6 @@ function makeScope(entries: ScopeEntry[]) {
   };
 }
 
-function templateScope(template: ClermontPrepareTemplate) {
-  const encoded = canonicalJson(template);
-  return makeScope([
-    {
-      logicalPath: "input/clermont-prepare-template.json",
-      sha256: sha256Text(encoded),
-      bytes: Buffer.byteLength(encoded),
-    },
-  ]);
-}
-
 export async function prepareClermontRun(options: {
   repoRoot: string;
   templatePath: string;
@@ -109,14 +88,16 @@ export async function prepareClermontRun(options: {
   const template = clermontPrepareTemplateSchema.parse(
     JSON.parse(await readFile(options.templatePath, "utf8")),
   );
-  const source = makeScope(await fileScope(options.repoRoot, SOURCE_SCOPE_FILES));
-  const configuration = makeScope([
-    ...templateScope(template).entries,
-    ...(await fileScope(options.repoRoot, CONFIGURATION_SCOPE_FILES)),
-  ]);
-  configuration.entries.sort((left, right) => left.logicalPath.localeCompare(right.logicalPath));
-  configuration.aggregateSha256 = sha256Text(canonicalJson(configuration.entries));
-  const schema = makeScope(await fileScope(options.repoRoot, SCHEMA_SCOPE_FILES));
+  const source = makeScope(await fileScope(options.repoRoot, CLERMONT_SOURCE_SCOPE_FILES));
+  const configuration = makeScope(
+    [
+      ...(await fileScope(options.repoRoot, CLERMONT_CONFIGURATION_SCOPE_FILES)),
+      virtualScopeEntry(CLERMONT_EXECUTOR_SCOPE_PATH, template.executor),
+    ].sort((left, right) =>
+      left.logicalPath < right.logicalPath ? -1 : left.logicalPath > right.logicalPath ? 1 : 0,
+    ),
+  );
+  const schema = makeScope(await fileScope(options.repoRoot, CLERMONT_SCHEMA_SCOPE_FILES));
   const signatures = {
     sourceSha256: source.aggregateSha256,
     configurationSha256: configuration.aggregateSha256,
@@ -131,6 +112,8 @@ export async function prepareClermontRun(options: {
     requestedYears: [...CLERMONT_PERMIT_YEARS],
     refreshMode: template.refreshMode,
     asOfYear: 2026,
+    runtime: template.runtime,
+    remoteBaseline: template.remoteBaseline,
     signatures,
     baseline: template.baseline,
     benchmark: template.benchmark,
@@ -187,31 +170,28 @@ export async function verifyClermontPreparedScopes(options: {
   prepared: ClermontPreparedRun;
 }): Promise<void> {
   const prepared = clermontPreparedRunSchema.parse(options.prepared);
-  const expectedGroups = {
-    source: prepared.scopes.source,
-    configuration: prepared.scopes.configuration,
-    schema: prepared.scopes.schema,
+  if (
+    prepared.request.runtime.nodeVersion !== process.version ||
+    prepared.request.runtime.platform !== process.platform ||
+    prepared.request.runtime.architecture !== process.arch
+  ) {
+    throw new Error("Prepared Clermont runtime identity does not match the active process");
+  }
+  const actualGroups = {
+    source: makeScope(await fileScope(options.repoRoot, CLERMONT_SOURCE_SCOPE_FILES)),
+    configuration: makeScope(
+      [
+        ...(await fileScope(options.repoRoot, CLERMONT_CONFIGURATION_SCOPE_FILES)),
+        virtualScopeEntry(CLERMONT_EXECUTOR_SCOPE_PATH, prepared.template.executor),
+      ].sort((left, right) =>
+        left.logicalPath < right.logicalPath ? -1 : left.logicalPath > right.logicalPath ? 1 : 0,
+      ),
+    ),
+    schema: makeScope(await fileScope(options.repoRoot, CLERMONT_SCHEMA_SCOPE_FILES)),
   };
-  for (const [groupName, group] of Object.entries(expectedGroups)) {
-    const actualEntries: ScopeEntry[] = [];
-    for (const entry of group.entries) {
-      if (entry.logicalPath === "input/clermont-prepare-template.json") {
-        const encoded = canonicalJson(prepared.template);
-        actualEntries.push({
-          logicalPath: entry.logicalPath,
-          sha256: sha256Text(encoded),
-          bytes: Buffer.byteLength(encoded),
-        });
-      } else {
-        actualEntries.push(...(await fileScope(options.repoRoot, [entry.logicalPath])));
-      }
-    }
-    actualEntries.sort((left, right) => left.logicalPath.localeCompare(right.logicalPath));
-    const aggregateSha256 = sha256Text(canonicalJson(actualEntries));
-    if (
-      aggregateSha256 !== group.aggregateSha256 ||
-      canonicalJson(actualEntries) !== canonicalJson(group.entries)
-    ) {
+  for (const [groupName, actual] of Object.entries(actualGroups)) {
+    const expected = prepared.scopes[groupName as keyof typeof prepared.scopes];
+    if (canonicalJson(actual) !== canonicalJson(expected)) {
       throw new Error(`Prepared Clermont ${groupName} scope has drifted; create a new run`);
     }
   }

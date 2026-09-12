@@ -28,6 +28,7 @@ import {
   ClermontBaselinePreconditionError,
   assertPartitionCanComplete,
 } from "./clermont-coordinator.js";
+import { acquireClermontRunLock } from "./clermont-run-store.js";
 
 const LAST_GOOD_FILE = "last-good.json";
 
@@ -84,6 +85,7 @@ function artifactReferences(baseline: ClermontCertifiedBaseline) {
       artifacts.raw,
       artifacts.extracted,
       artifacts.status,
+      artifacts.licenseDirectory,
     ]),
     baseline.mergedExport.artifact,
     baseline.mergedExport.metadata,
@@ -284,87 +286,94 @@ export async function promoteCertifiedClermontBaseline(options: {
   await verifyBaselineArtifacts(options.candidateArtifactRoot, candidate);
 
   await mkdir(options.storeRoot, { recursive: true });
-  const existingPointer = await readPointerOrNull(options.storeRoot);
-  const existingDigest = existingPointer?.baselineSha256 ?? null;
-  if (existingDigest !== options.expectedPriorSha256) {
-    throw new ClermontBaselinePreconditionError(
-      "Last-good baseline changed since acquisition started; refusing an unfenced promotion",
-    );
-  }
-
   const digest = clermontBaselineDigest(candidate);
-  if (existingDigest === digest && existingPointer !== null) {
-    await loadLastGoodClermontBaseline({
-      storeRoot: options.storeRoot,
-      now: options.now,
-      maxAgeHours: 24 * 31,
-      expectedSignatures: options.expectedSignatures,
-      expectedSha256: digest,
-    });
-    return existingPointer;
-  }
-  if (existingPointer !== null) {
-    const existing = await readBaselineAtPointer(options.storeRoot, existingPointer);
-    assertSignatures(existing, options.expectedSignatures);
-    if (Date.parse(candidate.certifiedAt) <= Date.parse(existing.certifiedAt)) {
+  const promotionLock = await acquireClermontRunLock(
+    path.join(options.storeRoot, ".baseline-promotion-lock"),
+  );
+  try {
+    const existingPointer = await readPointerOrNull(options.storeRoot);
+    const existingDigest = existingPointer?.baselineSha256 ?? null;
+    if (existingDigest === digest && existingPointer !== null) {
+      const existing = await readBaselineAtPointer(options.storeRoot, existingPointer);
+      assertSignatures(existing, options.expectedSignatures);
+      assertFreshBaseline({ baseline: existing, now: options.now, maxAgeHours: 24 * 31 });
+      if (canonicalJson(existing) !== canonicalJson(candidate)) {
+        throw new ClermontBaselinePreconditionError(
+          "Applied baseline pointer conflicts with the exact recovery candidate",
+        );
+      }
+      return existingPointer;
+    }
+    if (existingDigest !== options.expectedPriorSha256) {
       throw new ClermontBaselinePreconditionError(
-        "Candidate baseline is not newer than the preserved last-good baseline",
+        "Last-good baseline changed since acquisition started; refusing an unfenced promotion",
       );
     }
-  }
-
-  const immutablePath = baselinePath(options.storeRoot, digest);
-  const immutableRoot = path.dirname(immutablePath);
-  const encoded = canonicalJson(candidate);
-  if (!(await exists(immutableRoot))) {
-    const stagingRoot = path.join(
-      options.storeRoot,
-      "baselines",
-      `.candidate.${digest}.${randomUUID()}`,
-    );
-    await mkdir(stagingRoot, { recursive: true });
-    try {
-      for (const artifact of artifactReferences(candidate)) {
-        const source = confinedArtifactPath(options.candidateArtifactRoot, artifact.logicalPath);
-        const destination = confinedArtifactPath(stagingRoot, artifact.logicalPath);
-        await mkdir(path.dirname(destination), { recursive: true });
-        await linkOrCopyFile(source, destination);
-      }
-      await writeFile(path.join(stagingRoot, "baseline.json"), encoded, {
-        encoding: "utf8",
-        flag: "wx",
-      });
-      try {
-        await rename(stagingRoot, immutableRoot);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-    } finally {
-      if (await exists(stagingRoot)) {
-        await rm(stagingRoot, { recursive: true, force: true });
+    if (existingPointer !== null) {
+      const existing = await readBaselineAtPointer(options.storeRoot, existingPointer);
+      assertSignatures(existing, options.expectedSignatures);
+      if (Date.parse(candidate.certifiedAt) <= Date.parse(existing.certifiedAt)) {
+        throw new ClermontBaselinePreconditionError(
+          "Candidate baseline is not newer than the preserved last-good baseline",
+        );
       }
     }
-  }
-  if ((await readFile(immutablePath, "utf8")) !== encoded) {
-    throw new ClermontBaselinePreconditionError(
-      "Content-addressed baseline path already contains different bytes",
-    );
-  }
-  await verifyBaselineArtifacts(immutableRoot, candidate);
 
-  const pointer = clermontBaselinePointerSchema.parse({
-    schemaVersion: CLERMONT_BASELINE_POINTER_SCHEMA_VERSION,
-    baselineSha256: digest,
-    baselineRelativePath: `baselines/${digest}/baseline.json`,
-    promotedAt: options.now,
-  });
-  const temporaryPointer = path.join(options.storeRoot, `.last-good.${randomUUID()}.tmp`);
-  await writeFile(temporaryPointer, canonicalJson(pointer), {
-    encoding: "utf8",
-    flag: "wx",
-  });
-  await rename(temporaryPointer, path.join(options.storeRoot, LAST_GOOD_FILE));
-  return pointer;
+    const immutablePath = baselinePath(options.storeRoot, digest);
+    const immutableRoot = path.dirname(immutablePath);
+    const encoded = canonicalJson(candidate);
+    if (!(await exists(immutableRoot))) {
+      const stagingRoot = path.join(
+        options.storeRoot,
+        "baselines",
+        `.candidate.${digest}.${randomUUID()}`,
+      );
+      await mkdir(stagingRoot, { recursive: true });
+      try {
+        for (const artifact of artifactReferences(candidate)) {
+          const source = confinedArtifactPath(options.candidateArtifactRoot, artifact.logicalPath);
+          const destination = confinedArtifactPath(stagingRoot, artifact.logicalPath);
+          await mkdir(path.dirname(destination), { recursive: true });
+          await linkOrCopyFile(source, destination);
+        }
+        await writeFile(path.join(stagingRoot, "baseline.json"), encoded, {
+          encoding: "utf8",
+          flag: "wx",
+        });
+        try {
+          await rename(stagingRoot, immutableRoot);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+      } finally {
+        if (await exists(stagingRoot)) {
+          await rm(stagingRoot, { recursive: true, force: true });
+        }
+      }
+    }
+    if ((await readFile(immutablePath, "utf8")) !== encoded) {
+      throw new ClermontBaselinePreconditionError(
+        "Content-addressed baseline path already contains different bytes",
+      );
+    }
+    await verifyBaselineArtifacts(immutableRoot, candidate);
+
+    const pointer = clermontBaselinePointerSchema.parse({
+      schemaVersion: CLERMONT_BASELINE_POINTER_SCHEMA_VERSION,
+      baselineSha256: digest,
+      baselineRelativePath: `baselines/${digest}/baseline.json`,
+      promotedAt: options.now,
+    });
+    const temporaryPointer = path.join(options.storeRoot, `.last-good.${randomUUID()}.tmp`);
+    await writeFile(temporaryPointer, canonicalJson(pointer), {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await rename(temporaryPointer, path.join(options.storeRoot, LAST_GOOD_FILE));
+    return pointer;
+  } finally {
+    await promotionLock.release();
+  }
 }
 
 /**

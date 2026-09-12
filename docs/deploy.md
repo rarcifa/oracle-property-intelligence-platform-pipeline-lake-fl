@@ -56,7 +56,9 @@ dependency resolved per platform, and npm on macOS installs only the darwin one.
 platform binding whatever, which would have failed at cold start with a missing native
 module rather than at deploy time. The script now installs the Linux binding by exact
 version, prunes every other platform's, and fails the build if the binding is absent or the
-bundle exceeds Lambda's 250 MB unzipped limit. It currently comes to 89 MB.
+bundle exceeds Lambda's 250 MB unzipped limit. The verified bundle is exactly
+120,051,259 bytes (about 114.5 MiB); use the byte count for release comparisons rather than
+an imprecise rounded label.
 
 ## The chat key
 
@@ -107,29 +109,62 @@ ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/<root-cid>/query-table.parquet
 
 ## Alerting
 
-Three failure paths page on-call: the runtime failing to open the dataset, the CloudWatch
-alarms (errors, throttles, a pointer refresh failing for 15 minutes), and a failed scheduled
-ingestion run. All of it is wired and none of it is configured, because there is no PagerDuty
-account behind this deployment. The stack output `AlertingConfigured` names the channels a
-deploy actually wired, and reports `none` when it wired nothing.
+Runtime and CloudWatch failures can page on-call through PagerDuty. The scheduled ingestion
+workflow also sends a failure notification to the approved Clermont SNS email topic; that
+email is notification coverage, not paging. PagerDuty is not configured for this deployment,
+so the repository must continue to disclose that operational deviation. The runtime stack
+output `AlertingConfigured` names the channels that stack actually wired and reports `none`
+when it wired nothing.
 
 ```bash
-# Page on-call. The routing key is read from Secrets Manager at runtime and is never an
-# environment value; only the secret's name is deployed.
-aws secretsmanager create-secret --name oracle-lake/pagerduty-routing-key --secret-string "$KEY"
+# Page on-call. Store a JSON secret through a permission-0600 temporary file so the routing
+# key never appears in process arguments, an environment value, or the repository.
+umask 077
+PD_SECRET_FILE=$(mktemp)
+trap 'rm -f "$PD_SECRET_FILE"' EXIT
+IFS= read -r -s -p "PagerDuty routing key: " PD_ROUTING_KEY
+printf '\n'
+printf '%s\n' "$PD_ROUTING_KEY" | jq -Rn '{routing_key: input}' > "$PD_SECRET_FILE"
+unset PD_ROUTING_KEY
+SECRET_ARN=$(aws secretsmanager create-secret \
+  --region us-east-2 \
+  --name oracle-lake/pagerduty-routing-key \
+  --secret-string "file://$PD_SECRET_FILE" \
+  --query ARN --output text)
+rm -f "$PD_SECRET_FILE"
+trap - EXIT
 
+CDK_DEFAULT_ACCOUNT=122610508924 \
+ORACLE_DEPLOY_REGION=us-east-2 \
 ORACLE_ALERT_ENVIRONMENT=production \
-ORACLE_PAGERDUTY_SECRET_NAME=oracle-lake/pagerduty-routing-key \
-ORACLE_PAGERDUTY_CLOUDWATCH_URL="https://events.pagerduty.com/integration/<key>/enqueue" \
+ORACLE_PAGERDUTY_SECRET_ARN="$SECRET_ARN" \
 ORACLE_ALERT_EMAIL=oncall@example.com \
   just deploy
 ```
 
-Paging is gated on `ORACLE_ALERT_ENVIRONMENT` being exactly `production`, so a non-prod
-deploy cannot wake anybody even with a key in place. For the scheduled ingestion workflow,
-set `PAGERDUTY_ROUTING_KEY` as a repository secret. Metric definitions, dashboard fields,
-DLQ applicability, and the external owner checklist are recorded in the
-[observability handoff](observability-handoff.md).
+Paging is gated on the exact account `122610508924`, region `us-east-2`, and
+`ORACLE_ALERT_ENVIRONMENT=production`. The stack reads only the complete secret ARN with an
+exact IAM grant. Its SNS subscriber translates CloudWatch `ALARM` to PagerDuty `trigger` and
+`OK` to `resolve`; there is no credential-bearing subscription URL. For scheduled ingestion, set
+`CLERMONT_ALERT_TOPIC_ARN` from the `BaselineAlertTopicArn` output and retain
+`CLERMONT_BASELINE_READ_ROLE_ARN`; the branch-bound role has only baseline-read and exact-topic
+publish permission. To enable paging, create one routing-key secret in production Secrets
+Manager and deploy the baseline stack with
+`-c pagerDutySecretArn=arn:aws:secretsmanager:us-east-2:122610508924:secret:<exact-name-and-suffix>`.
+Then set `CLERMONT_FAILURE_NOTIFIER_ARN` from the `FailureNotifierArn` output. GitHub may invoke
+that exact function but never receives the routing key. Pass the same complete ARN to local
+`npm run clermont:run -- --failure-notifier-arn "$CLERMONT_FAILURE_NOTIFIER_ARN" ...`; the
+operator and GitHub roles can invoke only that function. Without that output, SNS still notifies
+the approved email, but the deployment remains explicitly nonconformant for on-call paging.
+Before enabling candidate-building workflow runs, set repository variable
+`IPNS_PREDECESSOR_RECEIPT_JSON_B64` to the base64 encoding of a reviewed Filebase names receipt
+for `oracle-open-data-lake`. The workflow validates its public network key, CID, and integer
+sequence and freezes them into the publication request. Refresh this non-secret receipt after
+each successful IPNS update; live publication reuses the restored signed request rather than a
+mutable repository variable. The Pinata API base is fixed in workflow code; only the scoped JWT
+is a secret.
+Metric definitions, dashboard fields, DLQ applicability, and the external owner checklist are
+recorded in the [observability handoff](observability-handoff.md).
 
 ## What the first deploy taught
 
@@ -155,7 +190,18 @@ URL=$(aws cloudformation describe-stacks --stack-name OracleLakeRuntime \
 curl -s "$URL/api/health"
 curl -s "$URL/api/stats" | jq .stats.properties          # expect 215806
 curl -s "$URL/mcp" -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools|length'   # expect 8
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | jq -e '([.result.tools[].name] | sort) == [
+      "findAgedRoofs",
+      "findOpenRoofPermits",
+      "findPropertiesInRadius",
+      "getOracleDatasetInfo",
+      "getOracleProperty",
+      "getPropertyPermits",
+      "getPropertyQuerySchema",
+      "listOracleProperties",
+      "queryProperties"
+    ]'                                                    # require exactly these nine
 # The SQL surface must refuse to read the host filesystem:
 curl -s "$URL/api/sql" -H 'content-type: application/json' \
   -d '{"sql":"SELECT * FROM read_text('"'"'/etc/passwd'"'"')"}' | jq .error          # expect sql_rejected

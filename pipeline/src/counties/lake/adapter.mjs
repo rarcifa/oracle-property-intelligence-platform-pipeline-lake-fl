@@ -5,9 +5,9 @@
  *
  * Lake differs from both bundled counties in where a parcel's facts come
  * from. Pinellas and Duval capture one appraiser page per parcel and run
- * transform scripts over the HTML. Lake's appraiser portal and permit detail
- * pages sit behind a Cloudflare managed challenge, so Lake's record of origin
- * is the published DOR bulk roll. `captureAndTransform` therefore transforms
+ * transform scripts over the HTML. Lake's appraiser portal was reachable but
+ * deliberately unused in favour of the bulk DOR roll; its county permit detail
+ * pages sit behind a Cloudflare managed challenge. `captureAndTransform` therefore transforms
  * the roll record carried on each seed row into the same lexicon-shaped
  * `data/*.json` files plus `transformed.zip` the other counties produce, and
  * a run manifest with the same three-way success / permanent_failure /

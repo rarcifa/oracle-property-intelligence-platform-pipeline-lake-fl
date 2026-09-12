@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -106,15 +106,76 @@ export function sha256(input: string | Buffer): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function inside(parent: string, child: string): boolean {
-  return child === parent || child.startsWith(`${parent}${sep}`);
+const moduleSpecifierPattern =
+  /^\s*(?:import|export)\s+(?:(?:type\s+)?[^;]*?\s+from\s+)?["']([^"']+)["']/gm;
+
+async function resolveLocalModule(
+  importer: string,
+  specifier: string,
+  repoRoot: string,
+): Promise<string | null> {
+  let unresolved: string;
+  if (specifier.startsWith(".")) {
+    unresolved = resolve(dirname(importer), specifier);
+  } else if (specifier === "@oracle-lake/shared") {
+    unresolved = resolve(repoRoot, "packages/shared/src/index.ts");
+  } else {
+    return null;
+  }
+
+  const extension = extname(unresolved);
+  const candidates = [
+    unresolved,
+    ...(extension === ".js" || extension === ".mjs" || extension === ".cjs"
+      ? [`${unresolved.slice(0, -extension.length)}.ts`]
+      : []),
+    ...(extension === "" ? [`${unresolved}.ts`, resolve(unresolved, "index.ts")] : []),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await readFile(candidate);
+      return candidate;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "EISDIR") throw error;
+    }
+  }
+  throw new Error(`Cannot resolve local generator import ${specifier} from ${importer}`);
 }
 
-function repositoryPath(path: string): string {
-  const value = relative(REPO_ROOT, path);
-  if (value.startsWith("..") || value === "")
-    throw new Error(`Corpus input is outside repo: ${path}`);
-  return value;
+/**
+ * Resolve the complete local TypeScript module closure for generator entrypoints.
+ *
+ * This follows relative imports/re-exports and the workspace shared-package
+ * barrel. External package implementations are version-bound by pnpm-lock.yaml,
+ * which the caller includes beside this closure.
+ */
+export async function collectLocalModuleClosure(
+  entrypoints: readonly string[],
+  repoRoot = REPO_ROOT,
+): Promise<string[]> {
+  const pending = [...entrypoints.map((entrypoint) => resolve(entrypoint))];
+  const found = new Set<string>();
+
+  while (pending.length > 0) {
+    const path = pending.pop() as string;
+    if (found.has(path)) continue;
+    if (!inside(repoRoot, path)) throw new Error(`Generator source is outside repo: ${path}`);
+    const source = await readFile(path, "utf8");
+    found.add(path);
+
+    moduleSpecifierPattern.lastIndex = 0;
+    for (const match of source.matchAll(moduleSpecifierPattern)) {
+      const dependency = await resolveLocalModule(path, match[1] as string, repoRoot);
+      if (dependency !== null && !found.has(dependency)) pending.push(dependency);
+    }
+  }
+
+  return [...found].sort();
+}
+
+function inside(parent: string, child: string): boolean {
+  return child === parent || child.startsWith(`${parent}${sep}`);
 }
 
 /** Read the explicit source receipt and verify every selected artifact byte. */
@@ -201,13 +262,20 @@ function canonicalArtifacts(artifacts: readonly { name: string; sha256: string }
 }
 
 /** Hash a sorted, repository-relative list of source-file digests. */
-export async function buildSourceSnapshot(paths: readonly string[]): Promise<{
+export async function buildSourceSnapshot(
+  paths: readonly string[],
+  repoRoot = REPO_ROOT,
+): Promise<{
   digest: string;
   inputs: SourceInput[];
 }> {
   const inputs: SourceInput[] = [];
   for (const path of [...new Set(paths)].sort()) {
-    inputs.push({ path: repositoryPath(path), sha256: sha256(await readFile(path)) });
+    const value = relative(repoRoot, path);
+    if (value.startsWith("..") || value === "") {
+      throw new Error(`Corpus input is outside repo: ${path}`);
+    }
+    inputs.push({ path: value, sha256: sha256(await readFile(path)) });
   }
   return {
     digest: `sha256:${sha256(JSON.stringify(inputs))}`,

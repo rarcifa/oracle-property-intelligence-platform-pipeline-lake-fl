@@ -78,9 +78,14 @@ code.
 - Added PR/push CI with format, lint, typecheck, tests, builds, browser breakpoints,
   readiness, a real downloaded Parquet, and a guard that query-layer tests do not skip.
 - Increased runtime log retention to 90 days and retained structured logs, active X-Ray,
-  business metrics, self-resolving alarms, bounded concurrency, and optional production
-  PagerDuty/SNS wiring. The synchronous read-only HTTP runtime has no queue, so a DLQ is
-  explicitly not applicable.
+  business metrics, self-resolving alarms, bounded concurrency, a production-account-gated
+  PagerDuty notifier that reads its routing key from an exact Secrets Manager ARN at runtime,
+  and secondary SNS email alerts. PagerDuty is not configured in the current deployment; that
+  remains an explicit operating-profile deviation. The synchronous read-only HTTP runtime has
+  no queue, so a DLQ is explicitly not applicable.
+- Added Powertools business metrics to all four AWS Batch worker modes, with exact
+  service/environment/operation dimensions, repository Lexicon registration, and a synthesized
+  per-worker dashboard for processed, failed, and p95 duration signals.
 - Excluded mutable data, tests, fixtures, and dependencies from the Batch Docker/CDK asset
   context, reducing synthesis from multi-gigabyte temporary copies to the files named by
   the Dockerfile.
@@ -107,15 +112,16 @@ handoff evidence is in
 
 ## Final local validation
 
-The repaired tree passed the following gates on 2026-09-11:
+The repaired tree passed the following gates on 2026-09-11–12:
 
-- Application unit suite: 36 files and 384 tests passed.
+- Application unit suite: 40 files and 407 tests passed.
 - Responsive browser suite: 100 checks passed across 320, 390, 820, 1280, and
   1440 pixel widths.
-- Extracted county pipeline: 60 files and 524 tests passed, followed by all 4
+- Extracted county pipeline: 69 files and 632 tests passed, followed by all 4
   vendored transform tests.
 - RAG contract, promotion, retrieval, and reproducibility tests passed against the
-  explicit local candidate receipt.
+  explicit local candidate receipt; the deterministic corpus contains 254 chunks across
+  138 documents.
 - Root format, lint, typecheck, production build, and `git diff --check` passed.
 - Root and pipeline dependency audits report zero known vulnerabilities after upgrading
   Vitest, Vite, MapLibre GL, esbuild, and adm-zip to patched releases.
@@ -136,8 +142,11 @@ The fork's unsafe legacy scheduled workflow was disabled as a reversible contain
 measure; it remains disabled until the repaired workflow is on the default branch and its
 digest-bound baseline inputs are configured. The local candidate has not been uploaded,
 independently pinned, publicly verified, or pointed to by IPNS. No AWS Batch job,
-workflow dispatch, deployment, or PagerDuty incident was created. The repaired branch has
-not been promoted to the fork's default branch or submitted to the designated upstream.
+workflow dispatch, live harvest, or PagerDuty incident was created. The private Clermont
+baseline stack was deployed under explicit owner approval, but its bucket remains empty and
+the current local alerting/storage hardening is not deployed. That stack must be updated only
+after this repair is committed and the owner approves the exact new commit. The repaired branch
+has not been promoted to the fork's default branch or submitted to the designated upstream.
 
 Two hard data/release blockers remain:
 

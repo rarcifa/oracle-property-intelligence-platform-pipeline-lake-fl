@@ -1,148 +1,181 @@
-/**
- * Paging on-call when this runtime fails terminally.
- *
- * The engineering guidelines make this non-negotiable: a service that can fail
- * critically but cannot page on-call is an incomplete service, and swallowing a
- * critical failure with a log-only handler is forbidden. This deployment had a
- * log-only handler on exactly that path — a boot that could not open the
- * published dataset returned 503 to the caller and told nobody.
- *
- * Two channels, deliberately, per `observability-pagerduty-alerting` and
- * `observability-dlq-alarms`:
- *
- *  - **Rate signals** (Lambda errors, throttles, a refresh that keeps failing)
- *    are driven from one self-resolving CloudWatch alarm per failure mode,
- *    which fans out to an SNS topic that PagerDuty subscribes to. The alarm
- *    owns the incident lifecycle: `ALARM` triggers, `OK` resolves. That wiring
- *    lives in the CDK stack, not here.
- *  - **A terminal failure of a single critical operation** is triggered
- *    directly, from the point where it becomes terminal. That is this module.
- *
- * What is NOT paged: anything self-healing. A pointer refresh that fails leaves
- * the process serving a verified published run, so it is degraded freshness and
- * belongs to the alarm, not to a page. Over-paging trains responders to ignore
- * alerts.
- *
- * The routing key is read from Secrets Manager at runtime and never logged,
- * never put in an environment variable, and never included in a payload.
- */
-
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
+import { z } from "zod";
 
-/** PagerDuty Events API v2. */
 export const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
+export const PAGERDUTY_PRODUCTION_ACCOUNT = "122610508924";
+export const PAGERDUTY_PRODUCTION_REGION = "us-east-2";
+export const DATASET_UNAVAILABLE_ALARM_NAME = "OracleLake-dataset-unavailable";
+
+export function cloudWatchAlarmDedupKey(alarmName: string): string {
+  return `cloudwatch-alarm/${alarmName}`;
+}
+
+const PAGERDUTY_SECRET_ARN_PATTERN = new RegExp(
+  `^arn:aws:secretsmanager:${PAGERDUTY_PRODUCTION_REGION}:${PAGERDUTY_PRODUCTION_ACCOUNT}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$`,
+);
+const pagerDutyReceiptSchema = z.object({
+  dedup_key: z.string().min(1).max(255),
+});
+const SENSITIVE_DETAIL_KEY = /authorization|credential|password|routing|secret|token/i;
 
 export interface PagerDutyAlert {
-  /** One line an on-call responder reads first. */
   summary: string;
-  /** The thing that failed, as an identifier. */
   source: string;
   severity: "critical" | "error" | "warning" | "info";
-  /**
-   * Stable key for this failure class, so a container that retries a failing
-   * boot every few seconds keeps updating one incident instead of opening
-   * hundreds.
-   */
   dedupKey: string;
+  eventAction?: "trigger" | "resolve";
+  component?: string;
   customDetails?: Record<string, unknown>;
 }
 
 export interface PagerDutyEnvironment {
-  /** Secrets Manager id holding the per-service routing key. */
-  secretId?: string;
-  /**
-   * Paging is gated to production so a non-prod run never wakes anybody. The
-   * gate is explicit rather than inferred: an unset value does not page.
-   */
+  secretArn?: string;
   environment?: string;
+  accountId?: string;
+  region?: string;
   fetchImpl?: typeof fetch;
   secretsClient?: { send: (command: GetSecretValueCommand) => Promise<{ SecretString?: string }> };
-  logger?: { warn: (message: string, fields?: Record<string, unknown>) => void };
 }
 
-/** Result of an attempt to page. `skipped` is a decision, not a failure. */
 export type PagerDutyResult =
   | { status: "triggered"; dedupKey: string }
+  | { status: "resolved"; dedupKey: string }
   | { status: "skipped"; reason: string }
   | { status: "failed"; reason: string };
 
 let cachedRoutingKey: string | null = null;
 
-/** Forget the cached routing key. Tests only. */
 export function resetPagerDutyRoutingKey(): void {
   cachedRoutingKey = null;
 }
 
-/**
- * Read the routing key from Secrets Manager, once per container.
- *
- * @returns the key, or null when none is configured or it cannot be read.
- */
-async function routingKey(env: PagerDutyEnvironment): Promise<string | null> {
+export function isExactPagerDutySecretArn(value: string): boolean {
+  return PAGERDUTY_SECRET_ARN_PATTERN.test(value);
+}
+
+function boundedPagerDutyValue(value: unknown, depth: number): unknown {
+  if (typeof value === "string") return value.slice(0, 512);
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
+  if (depth >= 3) return String(value).slice(0, 512);
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((entry) => boundedPagerDutyValue(entry, depth + 1));
+  }
+  if (typeof value !== "object" || value === null) return String(value).slice(0, 512);
+  return boundedPagerDutyDetails(value as Record<string, unknown>, 10, depth + 1);
+}
+
+export function boundedPagerDutyDetails(
+  details: Record<string, unknown>,
+  maximumEntries = 20,
+  depth = 0,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(details)
+      .filter(([key]) => !SENSITIVE_DETAIL_KEY.test(key))
+      .slice(0, maximumEntries)
+      .map(([key, value]) => [key.slice(0, 128), boundedPagerDutyValue(value, depth)]),
+  );
+}
+
+function parseRoutingKey(secretString: string): string {
+  const trimmed = secretString.trim();
+  if (trimmed.length === 0) throw new Error("PagerDuty routing-key secret is empty");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    return trimmed;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("routing_key" in parsed) ||
+    typeof parsed.routing_key !== "string" ||
+    parsed.routing_key.trim().length === 0
+  ) {
+    throw new Error("PagerDuty JSON secret must contain a non-empty routing_key");
+  }
+  return parsed.routing_key.trim();
+}
+
+async function routingKey(env: PagerDutyEnvironment): Promise<string> {
   if (cachedRoutingKey !== null) return cachedRoutingKey;
-  const secretId = env.secretId;
-  if (secretId === undefined || secretId.length === 0) return null;
+  const secretArn = env.secretArn;
+  if (secretArn === undefined || !isExactPagerDutySecretArn(secretArn)) {
+    throw new Error("PagerDuty requires one exact production Secrets Manager ARN");
+  }
   const client =
     env.secretsClient ??
     (new SecretsManagerClient({}) as unknown as NonNullable<PagerDutyEnvironment["secretsClient"]>);
-  const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
-  const value = result.SecretString?.trim();
-  if (value === undefined || value.length === 0) return null;
-  cachedRoutingKey = value;
+  const result = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
+  if (typeof result.SecretString !== "string") {
+    throw new Error("PagerDuty routing-key secret has no SecretString");
+  }
+  cachedRoutingKey = parseRoutingKey(result.SecretString);
   return cachedRoutingKey;
 }
 
-/**
- * Page on-call for a terminal failure.
- *
- * Never throws: the caller is already handling a failure and must be free to
- * rethrow the original one. A page that could not be sent is reported back so
- * the caller can log that fact rather than assume somebody was told.
- */
+async function parseAcceptedReceipt(response: Response): Promise<string> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("PagerDuty 202 response is not valid JSON and has no dedup_key");
+  }
+  const parsed = pagerDutyReceiptSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error("PagerDuty 202 response has no valid dedup_key");
+  }
+  return parsed.data.dedup_key;
+}
+
 export async function triggerPagerDutyAlert(
   alert: PagerDutyAlert,
   env: PagerDutyEnvironment = {},
 ): Promise<PagerDutyResult> {
   const environment = env.environment ?? process.env.ORACLE_ALERT_ENVIRONMENT;
-  if (environment !== "production") {
+  const accountId = env.accountId ?? process.env.ORACLE_ALERT_ACCOUNT_ID;
+  const region = env.region ?? process.env.AWS_REGION;
+  if (
+    environment !== "production" ||
+    accountId !== PAGERDUTY_PRODUCTION_ACCOUNT ||
+    region !== PAGERDUTY_PRODUCTION_REGION
+  ) {
     return {
       status: "skipped",
-      reason: `not the production environment (${environment ?? "unset"})`,
+      reason: `not the exact production target (${environment ?? "unset"}/${accountId ?? "unset"}/${region ?? "unset"})`,
     };
   }
+
   try {
     const key = await routingKey({
       ...env,
-      secretId: env.secretId ?? process.env.ORACLE_PAGERDUTY_SECRET_ID,
+      secretArn: env.secretArn ?? process.env.ORACLE_PAGERDUTY_SECRET_ARN,
     });
-    if (key === null)
-      return { status: "skipped", reason: "no PagerDuty routing key is configured" };
-    const fetchImpl = env.fetchImpl ?? fetch;
-    const response = await fetchImpl(PAGERDUTY_EVENTS_URL, {
+    const action = alert.eventAction ?? "trigger";
+    const response = await (env.fetchImpl ?? fetch)(PAGERDUTY_EVENTS_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         routing_key: key,
-        event_action: "trigger",
-        dedup_key: alert.dedupKey,
+        event_action: action,
+        dedup_key: alert.dedupKey.slice(0, 255),
         payload: {
-          summary: alert.summary,
-          source: alert.source,
+          summary: alert.summary.slice(0, 256),
+          source: alert.source.slice(0, 128),
           severity: alert.severity,
-          component: "oracle-lake-runtime",
-          custom_details: alert.customDetails ?? {},
+          component: (alert.component ?? "oracle-lake-runtime").slice(0, 128),
+          custom_details: boundedPagerDutyDetails(alert.customDetails ?? {}),
         },
       }),
     });
-    // Events API v2 accepts asynchronously: 202 means enqueued, and anything
-    // else means on-call was not told.
     if (response.status !== 202) {
       return { status: "failed", reason: `PagerDuty returned HTTP ${response.status}` };
     }
-    const body = (await response.json().catch(() => ({}))) as { dedup_key?: unknown };
+    const returnedDedupKey = await parseAcceptedReceipt(response);
     return {
-      status: "triggered",
-      dedupKey: typeof body.dedup_key === "string" ? body.dedup_key : alert.dedupKey,
+      status: action === "resolve" ? "resolved" : "triggered",
+      dedupKey: returnedDedupKey,
     };
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : String(error) };

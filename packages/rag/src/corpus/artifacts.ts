@@ -1,5 +1,5 @@
 /**
- * The published run artifacts turned into retrievable documents.
+ * The selected run artifacts turned into retrievable documents.
  *
  * `coverage.json` is the county's fail-closed honesty statement: it carries the
  * denominator, the per-table row counts, the derived signals, and the
@@ -8,8 +8,8 @@
  * ("how far back do the permits go?") and burying six of them in one chunk
  * makes all six harder to find.
  *
- * Every document here carries the artifact's own CID from the run manifest, so
- * a retrieved claim can be checked against the immutable published bytes.
+ * Every document carries release-aware provenance. A published release has
+ * immutable CIDs; a local candidate deliberately has none.
  */
 
 import { z } from "zod";
@@ -47,14 +47,14 @@ export type PublishedIndex = z.infer<typeof indexSchema>;
 const SIGNAL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   roofAgeKnown: "parcels with a known roof age",
   roofAgeFifteenPlus: "parcels whose roof is 15 years or older",
-  propertiesWithPermits: "parcels with at least one permit in the published layer",
+  propertiesWithPermits: "parcels with at least one permit in the loaded sources",
   roofingPermitRecords: "roofing permit records joined to a parcel",
   propertiesWithOpenRoofingPermit: "parcels with an open roofing permit",
   permitsOpenOverFiveYears:
     "properties with a roofing permit whose roofing-specific open duration is at least five years",
   outOfStateOwners: "parcels whose owner mails out of state",
   outOfCountyOwners: "parcels whose owner mails out of county",
-  noRecordedSaleInDorWindow: "parcels with no recorded sale in the published DOR window",
+  noRecordedSaleInDorWindow: "parcels with no recorded sale in the loaded DOR window",
   distinctOwners: "distinct owner names",
   propertiesWithBusinessAccount: "parcels with a tangible-personal-property business account",
 });
@@ -89,9 +89,16 @@ function limitationKey(limitation: string): string {
   );
 }
 
+/** Mark superseded immutable wording as historical and supply the current verified truth. */
+function currentLimitation(limitation: string): string {
+  if (!/^BBB ratings are not published/i.test(limitation)) return limitation;
+  return `BBB ratings remain unavailable in the selected run. Current verified status: the default BBB request/browser route returned HTTP 403; one prohibited browser-fingerprint spoof returned 200, but no result was retained and no approved official-API harvest was run. bbb_rating and has_bbb_contractor therefore stay null, meaning unknown/not established rather than false. Historical immutable wording in this candidate's coverage.json was: "${limitation}" That wording is retained only as historical provenance and must not be used as the current access conclusion.`;
+}
+
 /** Coverage snapshot: denominator, tables, signals, and one doc per limitation. */
 export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): CorpusChunk[] {
   const chunks: CorpusChunk[] = [];
+  const limitations = coverage.limitations.map(currentLimitation);
 
   chunks.push(
     entityChunk({
@@ -101,7 +108,7 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       lines: [
         `The denominator for every coverage claim about Lake County is ${count(coverage.denominator.assessedParcelCount)} assessed parcels, basis "${coverage.denominator.basis}", source ${coverage.denominator.source}.`,
         "Geometry is never used as the parcel denominator and never seeds a parcel: a GIS centroid only decorates a tax-roll row that already exists.",
-        `The published run is ${coverage.runId}, exported ${coverage.exportedAt}, for ${coverage.countyName} County, ${coverage.stateCode}, FIPS ${coverage.countyFips}.`,
+        `The selected run is ${coverage.runId}, exported ${coverage.exportedAt}, for ${coverage.countyName} County, ${coverage.stateCode}, FIPS ${coverage.countyFips}.`,
       ],
       aliases: [
         "denominator",
@@ -121,11 +128,11 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       docType: "coverage",
       title: "Coverage: how many rows each loaded table has, and which source each came from",
       lines: [
-        "Row counts in the published coverage snapshot, one line per table:",
+        "Row counts in the selected run's coverage snapshot, one line per table:",
         ...Object.entries(coverage.tables).map(
           ([table, entry]) => `- ${table}: ${count(entry.rows)} rows, from ${entry.source}.`,
         ),
-        "These are the numbers to quote for data-scale questions. They come from the published coverage.json, not from a hand-typed figure.",
+        "These are the numbers to quote for data-scale questions about the selected run. They come from its coverage.json, not from a hand-typed figure.",
       ],
       aliases: ["row counts", "table counts", "how much data", "data scale", "loaded tables"],
       metadata: { family: "coverage", runId: coverage.runId },
@@ -139,7 +146,7 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       docType: "coverage",
       title: "Coverage: the derived lead signals and their countywide counts",
       lines: [
-        "Derived signals published in coverage.json, each a countywide count:",
+        "Derived signals recorded in the selected run's coverage.json, each a countywide count:",
         ...Object.entries(coverage.signals).map(
           ([key, value]) => `- ${key}: ${count(value)} — ${SIGNAL_LABELS[key] ?? key}.`,
         ),
@@ -163,8 +170,8 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       docType: "limitation",
       title: "Coverage limitations carried with the selected run",
       lines: [
-        `Candidate run ${coverage.runId} records ${coverage.limitations.length} source and interpretation limitations in coverage.json.`,
-        ...coverage.limitations.map(
+        `Selected run ${coverage.runId} records ${limitations.length} source and interpretation limitations in coverage.json.`,
+        ...limitations.map(
           (limitation, position) =>
             `- ${position + 1}. ${limitationHeadline(limitation)} (document limitation:${limitationKey(limitation)}).`,
         ),
@@ -174,21 +181,21 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       metadata: {
         family: "limitations",
         runId: coverage.runId,
-        count: String(coverage.limitations.length),
+        count: String(limitations.length),
       },
       provenance,
     }),
   );
 
-  coverage.limitations.forEach((limitation, position) => {
+  limitations.forEach((limitation, position) => {
     chunks.push(
       entityChunk({
         docId: `limitation:${limitationKey(limitation)}`,
         docType: "limitation",
-        title: `Documented limitation ${position + 1} of ${coverage.limitations.length}: ${limitationHeadline(limitation)}`,
+        title: `Documented limitation ${position + 1} of ${limitations.length}: ${limitationHeadline(limitation)}`,
         lines: [
           limitation,
-          "This limitation is published inside coverage.json in every run, so it travels with the data rather than living only in a README.",
+          "This limitation is recorded inside this run's coverage.json, so it travels with the selected data rather than living only in a README.",
         ],
         aliases: [],
         metadata: { family: "limitations", runId: coverage.runId, position: String(position + 1) },
@@ -251,7 +258,7 @@ export interface SampleExtract {
   columns: string[];
 }
 
-/** One document per published sample extract. */
+/** One document per selected-run sample extract. */
 export function buildSampleDocs(
   samples: SampleExtract[],
   provenanceFor: (name: string) => Provenance,
@@ -269,9 +276,9 @@ export function buildSampleDocs(
     entityChunk({
       docId: `sample:${sample.name}`,
       docType: "sample",
-      title: `Published sample extract ${sample.name}.json`,
+      title: `Selected-run sample extract ${sample.name}.json`,
       lines: [
-        `A ${count(sample.rowCount)}-row sample extract published in the run directory as samples/${sample.name}.json. It contains ${descriptions[sample.name] ?? "a slice of the query table"}.`,
+        `A ${count(sample.rowCount)}-row sample extract stored in the selected run directory as samples/${sample.name}.json. It contains ${descriptions[sample.name] ?? "a slice of the query table"}.`,
         `Columns in the extract: ${sample.columns.join(", ")}.`,
         `The exact SQL that produced it: ${sample.query}`,
         "The extract is a demonstration slice, not the dataset. Counts must come from the full query table, never from a sample.",

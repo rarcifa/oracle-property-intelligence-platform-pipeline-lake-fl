@@ -3,9 +3,9 @@
  *
  * Determinism comes from three things, all applied before the first paint:
  * every off-origin request is blocked (no OSM tiles, no jsDelivr DuckDB
- * bootstrap), every `/api` response is a fixture captured from the running
- * server, and the data path is pinned to "server" in `localStorage` so the
- * provider never races a WASM boot that these tests do not care about.
+ * bootstrap), every `/api` response is a synthetic composite design fixture,
+ * and the data path is pinned to "server" in `localStorage` so the provider
+ * never races a WASM boot that these tests do not care about.
  */
 
 import { readFileSync } from "node:fs";
@@ -20,28 +20,73 @@ function fixture(name: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+/** Unmistakable release identity for screenshots assembled from multiple captures. */
+export const DESIGN_FIXTURE_IDENTITY = Object.freeze({
+  runId: "DESIGN_FIXTURE_SYNTHETIC",
+  rootCid: "not-a-public-cid-design-fixture",
+  dataSource: "design-fixture://synthetic-composite/query-table.parquet",
+});
+
+function object(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} design fixture must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function stampProvenance(name: string): Record<string, unknown> {
+  const value = object(structuredClone(fixture(name)), name);
+  const provenance = object(value.provenance, `${name}.provenance`);
+  Object.assign(provenance, DESIGN_FIXTURE_IDENTITY);
+  return value;
+}
+
+function syntheticRunFixture(): Record<string, unknown> {
+  const value = object(structuredClone(fixture("run")), "run");
+  const run = object(value.run, "run.run");
+  const coverage = object(value.coverage, "run.coverage");
+  const verification = object(value.verification, "run.verification");
+  Object.assign(run, DESIGN_FIXTURE_IDENTITY, {
+    manifestCid: "not-a-public-manifest-cid-design-fixture",
+    carCid: DESIGN_FIXTURE_IDENTITY.rootCid,
+    ipnsName: "not-a-public-ipns-name-design-fixture",
+    resolvedCid: DESIGN_FIXTURE_IDENTITY.rootCid,
+    verifiedGateways: [],
+  });
+  coverage.runId = DESIGN_FIXTURE_IDENTITY.runId;
+  Object.assign(verification, {
+    runId: DESIGN_FIXTURE_IDENTITY.runId,
+    rootCid: DESIGN_FIXTURE_IDENTITY.rootCid,
+  });
+  value.dataSource = DESIGN_FIXTURE_IDENTITY.dataSource;
+  value.dataSourceKind = "local";
+  return value;
+}
+
 /**
- * Captured from `http://127.0.0.1:8791/api/*` against a frozen Lake run or
- * local release candidate; each fixture's provenance records which one.
+ * The JSON inputs were captured at different times from a frozen public run and
+ * a local candidate. The harness deliberately stamps every served response with
+ * `DESIGN_FIXTURE_SYNTHETIC/not-a-public-cid-design-fixture`. Screenshots are a
+ * synthetic layout exercise, never runtime, publication, or release evidence.
  *
  * Hand-maintained: nothing generates these files and no spec compares them with
  * a live server, so they can only drift. Two kinds of content live in them and
  * they age differently. Copy the code produces - gating notices, the source
  * labels in `provenance.sourceSystems` - has to be re-edited here whenever that
  * code changes, or the design lane renders text the app no longer serves.
- * Counts and `run.json`'s coverage snapshot are a capture of one published run
- * and are only ever refreshed by re-capturing against a newer one; editing a
- * number here by hand would invent a run that never existed.
+ * Counts are only refreshed by re-capturing their source response. Combining
+ * them is allowed solely because the synthetic identity makes the design lane's
+ * non-release status visible in the application header and SQL provenance.
  */
 export const FIXTURES = {
-  run: fixture("run"),
+  run: syntheticRunFixture(),
   facets: fixture("facets"),
-  stats: fixture("stats"),
-  tenant: fixture("tenant"),
-  business: fixture("business"),
-  contractor: fixture("contractor"),
-  search: fixture("search"),
-  property: fixture("property"),
+  stats: stampProvenance("stats"),
+  tenant: stampProvenance("tenant"),
+  business: stampProvenance("business"),
+  contractor: stampProvenance("contractor"),
+  search: stampProvenance("search"),
+  property: stampProvenance("property"),
 } as const;
 
 /**

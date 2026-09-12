@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+
+import { z } from "zod";
 
 import {
   loadLastGoodClermontBaseline,
@@ -12,8 +17,12 @@ import { certifyClermontRun } from "../src/batch/clermont-certifier.js";
 import {
   materializeClermontConsumption,
   promoteClermontRun,
+  verifyClermontRemotePromotion,
 } from "../src/batch/clermont-consumption.js";
-import { clermontRunRequestSchema } from "../src/batch/clermont-contracts.js";
+import {
+  clermontAuthorizationScopeDigest,
+  clermontRunRequestSchema,
+} from "../src/batch/clermont-contracts.js";
 import {
   completeClermontStage,
   evaluateClermontCostGate,
@@ -22,15 +31,17 @@ import {
 } from "../src/batch/clermont-coordinator.js";
 import { runClermontAcquisition } from "../src/batch/clermont-executor.js";
 import { prepareClermontRun } from "../src/batch/clermont-preparation.js";
-import { clermontConsumptionRequestSchema } from "../src/batch/clermont-run-contracts.js";
 import {
   loadClermontCoordinator,
-  loadClermontPreparedRun,
   updateClermontCoordinator,
   writeClermontRunArtifact,
 } from "../src/batch/clermont-run-store.js";
-import { syncPromoteClermontBaselineToS3 } from "../src/batch/clermont-s3-baseline-store.js";
 import { getClermontRunStatus } from "../src/batch/clermont-status.js";
+import { canonicalJson } from "../src/batch/contracts.js";
+import {
+  clermontS3PromotionReceiptSchema,
+  syncPromoteClermontBaselineToS3,
+} from "../src/batch/clermont-s3-baseline-store.js";
 
 export interface ClermontPlanCliArgs {
   command: "plan";
@@ -45,6 +56,149 @@ export interface ClermontMaterializeCliArgs {
   baselineStore: string;
   outputPath: string;
   now: string;
+}
+
+const execFileAsync = promisify(execFile);
+const CLERMONT_PRODUCTION_ACCOUNT = "122610508924";
+const CLERMONT_PRODUCTION_REGION = "us-east-2";
+const exactNotifierArnPattern = new RegExp(
+  `^arn:aws:lambda:${CLERMONT_PRODUCTION_REGION}:${CLERMONT_PRODUCTION_ACCOUNT}:function:[A-Za-z0-9-_]+$`,
+);
+const notifierEventSchema = z.object({
+  summary: z.string().min(1).max(256),
+  source: z.string().min(1).max(128),
+  dedupKey: z.string().min(1).max(255),
+  customDetails: z.object({
+    runId: z.string().min(1).max(128),
+    state: z.literal("FAILED_EXHAUSTED"),
+  }),
+});
+const lambdaInvocationSchema = z.object({
+  StatusCode: z.literal(200),
+  FunctionError: z.undefined().optional(),
+});
+const notifierReceiptSchema = z.object({
+  status: z.literal("triggered"),
+  dedupKey: z.string().min(1).max(255),
+});
+
+export type ClermontNotifierEvent = z.infer<typeof notifierEventSchema>;
+type ClermontCoordinatorState =
+  "READY" | "RUNNING" | "WAITING_HUMAN" | "FAILED_EXHAUSTED" | "COMPLETE";
+type LambdaInvokeTransport = (
+  notifierArn: string,
+  event: ClermontNotifierEvent,
+) => Promise<{ invocation: unknown; payload: unknown }>;
+
+export function assertSupportedNodeRuntime(version = process.versions.node): void {
+  const [major, minor] = version.split(".").map(Number);
+  if (major !== 22 || minor === undefined || minor < 18) {
+    throw new Error(`Node 22.18.0 through Node 22.x is required; received ${version}`);
+  }
+}
+
+export function assertExactClermontNotifierArn(notifierArn: string): void {
+  if (!exactNotifierArnPattern.test(notifierArn)) {
+    throw new Error(
+      `Clermont failure notifier must be one exact production Lambda ARN in ${CLERMONT_PRODUCTION_ACCOUNT}/${CLERMONT_PRODUCTION_REGION}`,
+    );
+  }
+}
+
+export function clermontNotifierAwsCliArguments(
+  notifierArn: string,
+  event: ClermontNotifierEvent,
+  outputPath: string,
+): string[] {
+  assertExactClermontNotifierArn(notifierArn);
+  return [
+    "lambda",
+    "invoke",
+    "--region",
+    CLERMONT_PRODUCTION_REGION,
+    "--function-name",
+    notifierArn,
+    "--cli-binary-format",
+    "raw-in-base64-out",
+    "--payload",
+    JSON.stringify(event),
+    outputPath,
+  ];
+}
+
+async function invokeLambdaWithAwsCli(
+  notifierArn: string,
+  event: ClermontNotifierEvent,
+): Promise<{ invocation: unknown; payload: unknown }> {
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "clermont-notifier-"));
+  const outputPath = path.join(temporaryDirectory, "receipt.json");
+  try {
+    const result = await execFileAsync(
+      "aws",
+      clermontNotifierAwsCliArguments(notifierArn, event, outputPath),
+      { encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024 },
+    );
+    return {
+      invocation: JSON.parse(result.stdout) as unknown,
+      payload: JSON.parse(await readFile(outputPath, "utf8")) as unknown,
+    };
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+export async function invokeClermontFailureNotifier(
+  notifierArn: string,
+  rawEvent: ClermontNotifierEvent,
+  transport: LambdaInvokeTransport = invokeLambdaWithAwsCli,
+): Promise<z.infer<typeof notifierReceiptSchema>> {
+  assertExactClermontNotifierArn(notifierArn);
+  const event = notifierEventSchema.parse(rawEvent);
+  const result = await transport(notifierArn, event);
+  const invocation = lambdaInvocationSchema.safeParse(result.invocation);
+  const receipt = notifierReceiptSchema.safeParse(result.payload);
+  if (!invocation.success || !receipt.success) {
+    throw new Error("Clermont failure notifier returned an invalid invocation receipt");
+  }
+  return receipt.data;
+}
+
+export async function runWithFailedExhaustedPaging<T>(options: {
+  operation: () => Promise<T>;
+  loadState: () => Promise<ClermontCoordinatorState>;
+  invokeNotifier: (
+    notifierArn: string,
+    event: ClermontNotifierEvent,
+  ) => Promise<{ status: "triggered"; dedupKey: string }>;
+  notifierArn: string;
+  runId: string;
+  reportNotificationFailure?: (message: string) => void;
+}): Promise<T> {
+  try {
+    return await options.operation();
+  } catch (originalError) {
+    const report =
+      options.reportNotificationFailure ??
+      ((message: string): void => {
+        process.stderr.write(`${message}\n`);
+      });
+    try {
+      const state = await options.loadState();
+      if (state === "FAILED_EXHAUSTED") {
+        await options.invokeNotifier(options.notifierArn, {
+          summary: `Clermont acquisition ${options.runId} exhausted its retry budget`,
+          source: "clermont-ingestion-cli",
+          dedupKey: `clermont-acquisition/${options.runId}/FAILED_EXHAUSTED`,
+          customDetails: { runId: options.runId, state },
+        });
+      }
+    } catch (notificationError) {
+      report(
+        `clermont_terminal_notification_failed: ${notificationError instanceof Error ? notificationError.message : String(notificationError)}`,
+      );
+    }
+    throw originalError;
+  }
 }
 
 function parseFlags(
@@ -173,7 +327,7 @@ export async function materializeClermontIngestionBaseline(
   });
 }
 
-async function executeCommand(argv: string[]): Promise<Record<string, unknown>> {
+export async function executeCommand(argv: string[]): Promise<Record<string, unknown>> {
   const command = argv[0];
   if (command === "plan") {
     const state = await planClermontIngestion(parseClermontPlanCliArgs(argv));
@@ -214,6 +368,7 @@ async function executeCommand(argv: string[]): Promise<Record<string, unknown>> 
       event: "clermont_run_prepared",
       runId: result.prepared.request.runId,
       requestSha256: result.prepared.requestSha256,
+      authorizationScopeSha256: clermontAuthorizationScopeDigest(result.prepared.request),
       provenanceSha256: result.prepared.provenanceSha256,
       estimate: result.coordinator.estimate,
       state: result.coordinator.state,
@@ -223,25 +378,57 @@ async function executeCommand(argv: string[]): Promise<Record<string, unknown>> 
   if (command === "run") {
     const { values, booleans } = parseFlags(
       argv,
-      ["--repo-root", "--run-store", "--baseline-store", "--run-id", "--owner", "--now"],
+      [
+        "--repo-root",
+        "--run-store",
+        "--baseline-store",
+        "--run-id",
+        "--owner",
+        "--now",
+        "--failure-notifier-arn",
+      ],
       ["--live-fetch", "--prune-loose-after-seal"],
     );
-    requireFlags(values, ["--repo-root", "--run-store", "--run-id", "--owner", "--now"]);
+    requireFlags(values, [
+      "--repo-root",
+      "--run-store",
+      "--run-id",
+      "--owner",
+      "--now",
+      "--failure-notifier-arn",
+    ]);
+    if (booleans.has("--prune-loose-after-seal")) {
+      throw new Error(
+        "The first production Clermont capture must retain loose evidence; pruning is disabled",
+      );
+    }
+    const runStore = path.resolve(values.get("--run-store")!);
+    const runId = values.get("--run-id")!;
+    const notifierArn = values.get("--failure-notifier-arn")!;
+    assertExactClermontNotifierArn(notifierArn);
+    const acquisition = await runWithFailedExhaustedPaging({
+      operation: () =>
+        runClermontAcquisition({
+          repoRoot: path.resolve(values.get("--repo-root")!),
+          runStore,
+          baselineStore: values.has("--baseline-store")
+            ? path.resolve(values.get("--baseline-store")!)
+            : null,
+          runId,
+          owner: values.get("--owner")!,
+          now: requireNow(values),
+          liveFetch: booleans.has("--live-fetch"),
+          pruneLooseAfterSeal: false,
+        }),
+      loadState: async () => (await loadClermontCoordinator(runStore, runId)).state,
+      invokeNotifier: invokeClermontFailureNotifier,
+      notifierArn,
+      runId,
+    });
     return {
       event: "clermont_run_pass_complete",
-      runId: values.get("--run-id")!,
-      ...(await runClermontAcquisition({
-        repoRoot: path.resolve(values.get("--repo-root")!),
-        runStore: path.resolve(values.get("--run-store")!),
-        baselineStore: values.has("--baseline-store")
-          ? path.resolve(values.get("--baseline-store")!)
-          : null,
-        runId: values.get("--run-id")!,
-        owner: values.get("--owner")!,
-        now: requireNow(values),
-        liveFetch: booleans.has("--live-fetch"),
-        pruneLooseAfterSeal: booleans.has("--prune-loose-after-seal"),
-      })),
+      runId,
+      ...acquisition,
     };
   }
   if (command === "status") {
@@ -301,41 +488,77 @@ async function executeCommand(argv: string[]): Promise<Record<string, unknown>> 
   if (command === "sync-promote") {
     const { values, booleans } = parseFlags(
       argv,
-      ["--run-store", "--baseline-store", "--run-id", "--bucket", "--prefix", "--region", "--now"],
+      ["--repo-root", "--run-store", "--baseline-store", "--run-id", "--now"],
       ["--live-sync"],
     );
-    requireFlags(values, [
-      "--run-store",
-      "--baseline-store",
-      "--run-id",
-      "--bucket",
-      "--prefix",
-      "--region",
-      "--now",
-    ]);
+    requireFlags(values, ["--repo-root", "--run-store", "--baseline-store", "--run-id", "--now"]);
     if (!booleans.has("--live-sync")) {
       throw new Error("S3 baseline mutation requires explicit --live-sync authorization");
     }
     const runStore = path.resolve(values.get("--run-store")!);
     const runId = values.get("--run-id")!;
-    const prepared = await loadClermontPreparedRun(runStore, runId);
-    const consumptionRequest = clermontConsumptionRequestSchema.parse(
-      JSON.parse(
-        await readFile(
-          path.join(runStore, "runs", runId, "promotion", "consumption-request.json"),
-          "utf8",
-        ),
-      ),
-    );
-    const result = await syncPromoteClermontBaselineToS3({
-      region: values.get("--region")!,
-      bucket: values.get("--bucket")!,
-      prefix: values.get("--prefix")!,
-      localBaselineStore: path.resolve(values.get("--baseline-store")!),
-      baselineSha256: consumptionRequest.baselineSha256,
-      expectedPriorSha256: prepared.request.baseline.requiredSha256,
-      now: requireNow(values),
+    const observedAt = requireNow(values);
+    const verified = await verifyClermontRemotePromotion({
+      repoRoot: path.resolve(values.get("--repo-root")!),
+      runStore,
+      baselineStore: path.resolve(values.get("--baseline-store")!),
+      runId,
+      now: observedAt,
     });
+    const destination = verified.prepared.request.remoteBaseline;
+    const receiptPath = path.join(
+      runStore,
+      "runs",
+      runId,
+      "promotion",
+      "s3-promotion-receipt.json",
+    );
+    const priorReceipt = await readFile(receiptPath, "utf8")
+      .then((encoded) => clermontS3PromotionReceiptSchema.parse(JSON.parse(encoded)))
+      .catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+    if (
+      priorReceipt !== null &&
+      (priorReceipt.accountId !== destination.accountId ||
+        priorReceipt.region !== destination.region ||
+        priorReceipt.bucket !== destination.bucket ||
+        priorReceipt.prefix !== destination.prefix ||
+        priorReceipt.baselineSha256 !== verified.consumptionRequest.baselineSha256)
+    ) {
+      throw new Error("Persisted S3 promotion receipt disagrees with the prepared destination");
+    }
+    const observedResult = await syncPromoteClermontBaselineToS3({
+      accountId: destination.accountId,
+      region: destination.region,
+      bucket: destination.bucket,
+      prefix: destination.prefix,
+      maxRetainedBytes: destination.maxRetainedBytes,
+      localBaselineStore: path.resolve(values.get("--baseline-store")!),
+      baselineSha256: verified.consumptionRequest.baselineSha256,
+      expectedPriorSha256: verified.prepared.request.baseline.requiredSha256,
+      now: observedAt,
+      recoverOnly: priorReceipt !== null,
+    });
+    const receiptIdentity = (value: typeof observedResult) => ({
+      accountId: value.accountId,
+      region: value.region,
+      bucket: value.bucket,
+      prefix: value.prefix,
+      baselineSha256: value.baselineSha256,
+      pointerKey: value.pointerKey,
+      pointerEtag: value.pointerEtag,
+      objects: value.objects.map(({ action: _action, ...object }) => object),
+    });
+    if (
+      priorReceipt !== null &&
+      canonicalJson(receiptIdentity(priorReceipt)) !==
+        canonicalJson(receiptIdentity(observedResult))
+    ) {
+      throw new Error("Persisted S3 promotion receipt failed exact remote readback");
+    }
+    const result = priorReceipt ?? observedResult;
     await writeClermontRunArtifact({
       storeRoot: runStore,
       runId,
@@ -343,44 +566,46 @@ async function executeCommand(argv: string[]): Promise<Record<string, unknown>> 
       value: result,
     });
     let coordinator = await loadClermontCoordinator(runStore, runId);
-    if (coordinator.stages["baseline-promotion"].status !== "running") {
+    if (
+      coordinator.stages["baseline-promotion"].status !== "running" &&
+      coordinator.stages["baseline-promotion"].status !== "complete"
+    ) {
       coordinator = await updateClermontCoordinator({
         storeRoot: runStore,
         runId,
         expectedRevision: coordinator.revision,
-        update: (state) => startClermontStage(state, "baseline-promotion", requireNow(values)),
+        update: (state) => startClermontStage(state, "baseline-promotion", observedAt),
       });
     }
-    coordinator = await updateClermontCoordinator({
-      storeRoot: runStore,
-      runId,
-      expectedRevision: coordinator.revision,
-      update: (state) =>
-        completeClermontStage(
-          state,
-          "baseline-promotion",
-          result.baselineSha256,
-          requireNow(values),
-        ),
-    });
-    coordinator = await updateClermontCoordinator({
-      storeRoot: runStore,
-      runId,
-      expectedRevision: coordinator.revision,
-      update: (state) => startClermontStage(state, "publication-readiness", requireNow(values)),
-    });
-    await updateClermontCoordinator({
-      storeRoot: runStore,
-      runId,
-      expectedRevision: coordinator.revision,
-      update: (state) =>
-        completeClermontStage(
-          state,
-          "publication-readiness",
-          result.baselineSha256,
-          requireNow(values),
-        ),
-    });
+    if (coordinator.stages["baseline-promotion"].status === "running") {
+      coordinator = await updateClermontCoordinator({
+        storeRoot: runStore,
+        runId,
+        expectedRevision: coordinator.revision,
+        update: (state) =>
+          completeClermontStage(state, "baseline-promotion", result.baselineSha256, observedAt),
+      });
+    }
+    if (
+      coordinator.stages["publication-readiness"].status !== "running" &&
+      coordinator.stages["publication-readiness"].status !== "complete"
+    ) {
+      coordinator = await updateClermontCoordinator({
+        storeRoot: runStore,
+        runId,
+        expectedRevision: coordinator.revision,
+        update: (state) => startClermontStage(state, "publication-readiness", observedAt),
+      });
+    }
+    if (coordinator.stages["publication-readiness"].status === "running") {
+      await updateClermontCoordinator({
+        storeRoot: runStore,
+        runId,
+        expectedRevision: coordinator.revision,
+        update: (state) =>
+          completeClermontStage(state, "publication-readiness", result.baselineSha256, observedAt),
+      });
+    }
     return { event: "clermont_s3_baseline_promoted", runId, ...result };
   }
   if (command === "materialize") {
@@ -407,6 +632,7 @@ async function executeCommand(argv: string[]): Promise<Record<string, unknown>> 
 }
 
 async function main(): Promise<void> {
+  assertSupportedNodeRuntime();
   const result = await executeCommand(process.argv.slice(2));
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

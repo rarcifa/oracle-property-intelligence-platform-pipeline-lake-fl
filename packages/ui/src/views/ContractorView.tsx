@@ -148,7 +148,7 @@ export function ContractorView(): JSX.Element {
 
       <Panel
         title="Permit posture"
-        subtitle="Aggregated from the Lake County CD Plus permit layer."
+        subtitle="Aggregated from the Lake County CD Plus permit layer and Clermont eTRAKiT evidence."
       >
         <div className="tile-grid">
           {POSTURE_TILES.map((tile) => (

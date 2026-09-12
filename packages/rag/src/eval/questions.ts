@@ -85,7 +85,7 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
   },
   {
     id: "sunbiz",
-    question: "What does has_sunbiz_tenant mean and why is it always false?",
+    question: "What does has_sunbiz_tenant mean and why is it always null or unknown?",
     expected: ["column:has_sunbiz_tenant", "source:sunbiz"],
     intent: "Column semantics for a not-ingested source.",
   },
@@ -97,7 +97,7 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
   },
   {
     id: "parcel-count",
-    question: "How many parcels are in the published dataset and what is the denominator?",
+    question: "How many parcels are in the selected run and what is the denominator?",
     expected: ["coverage:denominator", "coverage:tables"],
     intent: "Data-scale question that must reach the coverage snapshot.",
   },
@@ -147,7 +147,7 @@ export const EVAL_CASES: readonly EvalCase[] = Object.freeze([
     id: "sample-extract",
     question: "What is in the open roofing permits sample extract?",
     expected: ["sample:open-roofing-permits"],
-    intent: "Published-artifact retrieval.",
+    intent: "Selected-run artifact retrieval.",
   },
   {
     id: "five-year-roofing-leads",

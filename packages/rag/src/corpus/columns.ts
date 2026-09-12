@@ -1,5 +1,5 @@
 /**
- * One retrievable document per published query-table column.
+ * One retrievable document per selected query-table column.
  *
  * "Why is this field empty" is the question a SQL tool answers worst: the query
  * returns NULL and stops. Each of these documents states what the column means,
@@ -11,7 +11,7 @@
  * being filed under either "always null" or "always there".
  *
  * The column list is imported from `@oracle-lake/shared`, which is asserted
- * against the published Parquet by the server's schema gate, so this corpus
+ * against the selected Parquet by the server's schema gate, so this corpus
  * cannot describe a column the table does not have.
  */
 
@@ -44,11 +44,11 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   property_cid: {
     means: "Reserved for a per-property IPFS CID.",
     nullWhen:
-      "Null on every row. This run publishes a single columnar query table plus sharded property JSON, not one CID per property, so nothing populates it.",
+      "Null on every row. This run stores a single columnar query table plus sharded property JSON, not one CID per property, so nothing populates it.",
   },
   request_identifier: {
     means:
-      "The Lake County parcel id, dashed, 23 characters, format NN-NN-NN-NNNN-AAA-AAAAA. This is the id to quote when a claim is about specific properties, and the id every citation uses. Block and lot segments are alphanumeric: 26,616 of 215,806 parcels (12.3%) carry a letter there, so a digits-only pattern rejects an eighth of the county.",
+      "The Lake County parcel id, dashed, 23 characters, format NN-NN-NN-NNNN-AAA-AAAAA, where A denotes an uppercase alphanumeric block/lot character. This is the id to quote when a claim is about specific properties, and the id every citation uses. Block and lot segments are not digits-only: 26,616 of 215,806 parcels (12.3%) carry a letter there, so a digits-only pattern rejects an eighth of the county.",
   },
   parcel_identifier: {
     means: "The same parcel id as request_identifier, carried under the schema's canonical name.",
@@ -100,7 +100,7 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
       "How many sale records the DOR SDF file publishes for this parcel inside the 2025-2026 window. 37,020 sale records exist across 30,977 parcels.",
   },
   no_recorded_sale_in_dor_window: {
-    means: `Derived: true when the parcel has no sale record inside the published DOR window. True on 184,829 parcels. ${TENURE_CAVEAT}`,
+    means: `Derived: true when the parcel has no sale record inside the loaded DOR window. True on 184,829 parcels. ${TENURE_CAVEAT}`,
   },
   roof_age_years: {
     means:
@@ -145,7 +145,10 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
     means:
       "Days the parcel's longest-running open roofing permit has been open. A five-year roofing lead requires this roofing-specific value to be at least 1,825 days; the generic longest_open_permit_days is not a substitute.",
   },
-  latest_permit_date: { means: "Most recent permit date on the parcel from the CD Plus layer." },
+  latest_permit_date: {
+    means:
+      "Most recent permit date on the parcel from either loaded permit source: the county CD Plus layer or Clermont eTRAKiT.",
+  },
   contractor_name: {
     means:
       "Contractor of record for the parcel's permits, as published by the permitting jurisdiction. Where a parcel has several permits it is the contractor on the most recently dated one, not the only contractor who has ever worked there.",
@@ -155,14 +158,15 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   bbb_rating: {
     means: "Better Business Bureau rating for the contractor.",
     nullWhen:
-      "Null on every row. bbb.org answers HTTP 403 to this egress, and the kit requires BBB browser work on approved AWS-managed remote compute that this no-ongoing-cost deployment does not have.",
+      "Null on every row. BBB's default request/browser route returned HTTP 403; one prohibited browser-fingerprint spoof returned 200 during verification, but no result was retained and no approved official-API harvest was run.",
   },
   has_bbb_contractor: {
-    nullWhen: "False on every row, because BBB enrichment is gated at the source and was not run.",
+    nullWhen:
+      "Null on every row because BBB enrichment is policy/API-gated and was not run. The value is unknown/not established, never false: no inference about contractor BBB presence is permitted.",
   },
   has_sunbiz_tenant: {
     nullWhen:
-      "False on every row, because Sunbiz corporate registration was not ingested for this run and Sunbiz search is gated from this egress. False means 'not ingested', not 'no company is registered here'.",
+      "Null on every row because Sunbiz corporate registration was not ingested for this run. The value is unknown/not established, never false: no inference that an address lacks a registered company is permitted.",
   },
   has_business_account: {
     means:
@@ -182,7 +186,7 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
 });
 
-/** Build one document per published column. */
+/** Build one document per selected-run column. */
 export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
   return QUERY_TABLE_COLUMNS.map((column) => {
     const note = NOTES[column.name] ?? {};
@@ -196,18 +200,18 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
       ? (note.nullWhen ??
         alwaysNull ??
         partial ??
-        `Null when ${column.source} published no value for that parcel. Nothing else in the pipeline fills it in.`)
-      : "Never null: it is required on every published row.";
+        `Null when ${column.source} supplied no value for that parcel. Nothing else in the pipeline fills it in.`)
+      : "Never null: it is required on every selected-run row.";
 
     return entityChunk({
       docId: `column:${column.name}`,
       docType: "column",
       title: `Query-table column ${column.name} — ${column.label}`,
       lines: [
-        `Column ${column.name} of the published Lake County query table. Parquet type ${column.type}. Nullable: ${column.optional ? "yes" : "no"}. Human label: ${column.label}. Supplied by: ${column.source}.`,
+        `Column ${column.name} of the selected Lake County query table. Parquet type ${column.type}. Nullable: ${column.optional ? "yes" : "no"}. Human label: ${column.label}. Supplied by: ${column.source}.`,
         note.means
           ? `What it means: ${note.means}`
-          : `What it means: ${column.label}, as published by ${column.source}.`,
+          : `What it means: ${column.label}, as supplied by ${column.source}.`,
         `When it is null or empty: ${nullable}`,
         alwaysNull ? `This column is empty on every row of the table. Reason: ${alwaysNull}` : null,
         partial ? `This column is populated for part of the county only: ${partial}` : null,

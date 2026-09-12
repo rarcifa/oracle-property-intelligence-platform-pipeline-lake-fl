@@ -13,23 +13,39 @@
  */
 
 import { App } from "aws-cdk-lib";
-import { LakeRuntimeStack } from "./lake-runtime-stack.js";
+import {
+  LAKE_RUNTIME_ACCOUNT,
+  LAKE_RUNTIME_REGION,
+  LakeRuntimeStack,
+} from "./lake-runtime-stack.js";
 
+function assertNodeRuntime(version = process.versions.node): void {
+  const [major, minor] = version.split(".").map(Number);
+  if (major !== 22 || minor === undefined || minor < 18) {
+    throw new Error(`Node 22.18.0 through Node 22.x is required; received ${version}`);
+  }
+}
+
+function deploymentTarget(): { account: string; region: string } {
+  const account = process.env.CDK_DEFAULT_ACCOUNT;
+  const region = process.env.ORACLE_DEPLOY_REGION ?? process.env.CDK_DEFAULT_REGION;
+  if (account !== LAKE_RUNTIME_ACCOUNT || region !== LAKE_RUNTIME_REGION) {
+    throw new Error(
+      `OracleLakeRuntime deployment is pinned to AWS account ${LAKE_RUNTIME_ACCOUNT} in ${LAKE_RUNTIME_REGION}; received ${account ?? "unset"}/${region ?? "unset"}`,
+    );
+  }
+  return { account, region };
+}
+
+assertNodeRuntime();
+const target = deploymentTarget();
 const app = new App();
 
 new LakeRuntimeStack(app, "OracleLakeRuntime", {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    // Pinned, not defaulted. The engineering guidelines name us-east-2 as the
-    // primary region, and `CDK_DEFAULT_REGION` is populated by the CDK CLI from
-    // whatever the local AWS config says — here that is us-east-1, so a
-    // `?? "us-east-2"` fallback would never have fired and the stack would have
-    // landed in the wrong region without anyone noticing. Override deliberately
-    // with ORACLE_DEPLOY_REGION.
-    region: process.env.ORACLE_DEPLOY_REGION ?? "us-east-2",
-  },
+  env: target,
   description: "Lake County FL property-intelligence runtime: UI, REST API, MCP and agent",
   tags: {
+    project_name: "oracle-lake-fl",
     Project: "oracle-lake-fl",
     County: "lake",
     CostCenter: "oracle-property-intelligence",

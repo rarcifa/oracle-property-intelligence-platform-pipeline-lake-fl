@@ -2,9 +2,52 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildRunDag, listFiles, parseArgs, readIpnsPointer, runIdToIso, runStatus } from "../scripts/lake/publish-run.mjs";
+import {
+  buildRunDag,
+  listFiles,
+  parseArgs,
+  readIpnsPointer,
+  runIdToIso,
+  runStatus,
+  uploadImmutableCar,
+} from "../scripts/lake/publish-run.mjs";
 import { computeRawCid, isCidV1Base32, sha256Hex } from "../src/core/cid.mjs";
 import { CID } from "multiformats/cid";
+
+class ImmutableS3MemoryClient {
+  constructor() {
+    this.objects = new Map();
+    this.putAttempts = 0;
+    this.mutations = 0;
+  }
+
+  async send(command) {
+    const { Bucket, Key } = command.input;
+    const identity = `${Bucket}/${Key}`;
+    if (command.constructor.name === "PutObjectCommand") {
+      this.putAttempts += 1;
+      expect(command.input.IfNoneMatch).toBe("*");
+      if (this.objects.has(identity)) {
+        const error = new Error("object already exists");
+        error.name = "PreconditionFailed";
+        error.$metadata = { httpStatusCode: 412 };
+        throw error;
+      }
+      this.objects.set(identity, Buffer.from(command.input.Body));
+      this.mutations += 1;
+      return {};
+    }
+    if (command.constructor.name === "GetObjectCommand") {
+      const body = this.objects.get(identity);
+      if (body === undefined) throw new Error(`missing ${identity}`);
+      return {
+        Body: { transformToByteArray: async () => body },
+        ContentLength: body.length,
+      };
+    }
+    throw new Error(`unexpected ${command.constructor.name}`);
+  }
+}
 
 describe("run identifiers", () => {
   it("derives a stable ISO timestamp so a run's manifest CID is reproducible", () => {
@@ -33,7 +76,9 @@ describe("run status", () => {
 
 describe("CLI flags", () => {
   it("parses valued and boolean flags", () => {
-    expect(parseArgs(["--run-id", "20260909T182356Z", "--dry-run", "--mode", "incremental"])).toEqual({
+    expect(
+      parseArgs(["--run-id", "20260909T182356Z", "--dry-run", "--mode", "incremental"]),
+    ).toEqual({
       "run-id": "20260909T182356Z",
       "dry-run": true,
       mode: "incremental",
@@ -53,7 +98,11 @@ describe("IPNS readback", () => {
   ];
 
   it("returns the county's own label and ignores others", async () => {
-    const pointer = await readIpnsPointer("token", async () => ({ ok: true, status: 200, json: async () => names }));
+    const pointer = await readIpnsPointer("token", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => names,
+    }));
     expect(pointer).toEqual({
       networkKey: "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
       cid: "bafybeigb3grzqolyja5lefcf3pkfxb5tuhkdtbidnitigq4zzomivrltee",
@@ -74,6 +123,60 @@ describe("IPNS readback", () => {
     await expect(
       readIpnsPointer("token", async () => ({ ok: false, status: 401, json: async () => [] })),
     ).rejects.toThrow(/HTTP 401/);
+  });
+
+  it("rejects a normalized or missing provider sequence", async () => {
+    for (const sequence of ["4", " 4 ", "0x4", 4.5, -1, undefined]) {
+      await expect(
+        readIpnsPointer("token", async () => ({
+          ok: true,
+          status: 200,
+          json: async () => [{ ...names[0], sequence }],
+        })),
+      ).rejects.toThrow(/invalid IPNS predecessor receipt/);
+    }
+  });
+});
+
+describe("immutable primary CAR upload", () => {
+  it("creates with If-None-Match and reconciles an identical retry by exact GET bytes", async () => {
+    const client = new ImmutableS3MemoryClient();
+    const body = Buffer.from("immutable-root-car", "utf8");
+    const options = {
+      client,
+      bucket: "elephant-oracle-open-data-lake",
+      key: "runs/20260911T120000Z/root.car",
+      body,
+    };
+
+    await expect(uploadImmutableCar(options)).resolves.toMatchObject({ action: "created" });
+    await expect(uploadImmutableCar(options)).resolves.toMatchObject({
+      action: "reconciled-existing",
+    });
+    expect(client.putAttempts).toBe(2);
+    expect(client.mutations).toBe(1);
+    expect(
+      client.objects.get("elephant-oracle-open-data-lake/runs/20260911T120000Z/root.car"),
+    ).toEqual(body);
+  });
+
+  it("rejects a colliding immutable key with different bytes without mutation", async () => {
+    const client = new ImmutableS3MemoryClient();
+    const common = {
+      client,
+      bucket: "elephant-oracle-open-data-lake",
+      key: "runs/20260911T120000Z/manifest.car",
+    };
+    const original = Buffer.from("manifest-car-a", "utf8");
+    await uploadImmutableCar({ ...common, body: original });
+
+    await expect(
+      uploadImmutableCar({ ...common, body: Buffer.from("manifest-car-b", "utf8") }),
+    ).rejects.toThrow(/immutable CAR.*different bytes/i);
+    expect(client.mutations).toBe(1);
+    expect(
+      client.objects.get("elephant-oracle-open-data-lake/runs/20260911T120000Z/manifest.car"),
+    ).toEqual(original);
   });
 });
 
@@ -107,7 +210,15 @@ describe("run DAG", () => {
     const dag = await buildRunDag(runDir);
     expect(isCidV1Base32(dag.rootCid)).toBe(true);
     const names = dag.entries.map((entry) => entry.name).sort();
-    expect(names).toEqual(["/", "coverage.json", "index.json", "samples/", "samples/aged-roofs.json", "shards/", "shards/shard-0000.json"]);
+    expect(names).toEqual([
+      "/",
+      "coverage.json",
+      "index.json",
+      "samples/",
+      "samples/aged-roofs.json",
+      "shards/",
+      "shards/shard-0000.json",
+    ]);
     for (const entry of dag.entries) {
       expect(isCidV1Base32(entry.cid)).toBe(true);
       expect(entry.sha256).toMatch(/^sha256:[0-9a-f]{64}$/);

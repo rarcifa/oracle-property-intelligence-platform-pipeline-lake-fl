@@ -1,6 +1,7 @@
 # Runbook — Lake County, FL
 
-Everything runs from the repository root. Node 22.18+ and the DuckDB CLI are required.
+Everything runs from the repository root. Node 22.18+ within major 22 and the DuckDB CLI are
+required.
 Credentials alone never enable publication. A live release additionally needs Filebase
 credentials and a short-lived Ed25519 authorization for the exact frozen target.
 
@@ -10,6 +11,32 @@ credentials and a short-lived Ed25519 authorization for the exact frozen target.
 pnpm install --frozen-lockfile
 (cd pipeline && npm ci)
 ```
+
+## Durable Clermont control plane
+
+The private baseline stack already exists in AWS account `122610508924`, region `us-east-2`,
+but its bucket is empty and the current alerting/storage hardening is not deployed. Update it
+only after this repair is committed and the owner approves that exact commit:
+
+```bash
+cd pipeline
+npx cdk deploy ClermontBaselineStack \
+  -c alertEmail=rarcifa@gmail.com \
+  --parameters ClermontBaselineStack:BaselineOperatorArn=arn:aws:iam::122610508924:user/etl
+```
+
+The SNS-only deployment is the approved current configuration. Confirm the email subscription,
+then set `CLERMONT_ALERT_TOPIC_ARN`, `CLERMONT_BASELINE_READ_ROLE_ARN`, and
+`CLERMONT_BASELINE_S3_URI` from the stack outputs, and set
+`CLERMONT_BASELINE_AWS_REGION=us-east-2`. It sends
+failure email but does not page. Full kit conformance additionally requires a PagerDuty routing
+key stored in production Secrets Manager, a redeploy with `-c pagerDutySecretArn=<exact-arn>`,
+and `CLERMONT_FAILURE_NOTIFIER_ARN` set from the output. Never put the routing key in GitHub.
+Candidate preparation also requires repository variable
+`IPNS_PREDECESSOR_RECEIPT_JSON_B64`: the base64 encoding of the reviewed Filebase names object
+described in step 5. It contains public pointer identity, not a credential. Refresh it after
+every successful IPNS update; a missing, stale, or wrong label/network key fails before a
+publication request is created.
 
 ## Verify the runtime before touching the county
 
@@ -39,21 +66,29 @@ The portal exposes one partition per permit year from 2015 through 2026. The rep
 local candidate contains **year 26 only**. Do not label its 4,061/4,061 achievable rows as
 all available Clermont history.
 
-Create an operator-reviewed request that binds source, configuration, schema, checkpoint,
-baseline, cost ceiling, and all 12 partitions, then evaluate it without acquiring data:
+Create an intended prepare template with `authorization: null`. It must bind the exact Node
+runtime, AWS account/region/bucket/prefix, fixed 150 GiB retained-storage ceiling, concurrency 2,
+benchmark, baseline, retry policy, and cost limits. Preview it without acquiring data:
 
 ```bash
 cd pipeline
-npm run clermont:plan -- \
-  --request /secure/operator/clermont-full-request.json \
+npm run clermont:prepare -- \
+  --repo-root .. \
+  --template /secure/operator/clermont-full-template.preview.json \
+  --run-store /secure/operator/clermont-preview-run-store \
   --baseline-store data/baselines/lake/clermont \
   --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-The conservative estimate includes retries and the full partition bounds. The coordinator
-enters `WAITING_HUMAN` when the estimate exceeds 48 hours or the request's cost ceiling.
-A sustained harvest, AWS job, source reprobe, or cost approval is an external action; none
-is implied by running the local planner. See
+The JSON output includes the exact `authorizationScopeSha256`, `provenanceSha256`, and
+conservative estimate. If approval is required, put those exact values, a unique
+`authorizationId`, the same `runId`, explicit hour/cost caps, approver, and expiry into a fresh
+template, then run `clermont:prepare` again into the durable run store. Never execute the preview
+store. The estimate uses maximum attempts and all 12 partition bounds. The coordinator enters
+`WAITING_HUMAN` when it exceeds 48 hours or the request's cost ceiling; execution consumes the
+exact authorization nonce once and enforces one durable deadline across resumes. A sustained
+harvest, AWS job, source reprobe, or cost approval is an external action; none is implied by
+preparation. See
 [`pipeline/config/clermont/README.md`](../pipeline/config/clermont/README.md) for the
 partition and handoff invariants.
 
@@ -73,9 +108,9 @@ node --max-old-space-size=6144 scripts/lake/build-seed.mjs
 #     partition receipts and every digest before atomically replacing the CSV.
 #     There is no empty fallback and the year-26 local export is not a substitute.
 npm run clermont:materialize -- \
-  --request /secure/operator/clermont-baseline-request.json \
+  --consumption-request /secure/operator/clermont-consumption-request.json \
   --baseline-store data/baselines/lake/clermont \
-  --output data/downloads/lake/clermont-permits.csv \
+  --output-root .. \
   --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 D="$PWD/data/downloads/lake"
@@ -91,8 +126,8 @@ duckdb -c ".read /tmp/lake-qt.sql"
 
 # 4. Assemble the publishable run directory
 RUNID=$(date -u +%Y%m%dT%H%M%SZ)
-BASELINE_DIGEST=$(jq -er '.baseline.requiredSha256' \
-  /secure/operator/clermont-baseline-request.json)
+BASELINE_DIGEST=$(jq -er '.baselineSha256' \
+  /secure/operator/clermont-consumption-request.json)
 node scripts/lake/build-publish-set.mjs \
   --run-id "$RUNID" \
   --clermont-baseline-sha256 "$BASELINE_DIGEST" \
@@ -100,28 +135,37 @@ node scripts/lake/build-publish-set.mjs \
   "data/baselines/lake/clermont/baselines/$BASELINE_DIGEST/baseline.json"
 
 # 5. Prepare locally: validate, build deterministic CARs and emit the exact target request.
-#    Compute the digest from the same explicit scope as the workflow; do not reuse a
-#    digest from an older run manifest after code has changed.
-SCOPE=(
-  package.json package-lock.json docs/lake-sources.yaml
-  scripts/lake/build-query-table.sql scripts/lake/build-publish-set.mjs
-  scripts/lake/publish-run.mjs src/core/publish-gate.mjs
-  src/core/secondary-pin.mjs src/counties/lake/enrichment-profile.mjs
-  src/counties/lake/query-table.mjs src/counties/lake/permit-table.mjs
-)
-COMPONENTS=$(mktemp)
-for FILE in "${SCOPE[@]}"; do
-  printf '%s  pipeline/%s\n' "$(shasum -a 256 "$FILE" | cut -d' ' -f1)" "$FILE" >> "$COMPONENTS"
-done
-PROVENANCE_DIGEST="sha256:$(sort "$COMPONENTS" | shasum -a 256 | cut -d' ' -f1)"
-rm -f "$COMPONENTS"
+#    The helper recursively discovers the publication closure and rejects any component
+#    that is untracked, absent from COMMIT, or not byte-identical to `git show COMMIT:path`.
+#    Generated run artifacts and receipts may be dirty; executable provenance components may not.
+COMMIT="$(git -C .. rev-parse HEAD)"
+PROVENANCE_JSON="$(mktemp)"
+node scripts/lake/publication-provenance.mjs \
+  --candidate-commit "$COMMIT" > "$PROVENANCE_JSON"
+PROVENANCE_DIGEST="$(jq -er '.digest' "$PROVENANCE_JSON")"
+rm -f "$PROVENANCE_JSON"
+
+# This private receipt is the selected object from a read-only snapshot of
+# GET https://api.filebase.io/v1/names. It must carry the exact existing identity.
+IPNS_RECEIPT=/secure/operator/lake-ipns-predecessor.json
+jq -e \
+  '.label == "oracle-open-data-lake" and
+   .network_key == "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un"' \
+  "$IPNS_RECEIPT" >/dev/null
+IPNS_PREDECESSOR_CID="$(jq -er '.cid' "$IPNS_RECEIPT")"
+IPNS_PREDECESSOR_SEQUENCE="$(jq -er '.sequence | select(type == "number" and . >= 0 and floor == .)' "$IPNS_RECEIPT")"
 node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
   --run-id "$RUNID" --mode full --dry-run \
   --candidate-workflow-run-id local \
-  --provenance-digest "$PROVENANCE_DIGEST"
+  --candidate-commit "$COMMIT" \
+  --provenance-digest "$PROVENANCE_DIGEST" \
+  --expected-ipns-predecessor-cid "$IPNS_PREDECESSOR_CID" \
+  --expected-ipns-predecessor-sequence "$IPNS_PREDECESSOR_SEQUENCE"
 ```
 
-Step 5 always uploads nothing. It records a `PREPARED_LOCAL`/`BUILT` attempt and writes
+Step 5 always uploads nothing. Run it only from the candidate `COMMIT`; the helper enforces a
+clean committed publication-code closure while allowing generated run evidence outside that
+closure. It records a `PREPARED_LOCAL`/`BUILT` attempt and writes
 `data/artifacts/publish/lake/manifests/$RUNID.publication-request.json` for review.
 
 ## The publish gate
@@ -130,15 +174,21 @@ The old committed boolean gate is retired and preserved only as historical evide
 `artifacts/publish-gate.json`. It is not authority. The operator signs the exact request
 outside this repository with an Ed25519 key; the signature binds county, run, root CID,
 manifest and provenance digests, publication mode, candidate workflow identity, bucket,
-existing IPNS name/key, actions, expiry and nonce. The private key and signed approval must
-remain outside the repository.
+existing IPNS name/key, exact predecessor CID/sequence, the strict Pinata destination and pin
+names, actions, expiry and nonce. The private key and signed approval must remain outside the
+repository.
 
-A live invocation also requires `SECONDARY_PIN_SERVICE_URL` and
-`SECONDARY_PIN_SERVICE_TOKEN` for an IPFS Pinning Service API provider whose host is not
-Filebase. Both the root and manifest must reach `pinned` there before gateway verification.
+A live invocation requires `SECONDARY_PIN_SERVICE_URL` to be exactly
+`https://api.pinata.cloud/psa` (no trailing slash or normalized variant) and a scoped Pinata JWT
+in `SECONDARY_PIN_SERVICE_TOKEN`. The exact provider, origin, path and deterministic root and
+manifest pin names are signed. Runtime configuration is compared before the token, capability
+file or network client is touched. Both pins must reach `pinned` before gateway verification.
 
 ```bash
 REQUEST="$PWD/data/artifacts/publish/lake/manifests/$RUNID.publication-request.json"
+COMMIT="$(jq -er '.target.candidateCommit' "$REQUEST")"
+PROVENANCE_DIGEST="$(jq -er '.target.provenanceDigest' "$REQUEST")"
+export SECONDARY_PIN_SERVICE_URL=https://api.pinata.cloud/psa
 node scripts/lake/publish-approve.mjs \
   --request "$REQUEST" \
   --private-key /secure/operator/lake-publication-ed25519.pem \
@@ -149,7 +199,12 @@ node scripts/lake/publish-approve.mjs \
 node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
   --run-id "$RUNID" --mode full \
   --candidate-workflow-run-id local \
+  --candidate-commit "$COMMIT" \
   --provenance-digest "$PROVENANCE_DIGEST" \
+  --expected-ipns-predecessor-cid \
+  "$(jq -er '.target.ipnsPredecessor.cid' "$REQUEST")" \
+  --expected-ipns-predecessor-sequence \
+  "$(jq -er '.target.ipnsPredecessor.sequence' "$REQUEST")" \
   --approve /secure/operator/"$RUNID".approval.json \
   --approval-public-key /secure/operator/lake-publication-ed25519.pub.pem
 
@@ -166,7 +221,9 @@ readback, an unknown predecessor, expiry, target drift and replay all fail close
 
 ## Two-phase GitHub Actions release
 
-1. Run the scheduled workflow or dispatch it with `publish=false`. It builds and uploads
+1. Confirm `IPNS_PREDECESSOR_RECEIPT_JSON_B64` still represents the reviewed live Filebase
+   name, including its exact CID and integer sequence. Then run the scheduled workflow or
+   dispatch it with `publish=false`. It builds and uploads
    `lake-run-<runId>` as a `PREPARED_LOCAL` artifact.
 2. Review its coverage, CARs, manifest, request, ledger, and full-history evidence. Sign
    only its exact publication request outside the repository.

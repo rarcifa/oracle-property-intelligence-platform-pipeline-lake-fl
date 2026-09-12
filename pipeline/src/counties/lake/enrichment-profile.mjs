@@ -11,11 +11,12 @@
  *   this assignment's acceptance criteria and was not run; business records
  *   come from the DOR TPP roll instead.
  * - `bbb.categories` records the reviewed category paths a BBB harvest would
- *   target. `bbb.org` answers HTTP 403 to every egress tested, and the kit
- *   requires BBB browser work to run on approved AWS-managed remote compute,
- *   which this local-only, no-ongoing-cost deployment does not have. The
- *   query table therefore carries `bbb_rating` as a real column that stays
- *   null, with the reason in `enrichment_status`.
+ *   target. The default route returned HTTP 403. A prohibited browser-
+ *   fingerprint spoof returned 200 once, but no result was retained or
+ *   ingested; the kit requires the 403 to remain a stop and an approved
+ *   official-API route to be used. No such route is configured. The query table
+ *   therefore carries `bbb_rating` as a real column that stays null, with the
+ *   reason in `enrichment_status`.
  *
  * The single-IPNS deviation is recorded in `docs/lake-kit-deviations.md`:
  * the Filebase free plan allows exactly one IPNS name, so the query-table

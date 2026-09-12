@@ -3,10 +3,11 @@
 Written by `county-discovery` on 2026-09-09. Machine-readable catalog: `docs/lake-sources.yaml`.
 County slug `lake`, FIPS 12069, Florida DOR county number 45.
 
-Lake is a **bulk-first** county. Both of the sources a normal county onboarding scrapes per
-parcel — the property appraiser site and the permit detail pages — are behind a Cloudflare
-managed challenge. Everything published here comes from bulk downloads and open Esri
-services instead, and the parts that could not be reached are named rather than estimated.
+Lake is a **bulk-first** county. The county permit detail pages are behind a Cloudflare
+managed challenge. The property-appraiser host was reachable but deliberately unused because
+the statewide DOR roll supplies the assessed facts in bulk. Everything published here comes
+from bulk downloads and open Esri services, and the excluded paths are named rather than
+estimated.
 
 ## 1. Appraiser portal
 
@@ -80,13 +81,13 @@ ISSUED, READY, RENEWED.
 
 ## 4. Bulk data sources
 
-| Source | What it gives | Size | Measured |
-|---|---|---|---|
-| DOR NAL 2026P | 215,806 assessed parcels, owners, values, year built, 2 most recent sales | 18.3 MB zip, 114 MB CSV, 165 columns | 36 s download |
-| DOR SDF 2026P | 37,020 sale records over 30,977 parcels | 0.8 MB zip | 3 s |
-| DOR TPP/NAP 2026P | 33,346 tangible-personal-property business accounts with NAICS | 1.4 MB zip | 3 s |
-| FL GIO parcel centroids 2025 | 210,935 Lake centroids | ids-only + OBJECTID ranges | 210,935 rows in ~10 s at concurrency 4 |
-| Lake CD Plus permits | 17,915 features | OBJECTID ranges, 1,000/page | 6.5 s |
+| Source                       | What it gives                                                             | Size                                 | Measured                               |
+| ---------------------------- | ------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| DOR NAL 2026P                | 215,806 assessed parcels, owners, values, year built, 2 most recent sales | 18.3 MB zip, 114 MB CSV, 165 columns | 36 s download                          |
+| DOR SDF 2026P                | 37,020 sale records over 30,977 parcels                                   | 0.8 MB zip                           | 3 s                                    |
+| DOR TPP/NAP 2026P            | 33,346 tangible-personal-property business accounts with NAICS            | 1.4 MB zip                           | 3 s                                    |
+| FL GIO parcel centroids 2025 | 210,935 Lake centroids                                                    | ids-only + OBJECTID ranges           | 210,935 rows in ~10 s at concurrency 4 |
+| Lake CD Plus permits         | 17,915 features                                                           | OBJECTID ranges, 1,000/page          | 6.5 s                                  |
 
 Only the **current** roll is published: the NAL folder exposes `2026P` alone. The DOR Map
 Data archive does publish Lake parcel files back to `2005F`, but they are geometry only —
@@ -108,9 +109,10 @@ treats as permit-eligible.
   tangible-property roll, not a scrape.
 - **Sunbiz** corporate registration is a Florida statewide bulk source and was **not**
   ingested: it is not in this assignment's acceptance criteria.
-- **BBB** is gated. `bbb.org` answers 403 to this egress, and `use-oracle` requires BBB
-  browser work to run on approved AWS-managed remote compute, which a deployment whose
-  whole premise is no ongoing infrastructure cost does not have.
+- **BBB** is policy/API-gated. The default request and browser route returned 403. One
+  prohibited desktop-user-agent spoof returned 200 during verification, so the site is not
+  described as technically unreachable. No result was retained or ingested; the approved
+  path requires official BBB API access, which is not configured.
 
 ## 7. Source feasibility
 
@@ -126,13 +128,13 @@ Clermont's eTRAKiT is the one source that needs a real harvest, and it is now me
 Sixty-three requests at concurrency 1 and 2, zero failures. `measure` writes the full
 record to `data/artifacts/permits/lake/<jobId>/throughput.json`.
 
-| Phase | p50 | p95 | Failures | Notes |
-|---|---|---|---|---|
-| Session bootstrap | 759 ms | 2,085 ms | 0/3 | Yields the 5,035-entry registered-contractor directory |
-| Permit search by parcel (`SITE_APN`) | 624 ms | 2,088 ms | 0/10 | 8.2 permits per permitted parcel, whole history in one response |
-| Permit list by number prefix | 672 ms | 1,193 ms | 0/10 | 20 rows a page; every depth-2 prefix came back capped |
-| Permit detail, concurrency 1 | 1,077 ms | 1,257 ms | 0/20 | 0.91 req/s, 854 KB a page |
-| Permit detail, concurrency 2 | 1,145 ms | 2,585 ms | 0/20 | 1.55 req/s, 854 KB a page |
+| Phase                                | p50      | p95      | Failures | Notes                                                           |
+| ------------------------------------ | -------- | -------- | -------- | --------------------------------------------------------------- |
+| Session bootstrap                    | 759 ms   | 2,085 ms | 0/3      | Yields the 5,035-entry registered-contractor directory          |
+| Permit search by parcel (`SITE_APN`) | 624 ms   | 2,088 ms | 0/10     | 8.2 permits per permitted parcel, whole history in one response |
+| Permit list by number prefix         | 672 ms   | 1,193 ms | 0/10     | 20 rows a page; every depth-2 prefix came back capped           |
+| Permit detail, concurrency 1         | 1,077 ms | 1,257 ms | 0/20     | 0.91 req/s, 854 KB a page                                       |
+| Permit detail, concurrency 2         | 1,145 ms | 2,585 ms | 0/20     | 1.55 req/s, 854 KB a page                                       |
 
 **Safe concurrency: 2.** Nothing degraded at 2, and 3 and 4 were not tried — this is a
 municipal server and concurrency here is a politeness control, not a throughput knob.
@@ -155,7 +157,7 @@ time-to-first-byte. The server is shedding load by queueing, not by refusing; a 
 whose timeout is shorter than the queue sees a connection that accepts and never answers.
 
 Two consequences worth stating. First, the diagnosis rule in `county-ingest-run` §5 — probe
-unloaded, 200 means load-induced — needs the probe to be *patient*: a 10 s timeout would
+unloaded, 200 means load-induced — needs the probe to be _patient_: a 10 s timeout would
 have read this as a hard outage. Second, the adapter's own retry and backoff carried the
 run through it without operator action, which is what the RETRYABLE classification is for;
 the harvest slowed to a near-stall for about ten minutes and then resumed on its own.
@@ -173,11 +175,11 @@ makes the completed work a no-op.
 
 At concurrency 2 and the measured failure rate, one retry charged per failure:
 
-| Scope | Requests | Estimate | Storage |
-|---|---|---|---|
-| Permit year 26, prefix enumeration + detail | 4,622 | **0.6 h** | ~3.6 GB raw HTML |
-| Permit years 15–26, same method | ~66,000 | **8–9 h** | **~50 GB raw HTML** |
-| Parcel-keyed over the 50,447 CLERMONT-mailing seed parcels | 54,579 | **5.0 h** | as above |
+| Scope                                                      | Requests | Estimate  | Storage             |
+| ---------------------------------------------------------- | -------- | --------- | ------------------- |
+| Permit year 26, prefix enumeration + detail                | 4,622    | **0.6 h** | ~3.6 GB raw HTML    |
+| Permit years 15–26, same method                            | ~66,000  | **8–9 h** | **~50 GB raw HTML** |
+| Parcel-keyed over the 50,447 CLERMONT-mailing seed parcels | 54,579   | **5.0 h** | as above            |
 
 All three are **inside the 48-hour gate**, so `county-ingest-run` §2 does not require an
 operator decision on time. The number that does deserve one is storage: 854 KB of raw HTML
@@ -197,8 +199,9 @@ on-demand lookup needs, and it is measured above.
 
 - **Cloudflare managed challenge** across the entire `lakecountyfl.gov` estate, including
   `www`, `c` and `gis`. Confirmed by `cf-mitigated: challenge` on every path. The Esri
-  proxy works precisely because it is vendor-hosted and bypasses that estate. This is what
-  removes contractor of record from the published data.
+  proxy works precisely because it is vendor-hosted and bypasses that estate. This prevents
+  contractor-of-record enrichment for the county CD Plus layer; it does not erase the
+  contractor names harvested separately from Clermont permits.
 - **Rolling permit window.** Anything depending on deep permit history is a lower bound.
   Re-running the pipeline daily accumulates history going forward, which is exactly what
   the incremental mode is for, but it cannot recover what the window already dropped.

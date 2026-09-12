@@ -29,7 +29,7 @@
       "field": "bbb_rating",
       "severity": "gated",
       "headline": "BBB rating is gated at the source",
-      "detail": "bbb.org answers HTTP 403 to this egress, and BBB browser work requires approved remote compute that this no-ongoing-cost deployment does not have. bbb_rating is a real column that stays null rather than being fabricated."
+      "detail": "BBB's default request/browser route returned HTTP 403. One prohibited browser-fingerprint spoof returned 200 during verification, so this is a policy/API boundary rather than proof the site is unreachable. No BBB result was retained or ingested, and no approved official-API route is configured; bbb_rating stays null rather than being fabricated."
     }
   ],
   "provenance": {
@@ -44,7 +44,7 @@
       "FL GIO parcel centroids 2025",
       "Lake County CD Plus permit layer + Clermont eTRAKiT permits",
       "derived by the pipeline",
-      "gated at source (HTTP 403)",
+      "BBB policy/API gate (default route HTTP 403)",
       "not ingested for this run"
     ],
     "runId": "20260910T225242Z",
