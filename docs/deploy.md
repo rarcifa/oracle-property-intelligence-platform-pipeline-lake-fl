@@ -155,7 +155,12 @@ Then set `CLERMONT_FAILURE_NOTIFIER_ARN` from the `FailureNotifierArn` output. G
 that exact function but never receives the routing key. Pass the same complete ARN to local
 `npm run clermont:run -- --failure-notifier-arn "$CLERMONT_FAILURE_NOTIFIER_ARN" ...`; the
 operator and GitHub roles can invoke only that function. Without that output, SNS still notifies
-the approved email, but the deployment remains explicitly nonconformant for on-call paging.
+the approved email: pass `--failure-topic-arn "$CLERMONT_ALERT_TOPIC_ARN"` instead. The CLI
+requires exactly one transport and durably arms notification before acquisition. The exact
+terminal revision converts the arm to pending, including recovery after a crash at that boundary.
+It retries bounded transport failures, resumes a pending delivery on a later operator rerun, and
+suppresses further calls after recording an accepted receipt. This SNS-only profile remains
+explicitly nonconformant for on-call paging.
 Before enabling candidate-building workflow runs, set repository variable
 `IPNS_PREDECESSOR_RECEIPT_JSON_B64` to the base64 encoding of a reviewed Filebase names receipt
 for `oracle-open-data-lake`. The workflow validates its public network key, CID, and integer

@@ -62,9 +62,16 @@ before detail harvesting if enumeration exceeds the approved per-year record bou
 
 The production sequence is `clermont:run`, `clermont:status`, `clermont:certify`, then
 `clermont:promote`. `clermont:run` is inert unless the operator supplies `--live-fetch`.
-Every `clermont:run` also requires `--failure-notifier-arn` with the exact
-`ClermontBaselineStack.FailureNotifierArn` output. Only a durable `FAILED_EXHAUSTED` state
-invokes that function; retry/cooldown, cost-gate, and authorization paths do not page.
+Every run requires exactly one terminal-failure transport: either
+`--failure-notifier-arn` with the exact `ClermontBaselineStack.FailureNotifierArn` output,
+or `--failure-topic-arn` with the exact `BaselineAlertTopicArn` output for the explicitly
+approved SNS-only operating deviation. The selected transport is invoked only when that run
+pass durably advances the coordinator into `FAILED_EXHAUSTED`. It records an armed intent before
+acquisition, converts that intent to pending at the exact terminal revision, retries transport
+failures within a bounded pass, and records the accepted receipt. A later run recovers an armed
+crash window or an undelivered pending notification but does not notify again after delivery.
+Retry/cooldown, cost-gate, and authorization paths without a terminal transition do not notify.
+If the coordinator snapshot or durable arm cannot be written, the CLI stops before acquisition.
 Each run pass leases and seals one year at a time. The first production capture retains both
 sealed and loose evidence for operator comparison. The CLI rejects `--prune-loose-after-seal`;
 the internal crash-recovery path remains tested, but production pruning stays disabled until

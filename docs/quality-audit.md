@@ -117,10 +117,10 @@ The repaired tree passed the following gates on 2026-09-11–12:
 - Application unit suite: 40 files and 407 tests passed.
 - Responsive browser suite: 100 checks passed across 320, 390, 820, 1280, and
   1440 pixel widths.
-- Extracted county pipeline: 69 files and 632 tests passed, followed by all 4
+- Extracted county pipeline: 69 files and 642 tests passed, followed by all 4
   vendored transform tests.
 - RAG contract, promotion, retrieval, and reproducibility tests passed against the
-  explicit local candidate receipt; the deterministic corpus contains 254 chunks across
+  explicit local candidate receipt; the deterministic corpus contains 255 chunks across
   138 documents.
 - Root format, lint, typecheck, production build, and `git diff --check` passed.
 - Root and pipeline dependency audits report zero known vulnerabilities after upgrading

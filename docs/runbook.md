@@ -32,6 +32,13 @@ then set `CLERMONT_ALERT_TOPIC_ARN`, `CLERMONT_BASELINE_READ_ROLE_ARN`, and
 failure email but does not page. Full kit conformance additionally requires a PagerDuty routing
 key stored in production Secrets Manager, a redeploy with `-c pagerDutySecretArn=<exact-arn>`,
 and `CLERMONT_FAILURE_NOTIFIER_ARN` set from the output. Never put the routing key in GitHub.
+For the approved SNS-only deviation, pass `--failure-topic-arn "$CLERMONT_ALERT_TOPIC_ARN"`
+to `clermont:run` instead. The CLI requires exactly one of the SNS or PagerDuty transports and
+durably arms notification before acquisition and converts it to pending only when the current
+pass advances into `FAILED_EXHAUSTED`. This closes the terminal-write crash window. Transport
+failures are retried within a bounded pass and on a later operator rerun while pending; a
+recorded accepted receipt suppresses further notification.
+Failure to load the coordinator snapshot or persist the arm stops the pass before acquisition.
 Candidate preparation also requires repository variable
 `IPNS_PREDECESSOR_RECEIPT_JSON_B64`: the base64 encoding of the reviewed Filebase names object
 described in step 5. It contains public pointer identity, not a credential. Refresh it after

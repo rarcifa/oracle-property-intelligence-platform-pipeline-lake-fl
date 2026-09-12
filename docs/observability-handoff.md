@@ -117,6 +117,12 @@ already-created external resource.
    it only after durable `FAILED_EXHAUSTED`, uses a stable run dedup key, captures the returned
    PagerDuty `dedup_key`, and rethrows the original acquisition error. Cooldowns, retries,
    cost pauses, and authorization rejections do not page.
+   Under the approved SNS-only deviation, pass exactly one
+   `--failure-topic-arn <BaselineAlertTopicArn>` instead; the CLI validates the production
+   account/region, requires a returned SNS `MessageId`, and preserves the original acquisition
+   error. The CLI durably records armed/pending/delivered state, closes the terminal-transition
+   crash window, applies bounded transport retries, resumes pending delivery on a later operator
+   rerun, and suppresses calls after acceptance.
 6. Trigger one approved test incident, verify SNS/workflow delivery and alarm
    `ALARM -> trigger` / `OK -> resolve`, then attach the incident receipt here.
 
