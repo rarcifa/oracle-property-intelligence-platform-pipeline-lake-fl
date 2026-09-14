@@ -16,7 +16,6 @@ import {
 import { promoteCertifiedClermontBaseline } from "../src/batch/clermont-baseline-store.js";
 import { certifyClermontRun } from "../src/batch/clermont-certifier.js";
 import {
-  CLERMONT_PERMIT_YEARS,
   CLERMONT_REMOTE_STORAGE_LIMIT_BYTES,
   clermontAuthorizationScopeDigest,
   clermontBaselineDigest,
@@ -1908,6 +1907,9 @@ describe("Clermont lease-safe executor", () => {
       handoffPath,
       `${JSON.stringify({ ...original, runId: "wrong-recovery-run" })}\n`,
     );
+    const recoveryClock = createElapsedClermontClock(
+      new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+    );
     await expect(
       runClermontAcquisition({
         repoRoot: REPO_ROOT,
@@ -1917,7 +1919,7 @@ describe("Clermont lease-safe executor", () => {
         owner: "recovery-validator",
         now: NOW,
         liveFetch: true,
-        clock: () => "2026-09-12T12:10:00.000Z",
+        clock: recoveryClock,
         harvesterRunner: async () => undefined,
       }),
     ).rejects.toThrow(/identity or signatures disagree/);
@@ -1936,7 +1938,7 @@ describe("Clermont lease-safe executor", () => {
         owner: "recovery-validator",
         now: NOW,
         liveFetch: true,
-        clock: () => "2026-09-12T12:10:00.000Z",
+        clock: recoveryClock,
         harvesterRunner: async () => undefined,
       }),
     ).rejects.toThrow(/failed digest readback/);

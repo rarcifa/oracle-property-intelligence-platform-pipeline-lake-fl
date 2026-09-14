@@ -435,10 +435,10 @@ export async function countEvidenceLines(
   return count;
 }
 
-export async function readEvidenceLines(
+export async function* iterateEvidenceLines(
   root: string,
   artifact: ClermontImmutableArtifact,
-): Promise<unknown[]> {
+): AsyncGenerator<unknown> {
   const rootPath = path.resolve(root);
   const filePath = path.resolve(rootPath, artifact.logicalPath);
   if (!filePath.startsWith(`${rootPath}${path.sep}`)) throw new Error("Evidence path escapes root");
@@ -446,15 +446,27 @@ export async function readEvidenceLines(
   if (fileStat.size !== artifact.bytes || (await sha256File(filePath)) !== artifact.sha256) {
     throw new Error(`Evidence artifact failed digest readback: ${artifact.logicalPath}`);
   }
-  const chunks: Buffer[] = [];
   const input = createReadStream(filePath);
   const stream = artifact.logicalPath.endsWith(".gz") ? input.pipe(createGunzip()) : input;
-  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-  const text = Buffer.concat(chunks).toString("utf8");
-  return text
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line) as unknown);
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  let lineNumber = 0;
+  try {
+    for await (const line of lines) {
+      lineNumber += 1;
+      if (line.trim() === "") continue;
+      try {
+        yield JSON.parse(line) as unknown;
+      } catch (error) {
+        throw new Error(
+          `Malformed NDJSON in ${artifact.logicalPath} at line ${lineNumber}: ${asError(error).message}`,
+        );
+      }
+    }
+  } finally {
+    lines.close();
+    stream.destroy();
+    if (stream !== input) input.destroy();
+  }
 }
 
 export interface ClermontHarvesterRunOptions {
@@ -813,11 +825,6 @@ export async function verifyClermontEvidenceCorrelation(options: {
   rawCount: number;
   extractedCount: number;
 }> {
-  const [rawValues, extractedValues, statusValues] = await Promise.all([
-    readEvidenceLines(options.candidateRoot, options.handoff.artifacts.raw),
-    readEvidenceLines(options.candidateRoot, options.handoff.artifacts.extracted),
-    readEvidenceLines(options.candidateRoot, options.handoff.artifacts.status),
-  ]);
   const licenseDirectory = await readImmutableArtifactText(
     options.candidateRoot,
     options.handoff.artifacts.licenseDirectory,
@@ -829,8 +836,23 @@ export async function verifyClermontEvidenceCorrelation(options: {
   ) {
     throw new Error(`License-directory evidence does not match year ${options.handoff.year}`);
   }
-  const rawByStableId = new Map<string, z.infer<typeof rawEvidenceWrapperSchema>>();
-  for (const value of rawValues) {
+  const rawByStableId = new Map<
+    string,
+    {
+      mediaType: string;
+      sha256: string;
+      deadDiagnostic: {
+        permitNumber: string;
+        alternateKey: string | null;
+        searchPermitNumber: string;
+        searchAlternateKey: string | null;
+      } | null;
+    }
+  >();
+  for await (const value of iterateEvidenceLines(
+    options.candidateRoot,
+    options.handoff.artifacts.raw,
+  )) {
     const wrapper = rawEvidenceWrapperSchema.parse(value);
     if (rawByStableId.has(wrapper.stableId)) {
       throw new Error(`Duplicate raw wrapper for ${wrapper.stableId}`);
@@ -838,10 +860,49 @@ export async function verifyClermontEvidenceCorrelation(options: {
     if (sha256Text(wrapper.body) !== wrapper.sha256) {
       throw new Error(`Raw wrapper digest mismatch for ${wrapper.stableId}`);
     }
-    rawByStableId.set(wrapper.stableId, wrapper);
+    let deadDiagnostic: {
+      permitNumber: string;
+      alternateKey: string | null;
+      searchPermitNumber: string;
+      searchAlternateKey: string | null;
+    } | null = null;
+    if (wrapper.mediaType === "application/json") {
+      let parsedBody: unknown;
+      try {
+        parsedBody = JSON.parse(wrapper.body);
+      } catch (error) {
+        throw new Error(
+          `Dead diagnostic is not JSON for ${wrapper.stableId}: ${asError(error).message}`,
+        );
+      }
+      const parsedDead = permanentDeadEvidenceSchema.safeParse(parsedBody);
+      if (!parsedDead.success || stableId(parsedDead.data.permitNumber) !== wrapper.stableId) {
+        throw new Error(`Dead diagnostic identity mismatch for ${wrapper.stableId}`);
+      }
+      if (
+        parsedDead.data.searchRow.permitNumber !== parsedDead.data.permitNumber ||
+        (parsedDead.data.searchRow.alternateKey ?? null) !== parsedDead.data.alternateKey
+      ) {
+        throw new Error(`Dead diagnostic enumeration mismatch for ${wrapper.stableId}`);
+      }
+      deadDiagnostic = {
+        permitNumber: parsedDead.data.permitNumber,
+        alternateKey: parsedDead.data.alternateKey ?? null,
+        searchPermitNumber: parsedDead.data.searchRow.permitNumber,
+        searchAlternateKey: parsedDead.data.searchRow.alternateKey ?? null,
+      };
+    }
+    rawByStableId.set(wrapper.stableId, {
+      mediaType: wrapper.mediaType,
+      sha256: wrapper.sha256,
+      deadDiagnostic,
+    });
   }
-  const extractedByStableId = new Map<string, z.infer<typeof extractedEvidenceWrapperSchema>>();
-  for (const value of extractedValues) {
+  const extractedByStableId = new Map<string, { sha256: string }>();
+  for await (const value of iterateEvidenceLines(
+    options.candidateRoot,
+    options.handoff.artifacts.extracted,
+  )) {
     const wrapper = extractedEvidenceWrapperSchema.parse(value);
     if (extractedByStableId.has(wrapper.stableId)) {
       throw new Error(`Duplicate extracted wrapper for ${wrapper.stableId}`);
@@ -853,10 +914,20 @@ export async function verifyClermontEvidenceCorrelation(options: {
     if (stableId(String(record.permit_number ?? "")) !== wrapper.stableId) {
       throw new Error(`Extracted permit identity mismatch for ${wrapper.stableId}`);
     }
-    extractedByStableId.set(wrapper.stableId, wrapper);
+    extractedByStableId.set(wrapper.stableId, { sha256: wrapper.sha256 });
   }
-  const statusRecords = statusValues.map((value) => clermontRecordEvidenceSchema.parse(value));
-  for (const record of statusRecords) {
+  const statusRecords: ClermontRecordEvidence[] = [];
+  const statusStableIds = new Set<string>();
+  for await (const value of iterateEvidenceLines(
+    options.candidateRoot,
+    options.handoff.artifacts.status,
+  )) {
+    const record = clermontRecordEvidenceSchema.parse(value);
+    if (statusStableIds.has(record.stableId)) {
+      throw new Error(`Duplicate status evidence for ${record.stableId}`);
+    }
+    statusStableIds.add(record.stableId);
+    statusRecords.push(record);
     const { statusSha256, ...payload } = record;
     if (statusSha256 !== sha256Text(canonicalJson(payload))) {
       throw new Error(`Status evidence digest mismatch for ${record.stableId}`);
@@ -872,16 +943,15 @@ export async function verifyClermontEvidenceCorrelation(options: {
       throw new Error(`Status evidence does not bind raw/extracted bytes for ${record.stableId}`);
     }
     if (record.disposition === "proven-dead") {
-      if (raw?.mediaType !== "application/json") {
+      if (raw?.mediaType !== "application/json" || raw.deadDiagnostic === null) {
         throw new Error(`Dead status does not bind diagnostic JSON for ${record.stableId}`);
       }
-      const parsedDead = permanentDeadEvidenceSchema.safeParse(JSON.parse(raw.body));
-      if (!parsedDead.success || stableId(parsedDead.data.permitNumber) !== record.stableId) {
+      if (stableId(raw.deadDiagnostic.permitNumber) !== record.stableId) {
         throw new Error(`Dead diagnostic identity mismatch for ${record.stableId}`);
       }
       if (
-        parsedDead.data.searchRow.permitNumber !== parsedDead.data.permitNumber ||
-        (parsedDead.data.searchRow.alternateKey ?? null) !== parsedDead.data.alternateKey
+        raw.deadDiagnostic.searchPermitNumber !== raw.deadDiagnostic.permitNumber ||
+        raw.deadDiagnostic.searchAlternateKey !== raw.deadDiagnostic.alternateKey
       ) {
         throw new Error(`Dead diagnostic enumeration mismatch for ${record.stableId}`);
       }

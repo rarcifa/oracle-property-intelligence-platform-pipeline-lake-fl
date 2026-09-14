@@ -24,7 +24,7 @@ import {
   reconcileClermontPartitionRecords,
   startClermontStage,
 } from "./clermont-coordinator.js";
-import { readEvidenceLines, verifyClermontEvidenceCorrelation } from "./clermont-executor.js";
+import { iterateEvidenceLines, verifyClermontEvidenceCorrelation } from "./clermont-executor.js";
 import { verifyClermontPreparedScopes } from "./clermont-preparation.js";
 import {
   clermontRunDirectory,
@@ -241,8 +241,7 @@ export async function certifyClermontRun(options: {
   }
   const projected: Array<{ permitNumber: string; row: Record<string, unknown> }> = [];
   for (const handoff of handoffs) {
-    const entries = await readEvidenceLines(candidateRoot, handoff.artifacts.extracted);
-    for (const value of entries) {
+    for await (const value of iterateEvidenceLines(candidateRoot, handoff.artifacts.extracted)) {
       if (typeof value !== "object" || value === null)
         throw new Error("Invalid extracted bundle row");
       const wrapper = value as Record<string, unknown>;
