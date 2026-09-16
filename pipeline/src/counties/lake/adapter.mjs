@@ -28,7 +28,11 @@ import { mkdir, readdir, readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { buildCoverageSnapshot, readTransformedZipJsonFiles, writeQueryTableParquet } from "../../core/query-table.mjs";
+import {
+  buildCoverageSnapshot,
+  readTransformedZipJsonFiles,
+  writeQueryTableParquet,
+} from "../../core/query-table.mjs";
 import { appendFailure, classifyFailure } from "../../core/run-state.mjs";
 import { lakeEnrichmentProfile } from "./enrichment-profile.mjs";
 import {
@@ -40,14 +44,23 @@ import {
   STATE_CODE,
 } from "./query-table.mjs";
 import { assertPermitTableColumns } from "./permit-table.mjs";
-import { buildSeed as buildLakeSeedFiles, isValidLakeParcelId, NAL_SOURCE_FIELDS } from "./seed.mjs";
+import {
+  buildSeed as buildLakeSeedFiles,
+  isValidLakeParcelId,
+  NAL_SOURCE_FIELDS,
+} from "./seed.mjs";
 import { toText } from "./sources.mjs";
 
 const execFileAsync = promisify(execFile);
 const RUNTIME_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 export const TRANSFORMS_DIR = path.join(RUNTIME_ROOT, "counties", "lake", "transforms");
-export const CONSOLIDATION_SQL_PATH = path.join(RUNTIME_ROOT, "scripts", "lake", "build-query-table.sql");
+export const CONSOLIDATION_SQL_PATH = path.join(
+  RUNTIME_ROOT,
+  "scripts",
+  "lake",
+  "build-query-table.sql",
+);
 export const DEFAULT_JOB_ID = "lake-ingest";
 export const MIN_TRANSFORMED_ZIP_BYTES = 200;
 export const ZIP_LOCAL_FILE_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -199,7 +212,9 @@ export function assertTransformedCounty(record) {
     throw new Error(`transformed address is missing; expected county_name ${COUNTY_NAME}`);
   }
   if (record.county_name !== COUNTY_NAME) {
-    throw new Error(`transformed county_name must be ${COUNTY_NAME}, got ${String(record.county_name)}`);
+    throw new Error(
+      `transformed county_name must be ${COUNTY_NAME}, got ${String(record.county_name)}`,
+    );
   }
 }
 
@@ -212,7 +227,11 @@ export function assertTransformedCounty(record) {
  */
 export function classifyLakeFailure(error) {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  if (/not a canonical lake parcel id|does not match source_parcel_id|county_name|enoent/.test(message)) {
+  if (
+    /not a canonical lake parcel id|does not match source_parcel_id|county_name|enoent/.test(
+      message,
+    )
+  ) {
     return "permanent";
   }
   return classifyFailure(error);
@@ -225,7 +244,10 @@ export function classifyLakeFailure(error) {
 export async function hasCompletedTransform(parcelDir) {
   try {
     const buffer = await readFile(path.join(parcelDir, "transformed.zip"));
-    return buffer.length >= MIN_TRANSFORMED_ZIP_BYTES && buffer.subarray(0, 4).equals(ZIP_LOCAL_FILE_MAGIC);
+    return (
+      buffer.length >= MIN_TRANSFORMED_ZIP_BYTES &&
+      buffer.subarray(0, 4).equals(ZIP_LOCAL_FILE_MAGIC)
+    );
   } catch {
     return false;
   }
@@ -281,7 +303,12 @@ export async function loadPermitIndex(permitsPath) {
  * @param {string} [options.jobId] - Retry-ledger job id.
  * @returns {Promise<Record<string, unknown>>} Run manifest, also written to `manifest.json`.
  */
-export async function captureAndTransform({ seedRows, outputDir, permitsPath, jobId = DEFAULT_JOB_ID }) {
+export async function captureAndTransform({
+  seedRows,
+  outputDir,
+  permitsPath,
+  jobId = DEFAULT_JOB_ID,
+}) {
   await mkdir(outputDir, { recursive: true });
   const permitIndex = await loadPermitIndex(
     permitsPath ?? path.join(RUNTIME_ROOT, "data", "downloads", "lake", "permits.json"),
@@ -346,7 +373,11 @@ export async function captureAndTransform({ seedRows, outputDir, permitsPath, jo
     retryableFailure: results.filter((row) => row.classification === "retryable_failure").length,
   };
   const manifest = { county: COUNTY_KEY, outputDir, jobId, results, reconciled };
-  await writeFile(path.join(outputDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    path.join(outputDir, "manifest.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   return manifest;
 }
 
@@ -367,7 +398,10 @@ export async function validateRun(manifest, options = {}) {
   const reconciled = manifest.reconciled;
   const sum = reconciled.success + reconciled.permanentFailure + reconciled.retryableFailure;
   if (sum !== reconciled.seedRows) {
-    issues.push({ parcelId: null, reason: `seed ${reconciled.seedRows} != success + failures ${sum}` });
+    issues.push({
+      parcelId: null,
+      reason: `seed ${reconciled.seedRows} != success + failures ${sum}`,
+    });
   }
   const ids = manifest.results.map((/** @type {any} */ result) => result.parcelId);
   if (new Set(ids).size !== ids.length) {
@@ -386,13 +420,19 @@ export async function validateRun(manifest, options = {}) {
     checked += 1;
     const parcelDir = path.join(manifest.outputDir, parcel.parcelId);
     if (!(await hasCompletedTransform(parcelDir))) {
-      issues.push({ parcelId: parcel.parcelId, reason: "transformed.zip missing or not a valid PKZIP" });
+      issues.push({
+        parcelId: parcel.parcelId,
+        reason: "transformed.zip missing or not a valid PKZIP",
+      });
       continue;
     }
     const files = readTransformedZipJsonFiles(path.join(parcelDir, "transformed.zip"));
     for (const required of REQUIRED_DATA_ARTIFACTS) {
       if (files[required] === undefined) {
-        issues.push({ parcelId: parcel.parcelId, reason: `transformed.zip is missing data/${required}` });
+        issues.push({
+          parcelId: parcel.parcelId,
+          reason: `transformed.zip is missing data/${required}`,
+        });
       }
     }
   }
@@ -429,7 +469,11 @@ export async function readQueryTableCounts(parquetPath) {
       `FROM '${parquetPath}';`,
   ]);
   const row = JSON.parse(stdout)[0];
-  return { rows: Number(row.rows), distinctFolio: Number(row.distinct_folio), nullFolio: Number(row.null_folio) };
+  return {
+    rows: Number(row.rows),
+    distinctFolio: Number(row.distinct_folio),
+    nullFolio: Number(row.null_folio),
+  };
 }
 
 /**
@@ -483,6 +527,38 @@ export async function assertPermitTableGate(parquetPath) {
     );
   }
   assertPermitTableColumns(await readParquetColumns(parquetPath));
+  return counts;
+}
+
+/**
+ * Verify the separate account table before its claimed count reaches history.
+ *
+ * @param {string} parquetPath - Business account Parquet path.
+ * @param {number} expectedRows - Coverage's queryable source-account count.
+ * @returns {Promise<{rows: number, distinctAccounts: number, nullAccountIds: number}>}
+ */
+export async function assertBusinessTableGate(parquetPath, expectedRows) {
+  const { stdout } = await execFileAsync("duckdb", [
+    "-json",
+    "-c",
+    `SELECT count(*) AS rows, count(DISTINCT account_id) AS distinct_accounts, ` +
+      `count(*) FILTER (WHERE account_id IS NULL OR trim(account_id) = '') AS null_account_ids ` +
+      `FROM '${parquetPath.replaceAll("'", "''")}';`,
+  ]);
+  const row = JSON.parse(stdout)[0];
+  const counts = {
+    rows: Number(row.rows),
+    distinctAccounts: Number(row.distinct_accounts),
+    nullAccountIds: Number(row.null_account_ids),
+  };
+  if (counts.nullAccountIds !== 0 || counts.rows !== counts.distinctAccounts) {
+    throw new Error("Business table requires unique non-empty account_id values");
+  }
+  if (counts.rows !== expectedRows) {
+    throw new Error(
+      `Business table row count ${counts.rows} != coverage account count ${expectedRows}`,
+    );
+  }
   return counts;
 }
 

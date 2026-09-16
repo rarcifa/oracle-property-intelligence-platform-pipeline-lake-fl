@@ -192,6 +192,23 @@ in `SECONDARY_PIN_SERVICE_TOKEN`. The exact provider, origin, path and determini
 manifest/archive pin names are signed. Runtime configuration is compared before the token, capability
 file or network client is touched. All three pins must reach `pinned` before gateway verification.
 
+Credential creation does not prove plan capability. On 2026-09-16 the configured
+scoped JWT's read-only PSA list request returned HTTP 403, `PAID_FEATURE_ONLY`,
+with "You must be on a paid plan to pin by CID". The approved Free setup cannot
+execute this route. Do not upgrade, change providers, omit artifacts, or request
+a signature for a non-executable target. Obtain a separately approved independent
+provider route first; then prepare its exact publication request. Uploading a CAR
+as ordinary file bytes does not independently pin or serve the CIDs inside it.
+
+Business accounting uses one export-grain rule in plausibility, new history and
+the recovered predecessor: a legacy property-associated export counts only
+`matchedToParcel`; a modern `accountTableAvailable` export counts its reconciled
+`queryableSourceAccounts`. The latter must equal coverage's account-table rows
+and the actual Parquet count, with unique non-empty account IDs. A genuinely
+truncated table still fails. Never use the table-shrink override to conceal a
+grain mismatch, or rewrite original recovery/history bytes to invent prior
+publication of unmatched accounts.
+
 The repaired publisher checks all manifest entries, including directories, and the manifest
 itself against two independent public gateways. It validates the complete multi-root
 snapshot CAR offline and publishes its actual file bytes by a distinct file CID. The

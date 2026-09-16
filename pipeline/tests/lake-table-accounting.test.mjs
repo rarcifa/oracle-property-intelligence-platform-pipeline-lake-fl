@@ -8,10 +8,7 @@
  * a published table left no trace at all.
  */
 import { describe, expect, it } from "vitest";
-import {
-  buildTableAccounting,
-  readPreviousRowHashes,
-} from "../scripts/lake/publish-run.mjs";
+import { buildTableAccounting, readPreviousRowHashes } from "../scripts/lake/publish-run.mjs";
 import { runTableSchema, tableBasis } from "../src/core/run-history.mjs";
 
 const DELTAS = { inserted: 0, updated: 0, unchanged: 215806, removed: 0 };
@@ -26,6 +23,36 @@ const coverage = (permits, business = 2060) => ({
 });
 
 describe("table accounting", () => {
+  it("records newly queryable unmatched accounts without pretending the old export exposed them", () => {
+    const modern = coverage(17671);
+    modern.tables.businessAccounts = {
+      rows: 33346,
+      matchedToParcel: 2060,
+      accountTableAvailable: true,
+      queryableSourceAccounts: 33346,
+    };
+    const previous = { tables: [{ name: "businessAccounts", rows: 2060 }] };
+    expect(
+      buildTableAccounting(modern, DELTAS, previous).find(
+        (table) => table.name === "businessAccounts",
+      ),
+    ).toEqual({
+      name: "businessAccounts",
+      rows: 33346,
+      basis: "row-count",
+      previousRows: 2060,
+      rowsDelta: 31286,
+    });
+  });
+
+  it("preserves parcel-matched accounting for a legacy export despite a larger captured source roll", () => {
+    const legacy = coverage(17671);
+    legacy.tables.businessAccounts.rows = 33346;
+    expect(
+      buildTableAccounting(legacy, DELTAS, null).find((table) => table.name === "businessAccounts")
+        .rows,
+    ).toBe(2060);
+  });
   it("accounts for every published table, not only the hashed one", () => {
     const tables = buildTableAccounting(coverage(17671), DELTAS, null);
     expect(tables.map((table) => table.name)).toEqual([
@@ -73,11 +100,20 @@ describe("table accounting", () => {
     for (const table of buildTableAccounting(coverage(17671), DELTAS, null)) {
       expect(() => runTableSchema.parse(table)).not.toThrow();
     }
-    expect(() => runTableSchema.parse({ name: "properties", rows: 1, basis: "row-hash" })).toThrow();
+    expect(() =>
+      runTableSchema.parse({ name: "properties", rows: 1, basis: "row-hash" }),
+    ).toThrow();
   });
 
   it("validates a pre-basis record without rewriting it", () => {
-    const legacy = { name: "properties", rows: 215806, inserted: 0, updated: 0, unchanged: 215806, removed: 0 };
+    const legacy = {
+      name: "properties",
+      rows: 215806,
+      inserted: 0,
+      updated: 0,
+      unchanged: 215806,
+      removed: 0,
+    };
     const parsed = runTableSchema.parse(legacy);
     // Must round-trip byte-identical: appendRun compares the validated history
     // against the stored bytes, so any injected field breaks an append.
@@ -102,7 +138,14 @@ describe("appending a run after the schema grew a field", () => {
       mode: "incremental",
       sources: [],
       tables: [
-        { name: "properties", rows: 215806, inserted: 0, updated: 0, unchanged: 215806, removed: 0 },
+        {
+          name: "properties",
+          rows: 215806,
+          inserted: 0,
+          updated: 0,
+          unchanged: 215806,
+          removed: 0,
+        },
       ],
       limitations: ["kept short for the fixture"],
       rootCid: "bafybeibshsx6h6xtbqb65at6oycndtpp3ufdou5i5unahulvtn46n4fr4m",
@@ -115,14 +158,25 @@ describe("appending a run after the schema grew a field", () => {
     };
     const dir = await mkdtemp(path.join(tmpdir(), "run-history-"));
     const file = path.join(dir, "run-history.json");
-    await writeFile(file, `${JSON.stringify({ schemaVersion: "elephant.run-history.v1", runs: [prior] }, null, 2)}\n`);
+    await writeFile(
+      file,
+      `${JSON.stringify({ schemaVersion: "elephant.run-history.v1", runs: [prior] }, null, 2)}\n`,
+    );
 
     // A new run carrying the field the older record has never heard of.
     const next = {
       ...prior,
       runId: "20260910T200608Z",
       tables: [
-        { name: "properties", rows: 215806, basis: "row-hash", inserted: 0, updated: 0, unchanged: 215806, removed: 0 },
+        {
+          name: "properties",
+          rows: 215806,
+          basis: "row-hash",
+          inserted: 0,
+          updated: 0,
+          unchanged: 215806,
+          removed: 0,
+        },
         { name: "permits", rows: 17671, basis: "row-count", previousRows: 17457, rowsDelta: 214 },
       ],
     };
@@ -148,7 +202,9 @@ describe("contractor accounting", () => {
     expect(row.previousRows).toBeUndefined();
 
     expect(
-      buildTableAccounting(coverage(17671), DELTAS, null).some((table) => table.name === "contractors"),
+      buildTableAccounting(coverage(17671), DELTAS, null).some(
+        (table) => table.name === "contractors",
+      ),
     ).toBe(false);
   });
 

@@ -11,6 +11,7 @@ import { CID } from "multiformats/cid";
 import { canonicalJson } from "./coverage-publication.mjs";
 import { computeUnixfsFileCid } from "./cid.mjs";
 import { validateArtifactManifest } from "./artifact-manifest.mjs";
+import { publishedBusinessAccountRows } from "./run-history.mjs";
 import {
   sha256Digest,
   signAuthorizationPayload,
@@ -434,7 +435,10 @@ export async function loadRecoveryAnchor({
     queryPath: path.join(path.dirname(receiptPath), "query-table.parquet"),
     tables: Object.entries(packet.coverage.tables)
       .filter(([, table]) => Number.isSafeInteger(table?.rows))
-      .map(([name, table]) => ({ name, rows: table.rows })),
+      .map(([name, table]) => ({
+        name,
+        rows: name === "businessAccounts" ? publishedBusinessAccountRows(table) : table.rows,
+      })),
     disclosure: target.disclosure,
   };
 }

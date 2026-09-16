@@ -204,6 +204,39 @@ afterEach(async () => {
 });
 
 describe("explicit signed external predecessor recovery", () => {
+  it.each([false, true])(
+    "uses the recovered export's actual business grain when accountTableAvailable=%s",
+    async (accountTableAvailable) => {
+      const f = await fixture({
+        tables: {
+          properties: { rows: 1 },
+          permits: { rows: 2 },
+          businessAccounts: {
+            rows: 33346,
+            matchedToParcel: 2060,
+            accountTableAvailable,
+            ...(accountTableAvailable ? { queryableSourceAccounts: 33346 } : {}),
+          },
+        },
+      });
+      await f.accept();
+      const receiptBytes = await readFile(f.receiptPath);
+      const anchor = await loadRecoveryAnchor({
+        receiptPath: f.receiptPath,
+        publicKey: f.publicKey,
+        historyPath: f.historyPath,
+        now: NOW,
+      });
+      expect(anchor.tables.find((table) => table.name === "businessAccounts").rows).toBe(
+        accountTableAvailable ? 33346 : 2060,
+      );
+      expect(await readFile(f.receiptPath)).toEqual(receiptBytes);
+      expect(await readFile(f.historyPath)).toEqual(f.packet.historyBytes);
+      expect(await readFile(path.join(f.inputDir, "coverage.json"))).toEqual(
+        f.packet.coverageBytes,
+      );
+    },
+  );
   it.each(["APPROVAL_CONSUMED", "FINALIZED"])(
     "reloads an exact ledger-authorized succeeded append in a %s resume context",
     async (state) => {

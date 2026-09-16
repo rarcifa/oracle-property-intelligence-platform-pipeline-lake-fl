@@ -117,7 +117,7 @@ and no permit-backed primary-roof completion anchor is currently accepted.
    from published data and the deployed release. Final Slowking evaluation
    awaits the actual matching hosted release and demo, not a local-only score.
 
-Local checks on 2026-09-16 passed: 484 application tests, 926 pipeline tests,
+Local checks on 2026-09-16 passed: 484 application tests, 941 pipeline tests,
 four retained transform tests and 100 responsive UI checks. The layout lane
 used the previously approved isolated Chrome 152.0.7977.84 fallback; pinned
 Chromium remained unavailable. Build, strict type checks, lint and formatting
@@ -127,8 +127,15 @@ REST/MCP readback showed all 33,346 accounts, 31,286 unmatched accounts and
 23,696 building-age proxies strictly older than 15 within five miles of the
 chosen Clermont center. This is local data/query proof, not a hosted demo.
 
-Publication is blocked on an absent scoped Pinata JWT and trusted exact-byte
-authorization. Authenticated Filebase readback also found the existing IPNS
+The owner-approved Pinata Free key has been created with pin creation/list/status
+permissions only and its JWT is configured locally. A read-only PSA request on
+2026-09-16 returned HTTP 403 with `PAID_FEATURE_ONLY`: "You must be on a paid plan
+to pin by CID". The current secondary-provider route therefore remains blocked
+by plan capability, not an absent token. No paid upgrade, alternate provider or
+publication is authorized by credential setup. Pinata's [plan comparison](https://pinata.cloud/pricing)
+does not include pin-by-CID or native CAR import on Free; an ordinary CAR-file
+upload would not independently retain its inner artifact CIDs.
+Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root
 `bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,
 but committed successful history ends at `20260910T225242Z`. Remote CAR object
@@ -151,13 +158,21 @@ root block, coverage and query-table bytes with two independent current
 readbacks, and binds their evidence, destination and last-known history to a
 separate `externally_observed_recovered` receipt. Original approval, historical
 gateway readback and successful-publication receipt remain explicitly unknown;
-no historical run is marked successful. Preparation is not acceptance: the
-human approver must sign the exact request using an external trusted key.
+no historical run is marked successful. The owner signed the recovery request
+and explicitly trusted its public key; local acceptance completed at
+`2026-09-16T19:09:34.942Z` without modifying IPNS or history. Its accepted receipt
+digest is `sha256:e8da5893fdf57eb72a82682acfdb5c2ad6bbc74261d39d5b45996ff9d4d97e71`.
 Only that verified receipt can anchor a later separately authorized publication;
 the new publication signature also binds the recovery receipt's digest.
 Live name/root/sequence drift is rejected before upload, pin creation or
 promotion. Recovery itself has no pin, IPNS write, deploy or harvest action.
 See the [operator recovery procedure](docs/runbook.md#external-predecessor-recovery).
+
+Publication accounting distinguishes the legacy 2,060 parcel-matched business
+accounts from the modern all-account table's 33,346 queryable source accounts.
+The new table's actual Parquet row count and unique, non-empty account IDs are
+checked before publication. Retaining 31,286 previously unmatched accounts is
+new query availability, not a fresh source capture or verified legal identity.
 
 ## Every acceptance criterion: evidence and remaining proof
 

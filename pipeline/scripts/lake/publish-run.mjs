@@ -46,8 +46,16 @@ import {
   verifyArtifactAcrossGateways,
   verifyManifestAcrossGateways,
 } from "../../src/core/gateway-verify.mjs";
-import { assertPermitTableGate, assertQueryTableGate } from "../../src/counties/lake/adapter.mjs";
-import { appendRun, computeTableDeltas } from "../../src/core/run-history.mjs";
+import {
+  assertBusinessTableGate,
+  assertPermitTableGate,
+  assertQueryTableGate,
+} from "../../src/counties/lake/adapter.mjs";
+import {
+  appendRun,
+  computeTableDeltas,
+  publishedBusinessAccountRows,
+} from "../../src/core/run-history.mjs";
 import { loadRecoveryAnchor } from "../../src/core/predecessor-recovery.mjs";
 import {
   PINATA_SECONDARY_PIN_API_BASE,
@@ -654,6 +662,13 @@ export async function publishRun({
   log("query_table_gate", gateCounts);
   const permitGateCounts = await assertPermitTableGate(path.join(runDir, "permit-table.parquet"));
   log("permit_table_gate", permitGateCounts);
+  if (coverage.tables.businessAccounts?.accountTableAvailable === true) {
+    const businessGateCounts = await assertBusinessTableGate(
+      path.join(runDir, "business-table.parquet"),
+      publishedBusinessAccountRows(coverage.tables.businessAccounts),
+    );
+    log("business_table_gate", businessGateCounts);
+  }
 
   const dag = await buildRunDag(runDir);
   log("dag_built", {
@@ -1347,7 +1362,8 @@ export function coverageTableRows(coverage) {
     { name: "coordinates", rows: coverage.tables.coordinates.rows },
   ];
   const business = coverage.tables.businessAccounts;
-  if (business) rows.push({ name: "businessAccounts", rows: business.matchedToParcel });
+  if (business)
+    rows.push({ name: "businessAccounts", rows: publishedBusinessAccountRows(business) });
   const contractors = coverage.tables.contractors;
   if (contractors) rows.push({ name: "contractors", rows: contractors.rows });
   return rows;
@@ -1455,7 +1471,7 @@ export function buildTableAccounting(coverage, deltas, previousRun) {
   ];
   const business = coverage.tables.businessAccounts;
   // Published only since the coverage snapshot carried it; absent on older runs.
-  if (business) tables.push(counted("businessAccounts", business.matchedToParcel));
+  if (business) tables.push(counted("businessAccounts", publishedBusinessAccountRows(business)));
   // Contractors are also part of `coverageTableRows`, so losing a certified
   // Clermont baseline is a publish-time failure rather than a legal zero. The
   // workflow now fails before consolidation when that exact baseline is absent.

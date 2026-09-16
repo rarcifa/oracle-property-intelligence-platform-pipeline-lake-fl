@@ -7,7 +7,12 @@
  * gateways verified the bytes. Every check confirmed the bytes were what they
  * claimed to be; none could tell a small county from a truncated one.
  */
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import parquet from "@dsnp/parquetjs";
+import { afterEach, describe, expect, it } from "vitest";
+import { assertBusinessTableGate } from "../src/counties/lake/adapter.mjs";
 import {
   assertPublicationPredecessor,
   assertTablesPlausible,
@@ -42,7 +47,53 @@ const coverage = (permits) => ({
   },
 });
 
+const businessCoverage = (rows, matchedToParcel = 2060) => ({
+  tables: {
+    ...coverage(17671).tables,
+    businessAccounts: {
+      rows,
+      matchedToParcel,
+      accountTableAvailable: true,
+      queryableSourceAccounts: rows,
+    },
+  },
+});
+
 describe("publish plausibility gate", () => {
+  it("counts all queryable accounts when unmatched businesses have their own table", () => {
+    const rows = coverageTableRows(businessCoverage(33346));
+    expect(rows.find((table) => table.name === "businessAccounts").rows).toBe(33346);
+    expect(() =>
+      assertTablesPlausible(rows, { tables: [{ name: "businessAccounts", rows: 33346 }] }, {}),
+    ).not.toThrow();
+  });
+
+  it("does not count captured but unpublished unmatched accounts in a legacy export", () => {
+    const legacy = coverage(17671);
+    legacy.tables.businessAccounts.rows = 33346;
+    expect(coverageTableRows(legacy).find((table) => table.name === "businessAccounts").rows).toBe(
+      2060,
+    );
+  });
+
+  it("still refuses a genuinely truncated all-account table", () => {
+    expect(() =>
+      assertTablesPlausible(
+        coverageTableRows(businessCoverage(300, 20)),
+        { tables: [{ name: "businessAccounts", rows: 33346 }] },
+        {},
+      ),
+    ).toThrow(/table 'businessAccounts' fell from 33346 to 300 rows/);
+  });
+
+  it.each([undefined, -1, 2060])(
+    "refuses an inconsistent all-account coverage count %s",
+    (count) => {
+      const inconsistent = businessCoverage(33346);
+      inconsistent.tables.businessAccounts.queryableSourceAccounts = count;
+      expect(() => coverageTableRows(inconsistent)).toThrow(/business account count/i);
+    },
+  );
   it("refuses the exact truncation that was published: 17,671 permits down to 281", () => {
     expect(() => assertTablesPlausible(coverageTableRows(coverage(281)), previous, {})).toThrow(
       /table 'permits' fell from 17671 to 281 rows/,
@@ -107,6 +158,51 @@ describe("publish plausibility gate", () => {
     };
     expect(() => assertTablesPlausible(coverageTableRows(collapsed), prior, {})).toThrow(
       /table 'contractors' fell from 3634 to 0 rows/,
+    );
+  });
+});
+
+describe("business account Parquet gate", () => {
+  const directories = [];
+  afterEach(async () => {
+    await Promise.all(
+      directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+    );
+  });
+  async function businessTable(ids) {
+    const directory = await mkdtemp(path.join(tmpdir(), "lake-business-gate-"));
+    directories.push(directory);
+    const file = path.join(directory, "accounts.parquet");
+    const writer = await parquet.ParquetWriter.openFile(
+      new parquet.ParquetSchema({ account_id: { type: "UTF8", optional: true } }),
+      file,
+    );
+    for (const account_id of ids) await writer.appendRow({ account_id });
+    await writer.close();
+    return file;
+  }
+
+  it("reconciles the actual account table instead of trusting a coverage claim", async () => {
+    await expect(assertBusinessTableGate(await businessTable(["A", "B"]), 2)).resolves.toEqual({
+      rows: 2,
+      distinctAccounts: 2,
+      nullAccountIds: 0,
+    });
+  });
+
+  it("refuses truncated bytes even when coverage claims the complete account count", async () => {
+    await expect(assertBusinessTableGate(await businessTable(["A"]), 33346)).rejects.toThrow(
+      /Business table row count 1 != coverage account count 33346/,
+    );
+  });
+
+  it.each([
+    ["A", "A"],
+    ["A", null],
+    ["A", " "],
+  ])("refuses duplicate or missing account identities %j", async (...ids) => {
+    await expect(assertBusinessTableGate(await businessTable(ids), 2)).rejects.toThrow(
+      /unique non-empty account_id/,
     );
   });
 });

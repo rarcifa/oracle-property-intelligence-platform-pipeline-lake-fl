@@ -51,6 +51,26 @@ export function tableBasis(table) {
 }
 
 /**
+ * Count queryable business accounts, not captured accounts or parcel links.
+ * Legacy exports expose only parcel-matched accounts; the separate modern
+ * account table also preserves valid unmatched accounts.
+ *
+ * @param {{accountTableAvailable?: boolean, queryableSourceAccounts?: number, rows?: number, matchedToParcel?: number}} table
+ * @returns {number} Published account count at the appropriate export grain.
+ */
+export function publishedBusinessAccountRows(table) {
+  const allAccounts = table.accountTableAvailable === true;
+  const rows = allAccounts ? table.queryableSourceAccounts : table.matchedToParcel;
+  if (!Number.isSafeInteger(rows) || rows < 0) {
+    throw new Error("Published business account count must be a non-negative safe integer");
+  }
+  if (allAccounts && rows !== table.rows) {
+    throw new Error("Queryable business account count must reconcile to the account table rows");
+  }
+  return rows;
+}
+
+/**
  * Per-table row accounting, the evidence that ingestion is ongoing.
  *
  * Two bases, because only one table is hashed per row. `row-hash` carries real
