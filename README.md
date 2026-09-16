@@ -130,11 +130,33 @@ chosen Clermont center. This is local data/query proof, not a hosted demo.
 The owner-approved Pinata Free key has been created with pin creation/list/status
 permissions only and its JWT is configured locally. A read-only PSA request on
 2026-09-16 returned HTTP 403 with `PAID_FEATURE_ONLY`: "You must be on a paid plan
-to pin by CID". The current secondary-provider route therefore remains blocked
+to pin by CID". The Pinata secondary-provider route therefore remains blocked
 by plan capability, not an absent token. No paid upgrade, alternate provider or
 publication is authorized by credential setup. Pinata's [plan comparison](https://pinata.cloud/pricing)
 does not include pin-by-CID or native CAR import on Free; an ordinary CAR-file
 upload would not independently retain its inner artifact CIDs.
+
+The owner subsequently configured an IPFS + Filecoin Lighthouse Lite account:
+500 GB storage at $12/month, with the next billing date shown as 2026-10-16.
+Its supplied `IPFS_API_KEY` passed documented read-only inventory and usage
+requests (HTTP 200, zero files/usage, 536,870,912,000-byte allowance). The owner's
+key is displayed as `admin`; it is not described as a granular pin/read-only key.
+No key value is included in this repository or the documentation corpus.
+The explicit `--secondary-provider lighthouse` branch uses Lighthouse's
+[same-CID pin API](https://docs.lighthouse.storage/how-to/pin-cid), not Pinata's PSA.
+Request acceptance, reconciled inventory/metadata and verified retention are
+separate states. Registration alone cannot advance gateway/history/IPNS promotion;
+no Lighthouse pin or upload has been executed. The existing $5/month ceiling
+still needs an explicit amendment/exemption for this $12/month account, and live
+publication needs its own exact-target approval. The subscription was established
+by the owner; the pipeline did not purchase, renew, cancel or change it. Data
+retention depends on an active provider plan, not an infinite-storage guarantee.
+The Lighthouse adapter's local verification on 2026-09-17 passed all 980 pipeline
+tests (81 files), including provider/credential isolation, interrupted-request
+reconciliation, 20-second request deadlines, atomic private checkpoints and
+rejection of unsupported retention receipts. Arceus confirmed this bounded
+Oracle-adapter route; this is code verification, not live publication proof.
+
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root
 `bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,

@@ -10,6 +10,7 @@ import {
   assertSecondaryPinRuntimeTarget,
   loadLivePublicationCapabilities,
   mayAttemptLivePublication,
+  secondaryPinTarget,
 } from "../scripts/lake/publish-run.mjs";
 import {
   REQUIRED_PUBLISH_ACTIONS,
@@ -110,6 +111,138 @@ function approval(exactTarget, keyPair, overrides = {}) {
     keyPair.privateKey,
   );
 }
+
+describe("exact Lighthouse publication destination", () => {
+  it("requires explicit selection and does not transfer a Pinata authorization", () => {
+    const original = target();
+    const lighthouse = {
+      ...original,
+      secondaryPin: secondaryPinTarget(original.runId, "lighthouse"),
+    };
+    expect(validatePublicationTarget(lighthouse).secondaryPin.apiPath).toBe("/api/lighthouse/pin");
+    expect(secondaryPinTarget(original.runId)).toEqual(original.secondaryPin);
+    expect(() => secondaryPinTarget(original.runId, "other")).toThrow(/Unsupported/);
+    const keyPair = keys();
+    const signed = approval(original, keyPair);
+    expect(() =>
+      verifyPublishAuthorization(signed, keyPair.publicKey, lighthouse, { now: NOW }),
+    ).toThrow(/exact target/);
+  });
+
+  it("rejects provider/origin/path mixing and URL normalization before reading secrets", async () => {
+    const original = target();
+    const lighthouse = {
+      ...original,
+      secondaryPin: secondaryPinTarget(original.runId, "lighthouse"),
+    };
+    for (const endpoint of [
+      "https://api.lighthouse.storage/",
+      "https://API.lighthouse.storage",
+      "https://api.lighthouse.storage/psa",
+      "https://api.lighthouse.storage?redirect=1",
+      "https://api.lighthouse.storage@evil.example",
+    ]) {
+      let reads = 0;
+      await expect(
+        loadLivePublicationCapabilities({
+          target: lighthouse,
+          endpoint,
+          envFile: "/not-read.env",
+          environment: {},
+          loadEnvironmentFile: async () => {
+            reads += 1;
+          },
+        }),
+      ).rejects.toThrow(/must exactly equal signed/);
+      expect(reads).toBe(0);
+    }
+    for (const fields of [
+      { provider: "pinata" },
+      { apiPath: "/psa/pins" },
+      { apiBase: "https://evil.example" },
+    ]) {
+      expect(() =>
+        validatePublicationTarget({
+          ...lighthouse,
+          secondaryPin: { ...lighthouse.secondaryPin, ...fields },
+        }),
+      ).toThrow(/Invalid publication target/);
+    }
+  });
+
+  it("uses only IPFS_API_KEY for Lighthouse and rejects capability-file endpoint drift", async () => {
+    const original = target();
+    const lighthouse = {
+      ...original,
+      secondaryPin: secondaryPinTarget(original.runId, "lighthouse"),
+    };
+    const environment = {
+      S3_ACCESS_KEY_ID: "primary-key",
+      S3_SECRET_ACCESS_KEY: "primary-secret",
+      SECONDARY_PIN_SERVICE_TOKEN: "pinata-jwt",
+      IPFS_API_KEY: "lighthouse-key",
+    };
+    const capabilities = await loadLivePublicationCapabilities({
+      target: lighthouse,
+      endpoint: lighthouse.secondaryPin.apiBase,
+      envFile: null,
+      environment,
+    });
+    expect(capabilities.secondaryPinToken).toBe("lighthouse-key");
+    await expect(
+      loadLivePublicationCapabilities({
+        target: lighthouse,
+        endpoint: lighthouse.secondaryPin.apiBase,
+        envFile: null,
+        environment: { ...environment, IPFS_API_KEY: undefined },
+      }),
+    ).rejects.toThrow(/IPFS_API_KEY/);
+    await expect(
+      loadLivePublicationCapabilities({
+        target: lighthouse,
+        endpoint: lighthouse.secondaryPin.apiBase,
+        envFile: "/external.env",
+        environment: { ...environment },
+        loadEnvironmentFile: async (_file, env) => {
+          env.LIGHTHOUSE_PIN_SERVICE_URL = "https://evil.example";
+        },
+      }),
+    ).rejects.toThrow(/must exactly equal signed/);
+  });
+
+  it.each([{ status: "registration-reconciled", retentionVerified: false }, { status: "pinned" }])(
+    "rejects unsupported Lighthouse evidence $status at the retained-pin transition",
+    async (registered) => {
+      const original = target();
+      const lighthouse = {
+        ...original,
+        secondaryPin: secondaryPinTarget(original.runId, "lighthouse"),
+      };
+      const ledgerPath = await scratchLedger();
+      const attemptId = await prepare(ledgerPath, lighthouse);
+      const keyPair = keys();
+      await authorizePublicationAttempt(
+        ledgerPath,
+        attemptId,
+        approval(lighthouse, keyPair),
+        keyPair.publicKey,
+        { now: NOW },
+      );
+      await advancePublicationAttempt(ledgerPath, attemptId, "ROOT_UPLOAD_RECORDED", {});
+      await advancePublicationAttempt(ledgerPath, attemptId, "MANIFEST_UPLOAD_RECORDED", {});
+      await expect(
+        advancePublicationAttempt(ledgerPath, attemptId, "SECONDARY_PIN_RECORDED", {
+          root: registered,
+          manifest: registered,
+          archive: registered,
+        }),
+      ).rejects.toThrow(/not verified IPFS retention/);
+      expect((await readPublicationLedger(ledgerPath)).attempts[attemptId].state).toBe(
+        "MANIFEST_UPLOAD_RECORDED",
+      );
+    },
+  );
+});
 
 function verificationReceipt() {
   const artifacts = ["manifest.json", "query-table.parquet", "shard-0000.json"].map((name) => ({

@@ -22,12 +22,16 @@ import path from "node:path";
 import { z } from "zod";
 
 import { canonicalJson } from "./coverage-publication.mjs";
+import { assertSecondaryRetention } from "./secondary-pin.mjs";
 
 export const PUBLISH_AUTHORIZATION_SCHEMA_VERSION = "elephant.publish-authorization.v2";
 export const PUBLICATION_LEDGER_SCHEMA_VERSION = "elephant.publication-attempt-ledger.v1";
 export const PINATA_SECONDARY_PIN_API_BASE = "https://api.pinata.cloud/psa";
 export const PINATA_SECONDARY_PIN_API_ORIGIN = "https://api.pinata.cloud";
 export const PINATA_SECONDARY_PIN_API_PATH = "/psa/pins";
+export const LIGHTHOUSE_SECONDARY_PIN_API_BASE = "https://api.lighthouse.storage";
+export const LIGHTHOUSE_SECONDARY_PIN_API_ORIGIN = "https://api.lighthouse.storage";
+export const LIGHTHOUSE_SECONDARY_PIN_API_PATH = "/api/lighthouse/pin";
 
 export const REQUIRED_PUBLISH_ACTIONS = Object.freeze([
   "upload-root-car",
@@ -94,17 +98,32 @@ const immutablePrimaryCarSchema = z
   })
   .strict();
 
-const secondaryPinTargetSchema = z
-  .object({
-    provider: z.literal("pinata"),
-    apiBase: z.literal(PINATA_SECONDARY_PIN_API_BASE),
-    apiOrigin: z.literal(PINATA_SECONDARY_PIN_API_ORIGIN),
-    apiPath: z.literal(PINATA_SECONDARY_PIN_API_PATH),
-    rootPinName: z.string().min(1),
-    manifestPinName: z.string().min(1),
-    archivePinName: z.string().min(1).optional(),
-  })
-  .strict();
+const secondaryPinNames = {
+  rootPinName: z.string().min(1),
+  manifestPinName: z.string().min(1),
+  archivePinName: z.string().min(1).optional(),
+};
+
+const secondaryPinTargetSchema = z.discriminatedUnion("provider", [
+  z
+    .object({
+      provider: z.literal("pinata"),
+      apiBase: z.literal(PINATA_SECONDARY_PIN_API_BASE),
+      apiOrigin: z.literal(PINATA_SECONDARY_PIN_API_ORIGIN),
+      apiPath: z.literal(PINATA_SECONDARY_PIN_API_PATH),
+      ...secondaryPinNames,
+    })
+    .strict(),
+  z
+    .object({
+      provider: z.literal("lighthouse"),
+      apiBase: z.literal(LIGHTHOUSE_SECONDARY_PIN_API_BASE),
+      apiOrigin: z.literal(LIGHTHOUSE_SECONDARY_PIN_API_ORIGIN),
+      apiPath: z.literal(LIGHTHOUSE_SECONDARY_PIN_API_PATH),
+      ...secondaryPinNames,
+    })
+    .strict(),
+]);
 
 const ipnsPredecessorSchema = z
   .object({
@@ -795,6 +814,15 @@ export async function advancePublicationAttempt(
   }
   if (desiredIndex !== currentIndex + 1) {
     throw new Error(`Publication transition cannot skip ${attempt.state} -> ${stage}`);
+  }
+  if (
+    stage === "SECONDARY_PIN_RECORDED" &&
+    attempt.target.secondaryPin?.provider === "lighthouse"
+  ) {
+    assertSecondaryRetention(
+      [receipt?.root, receipt?.manifest, receipt?.archive],
+      attempt.target.secondaryPin.provider,
+    );
   }
   if (stage === "VERIFIED") assertCompleteVerification(receipt);
   const next = {

@@ -61,6 +61,9 @@ import {
   PINATA_SECONDARY_PIN_API_BASE,
   PINATA_SECONDARY_PIN_API_ORIGIN,
   PINATA_SECONDARY_PIN_API_PATH,
+  LIGHTHOUSE_SECONDARY_PIN_API_BASE,
+  LIGHTHOUSE_SECONDARY_PIN_API_ORIGIN,
+  LIGHTHOUSE_SECONDARY_PIN_API_PATH,
   REQUIRED_PUBLISH_ACTIONS,
   advancePublicationAttempt,
   assertPublicationAuthorizationActive,
@@ -77,6 +80,9 @@ import {
 } from "../../src/core/publish-gate.mjs";
 import {
   ensureSecondaryPin,
+  ensureLighthouseRegistration,
+  assertSecondaryRetention,
+  writeLighthouseCheckpoint,
   validateSecondaryPinServiceEndpoint,
 } from "../../src/core/secondary-pin.mjs";
 import {
@@ -129,6 +135,26 @@ export function pinataSecondaryPinTarget(runId) {
   };
 }
 
+/** Explicit provider selection changes the signed target; old Pinata approvals do not transfer. */
+export function secondaryPinTarget(runId, provider = "pinata") {
+  if (provider === "pinata") return pinataSecondaryPinTarget(runId);
+  if (provider !== "lighthouse") throw new Error("Unsupported secondary pin provider");
+  return {
+    provider: "lighthouse",
+    apiBase: LIGHTHOUSE_SECONDARY_PIN_API_BASE,
+    apiOrigin: LIGHTHOUSE_SECONDARY_PIN_API_ORIGIN,
+    apiPath: LIGHTHOUSE_SECONDARY_PIN_API_PATH,
+    rootPinName: `${LAKE_IPNS_LABEL}/${runId}/root`,
+    manifestPinName: `${LAKE_IPNS_LABEL}/${runId}/manifest`,
+  };
+}
+
+function runtimeSecondaryEndpoint(provider, environment) {
+  return provider === "lighthouse"
+    ? (environment.LIGHTHOUSE_PIN_SERVICE_URL ?? LIGHTHOUSE_SECONDARY_PIN_API_BASE)
+    : environment.SECONDARY_PIN_SERVICE_URL;
+}
+
 /**
  * Refuse endpoint normalization. The runtime string must be byte-for-byte the
  * Pinata API base in the signed target before a token, env file, or client is
@@ -146,15 +172,22 @@ export function assertSecondaryPinRuntimeTarget(target, endpoint) {
     );
   }
   const parsed = new URL(endpoint);
+  const requestPath =
+    validated.secondaryPin.provider === "pinata"
+      ? `${parsed.pathname.replace(/\/$/, "")}/pins`
+      : `${parsed.pathname.replace(/\/$/, "")}${LIGHTHOUSE_SECONDARY_PIN_API_PATH}`;
   if (
     parsed.origin !== validated.secondaryPin.apiOrigin ||
-    `${parsed.pathname.replace(/\/$/, "")}/pins` !== validated.secondaryPin.apiPath ||
+    requestPath !== validated.secondaryPin.apiPath ||
     parsed.username !== "" ||
     parsed.password !== "" ||
     parsed.search !== "" ||
     parsed.hash !== ""
   ) {
-    throw new Error("Secondary pin runtime endpoint does not match the signed Pinata origin/path");
+    const provider = validated.secondaryPin.provider === "pinata" ? "Pinata" : "Lighthouse";
+    throw new Error(
+      `Secondary pin runtime endpoint does not match the signed ${provider} origin/path`,
+    );
   }
   return endpoint;
 }
@@ -179,18 +212,24 @@ export async function loadLivePublicationCapabilities({
   loadEnvironmentFile = loadEnvFile,
 }) {
   const exactEndpoint = assertSecondaryPinRuntimeTarget(target, endpoint);
+  const provider = validatePublicationTarget(target).secondaryPin.provider;
   if (envFile) await loadEnvironmentFile(envFile, environment);
-  assertSecondaryPinRuntimeTarget(target, environment.SECONDARY_PIN_SERVICE_URL);
+  assertSecondaryPinRuntimeTarget(target, runtimeSecondaryEndpoint(provider, environment));
   fillDerivedFilebaseToken(environment);
   if (!environment.S3_ACCESS_KEY_ID || !environment.S3_SECRET_ACCESS_KEY) {
     throw new Error("Filebase credentials are required for a live publish");
   }
-  if (!environment.SECONDARY_PIN_SERVICE_TOKEN) {
-    throw new Error("A scoped Pinata JWT is required before the primary upload");
-  }
+  const token =
+    provider === "lighthouse" ? environment.IPFS_API_KEY : environment.SECONDARY_PIN_SERVICE_TOKEN;
+  if (typeof token !== "string" || token.trim().length === 0)
+    throw new Error(
+      provider === "lighthouse"
+        ? "IPFS_API_KEY is required for Lighthouse before the primary upload"
+        : "A scoped Pinata JWT is required before the primary upload",
+    );
   return {
     secondaryPinEndpoint: exactEndpoint,
-    secondaryPinToken: environment.SECONDARY_PIN_SERVICE_TOKEN,
+    secondaryPinToken: token.trim(),
     filebaseApiToken: environment.FILEBASE_API_TOKEN,
     filebaseCredentials: {
       accessKeyId: environment.S3_ACCESS_KEY_ID,
@@ -561,10 +600,12 @@ export async function publishRun({
   expectedIpnsPredecessorSequence,
   predecessorRecoveryPath = null,
   recoveryPublicKeyPath = null,
+  secondaryPinProvider = "pinata",
 }) {
   if (mode !== "full" && mode !== "incremental") {
     throw new Error("Publication mode must be full or incremental");
   }
+  const selectedSecondaryTarget = secondaryPinTarget(runId, secondaryPinProvider);
   // This is deliberately the first asynchronous boundary. Source/runtime
   // drift is rejected before run artifacts, approvals, credentials, or any
   // network-capable client are touched.
@@ -605,7 +646,8 @@ export async function publishRun({
       entry.target.mode === mode &&
       entry.target.candidateWorkflowRunId === candidateWorkflowRunId &&
       entry.target.ipnsPredecessor?.cid === expectedIpnsPredecessorCid &&
-      entry.target.ipnsPredecessor?.sequence === expectedIpnsPredecessorSequence,
+      entry.target.ipnsPredecessor?.sequence === expectedIpnsPredecessorSequence &&
+      entry.target.secondaryPin?.provider === secondaryPinProvider,
   );
   if (terminalCandidates.length > 1) throw new Error("Ambiguous terminal publication recovery");
   const terminalCandidate = terminalCandidates[0] ?? null;
@@ -792,7 +834,7 @@ export async function publishRun({
     bucket: LAKE_BUCKET,
     primaryCars,
     secondaryPin: {
-      ...pinataSecondaryPinTarget(runId),
+      ...selectedSecondaryTarget,
       archivePinName: `${LAKE_IPNS_LABEL}/${runId}/archive`,
     },
     ipnsLabel: LAKE_IPNS_LABEL,
@@ -855,7 +897,7 @@ export async function publishRun({
   // to the exact destination the human signed.
   const secondaryPinEndpoint = assertSecondaryPinRuntimeTarget(
     target,
-    process.env.SECONDARY_PIN_SERVICE_URL,
+    runtimeSecondaryEndpoint(target.secondaryPin.provider, process.env),
   );
   const approval = JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8"));
   const publicKey = await readFile(approvalPublicKeyPath);
@@ -1030,21 +1072,54 @@ export async function publishRun({
           assertPublicationAuthorizationActive(attempt);
         },
       };
-      const rootPin = await ensureSecondaryPin({
+      const reconcilePin = async (kind, options) => {
+        if (target.secondaryPin.provider === "pinata") return ensureSecondaryPin(options);
+        // Private checkpoints preserve accepted requests without promoting them.
+        // A retry must not POST again while an accepted request is still absent
+        // from the asynchronous inventory. These files never enter the data DAG.
+        const receiptPath = path.join(
+          path.dirname(manifestPath),
+          `${runId}.${attemptId.slice(7)}.lighthouse-${kind}.json`,
+        );
+        let previousEvidence = null;
+        try {
+          previousEvidence = JSON.parse(await readFile(receiptPath, "utf8"));
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        // Existing reconciled entries may predate this invocation's POST.
+        const acceptedEvidence =
+          previousEvidence?.requestAccepted || previousEvidence?.requestIntent
+            ? previousEvidence
+            : null;
+        return ensureLighthouseRegistration({
+          ...options,
+          previousEvidence: acceptedEvidence,
+          expectedBytes:
+            kind === "manifest"
+              ? manifestBytes.length
+              : kind === "archive"
+                ? snapshotBody.length
+                : null,
+          onEvidence: (receipt) => writeLighthouseCheckpoint(receiptPath, receipt),
+        });
+      };
+      const rootPin = await reconcilePin("root", {
         ...pinOptions,
         cid: dag.rootCid,
         name: target.secondaryPin.rootPinName,
       });
-      const manifestPin = await ensureSecondaryPin({
+      const manifestPin = await reconcilePin("manifest", {
         ...pinOptions,
         cid: manifestCid,
         name: target.secondaryPin.manifestPinName,
       });
-      const archivePin = await ensureSecondaryPin({
+      const archivePin = await reconcilePin("archive", {
         ...pinOptions,
         cid: archiveFile.cid,
         name: target.secondaryPin.archivePinName,
       });
+      assertSecondaryRetention([rootPin, manifestPin, archivePin], target.secondaryPin.provider);
       attempt = await advancePublicationAttempt(
         PUBLICATION_LEDGER_PATH,
         attemptId,
@@ -1583,6 +1658,7 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
       typeof flags["predecessor-recovery"] === "string" ? flags["predecessor-recovery"] : null,
     recoveryPublicKeyPath:
       typeof flags["recovery-public-key"] === "string" ? flags["recovery-public-key"] : null,
+    secondaryPinProvider: String(flags["secondary-provider"] ?? "pinata"),
     expectedIpnsPredecessorSequence:
       typeof predecessorSequenceFlag === "string" &&
       /^(?:0|[1-9][0-9]*)$/.test(predecessorSequenceFlag)

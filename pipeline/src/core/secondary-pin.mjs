@@ -1,12 +1,18 @@
 /**
- * Idempotent replication through an independent IPFS Pinning Service API.
+ * Idempotent replication through an independent IPFS provider.
  *
  * The primary Filebase CAR upload is not enough for the repository's survival
  * claim. This adapter reconciles an existing deterministic pin before it asks
- * for a new one, waits for `pinned`, and returns a secret-free receipt suitable
- * for the append-only publication ledger.
+ * for a new one. Pinata PSA can acknowledge `pinned`; Lighthouse registration
+ * cannot yet satisfy the retention gate. Receipts never contain credentials.
  */
 
+import { createHash, randomUUID } from "node:crypto";
+import { rename, unlink, writeFile } from "node:fs/promises";
+import { CID } from "multiformats/cid";
+
+const LIGHTHOUSE_BASE = "https://api.lighthouse.storage";
+const LIGHTHOUSE_PAGE_SIZE = 2000;
 const TERMINAL_FAILURES = new Set(["failed"]);
 const IN_PROGRESS = new Set(["queued", "pinning"]);
 
@@ -152,4 +158,268 @@ export async function ensureSecondaryPin({
     name,
     status: "pinned",
   };
+}
+
+/** Lighthouse is not PSA: never append /pins or send a Pinata JWT to it. */
+function lighthouseBase(endpoint) {
+  if (endpoint !== LIGHTHOUSE_BASE) {
+    throw new Error("Lighthouse endpoint must exactly equal https://api.lighthouse.storage");
+  }
+  return endpoint;
+}
+
+function canonicalCid(value) {
+  try {
+    return CID.parse(value).toV1().toString();
+  } catch {
+    throw new Error("Lighthouse returned an invalid CID");
+  }
+}
+
+function lighthouseSize(value) {
+  if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) value = Number(value);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Lighthouse returned an invalid file size");
+  }
+  return value;
+}
+
+/**
+ * Reconcile through the documented authenticated, paginated inventory.
+ * Inventory registration is not a provider-local retention acknowledgement.
+ * https://docs.lighthouse.storage/how-to/list-files
+ */
+export async function findLighthouseRegistration({
+  endpoint,
+  token,
+  cid,
+  name,
+  fetchImpl = fetch,
+  maxPages = 1000,
+}) {
+  lighthouseBase(endpoint);
+  const expectedCid = canonicalCid(cid);
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1) throw new Error("Invalid page limit");
+  let lastKey = "null";
+  const seen = new Set();
+  for (let page = 0; page < maxPages; page += 1) {
+    const query = new URL(`${endpoint}/api/user/files_uploaded`);
+    query.searchParams.set("lastKey", lastKey);
+    const payload = await responseJson(
+      await fetchImpl(query, {
+        headers: headers(token),
+        redirect: "error",
+        signal: AbortSignal.timeout(20_000),
+      }),
+      "Lighthouse inventory",
+    );
+    if (
+      !Array.isArray(payload?.fileList) ||
+      !Number.isSafeInteger(payload.totalFiles) ||
+      payload.totalFiles < 0
+    ) {
+      throw new Error("Lighthouse returned an invalid inventory; creation is not safe");
+    }
+    const exact = payload.fileList.filter(
+      (entry) =>
+        typeof entry?.cid === "string" &&
+        canonicalCid(entry.cid) === expectedCid &&
+        entry.fileName === name,
+    );
+    if (exact.length > 1) throw new Error("Lighthouse returned ambiguous matching registrations");
+    if (exact.length === 1) {
+      const entry = exact[0];
+      if (typeof entry.id !== "string" || !entry.id || entry.encryption !== false) {
+        throw new Error("Lighthouse registration lacks an identifier or is not explicitly public");
+      }
+      return {
+        id: entry.id,
+        cid: entry.cid,
+        fileName: entry.fileName,
+        fileSizeInBytes: lighthouseSize(entry.fileSizeInBytes),
+        encryption: entry.encryption,
+        ...(typeof entry.status === "string" ? { providerStatus: entry.status } : {}),
+      };
+    }
+    if (payload.fileList.length < LIGHTHOUSE_PAGE_SIZE) return null;
+    const next = payload.lastKey ?? payload.fileList.at(-1)?.id;
+    if (typeof next !== "string" || !next || seen.has(next) || next === lastKey) {
+      throw new Error("Lighthouse inventory pagination did not advance");
+    }
+    seen.add(next);
+    lastKey = next;
+  }
+  throw new Error("Lighthouse inventory exceeded the page limit; creation is not safe");
+}
+
+/**
+ * Use the documented same-CID pin endpoint, then reconcile inventory/metadata.
+ * HTTP success is accepted, NOT pinned. Registration is reconciled, NOT retained.
+ * Preserve the response digest and actual provider identifiers without secrets.
+ * https://docs.lighthouse.storage/how-to/pin-cid
+ * https://docs.lighthouse.storage/how-to/file-info
+ */
+export async function ensureLighthouseRegistration({
+  endpoint,
+  token,
+  cid,
+  name,
+  expectedBytes = null,
+  fetchImpl = fetch,
+  beforeCreate = () => {},
+  previousEvidence = null,
+  onEvidence = async () => {},
+  sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  attempts = 30,
+  intervalMs = 10_000,
+}) {
+  lighthouseBase(endpoint);
+  if (
+    !Number.isSafeInteger(attempts) ||
+    attempts < 1 ||
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 0
+  ) {
+    throw new Error("Invalid Lighthouse polling bounds");
+  }
+  if (expectedBytes !== null) lighthouseSize(expectedBytes);
+  if (
+    previousEvidence !== null &&
+    (previousEvidence.provider !== "lighthouse" ||
+      previousEvidence.cid !== cid ||
+      previousEvidence.name !== name ||
+      previousEvidence.serviceHost !== new URL(endpoint).host ||
+      (previousEvidence.requestAccepted !== null &&
+        previousEvidence.requestAccepted !== undefined &&
+        (previousEvidence.requestAccepted.state !== "request-accepted" ||
+          !Number.isInteger(previousEvidence.requestAccepted.httpStatus) ||
+          previousEvidence.requestAccepted.httpStatus < 200 ||
+          previousEvidence.requestAccepted.httpStatus > 299 ||
+          !/^sha256:[a-f0-9]{64}$/.test(previousEvidence.requestAccepted.responseDigest))) ||
+      (!previousEvidence.requestAccepted &&
+        previousEvidence.requestIntent?.state !== "request-submitting"))
+  )
+    throw new Error("Lighthouse accepted-request checkpoint does not match this target");
+  let registration = await findLighthouseRegistration({ endpoint, token, cid, name, fetchImpl });
+  let requestAccepted = previousEvidence?.requestAccepted ?? null;
+  let requestIntent = previousEvidence?.requestIntent ?? null;
+  if (registration === null && requestAccepted === null && requestIntent === null) {
+    // Persist intent before POST: an interrupted request is not safe to repeat
+    // merely because the provider's asynchronous inventory is still empty.
+    requestIntent = { state: "request-submitting" };
+    await onEvidence({
+      serviceHost: new URL(endpoint).host,
+      provider: "lighthouse",
+      cid,
+      name,
+      status: "request-submitting",
+      retentionVerified: false,
+      requestIntent,
+      requestAccepted: null,
+    });
+    await beforeCreate();
+    const response = await fetchImpl(`${endpoint}/api/lighthouse/pin`, {
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(20_000),
+      headers: headers(token, true),
+      body: JSON.stringify({ cid, fileName: name }),
+    });
+    if (!response.ok) {
+      throw new Error(`secondary pin service Lighthouse create failed: HTTP ${response.status}`);
+    }
+    const body = await response.text();
+    requestAccepted = {
+      state: "request-accepted",
+      httpStatus: response.status,
+      responseDigest: `sha256:${createHash("sha256").update(body).digest("hex")}`,
+      // Private checkpoint only. Keep actual acknowledgement text for review,
+      // but never retain an echoed credential in a receipt or public ledger.
+      responseBody: body.replaceAll(token, "[REDACTED]"),
+      bodyRedacted: body.includes(token),
+    };
+    await onEvidence({
+      serviceHost: new URL(endpoint).host,
+      provider: "lighthouse",
+      cid,
+      name,
+      status: "request-accepted",
+      retentionVerified: false,
+      requestIntent,
+      requestAccepted,
+    });
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    registration ??= await findLighthouseRegistration({ endpoint, token, cid, name, fetchImpl });
+    if (registration) {
+      const query = new URL(`${endpoint}/api/lighthouse/file_info`);
+      query.searchParams.set("cid", cid);
+      const info = await responseJson(
+        await fetchImpl(query, { redirect: "error", signal: AbortSignal.timeout(20_000) }),
+        "Lighthouse metadata",
+      );
+      const size = lighthouseSize(info?.fileSizeInBytes);
+      if (
+        canonicalCid(info?.cid) !== canonicalCid(cid) ||
+        info?.encryption !== false ||
+        size !== registration.fileSizeInBytes ||
+        (expectedBytes !== null && size !== expectedBytes)
+      ) {
+        throw new Error("Lighthouse metadata does not match the public CID/size registration");
+      }
+      const receipt = {
+        serviceHost: new URL(endpoint).host,
+        provider: "lighthouse",
+        cid,
+        name,
+        status: "registration-reconciled",
+        retentionVerified: false,
+        requestAccepted,
+        requestIntent,
+        registration,
+        metadata: { cid: info.cid, fileSizeInBytes: size, encryption: info.encryption },
+      };
+      await onEvidence(receipt);
+      return receipt;
+    }
+    if (attempt < attempts - 1) await sleep(intervalMs);
+  }
+  throw new Error(
+    "Lighthouse accepted the request but registration was not reconciled; do not create again blindly",
+  );
+}
+
+/** A registered/requested copy must never silently advance the retained-pin gate. */
+export function assertSecondaryRetention(receipts, provider = "pinata") {
+  if (
+    provider !== "pinata" ||
+    !Array.isArray(receipts) ||
+    receipts.length !== 3 ||
+    receipts.some((receipt) => receipt?.status !== "pinned" || receipt?.retentionVerified === false)
+  ) {
+    throw new Error(
+      "Secondary registration is not verified IPFS retention; gateway/history/IPNS promotion remains held",
+    );
+  }
+}
+
+/** Replace a private checkpoint only after its complete write succeeds. */
+export async function writeLighthouseCheckpoint(
+  filePath,
+  receipt,
+  fileOperations = { writeFile, rename, unlink },
+) {
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fileOperations.writeFile(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    await fileOperations.rename(temporaryPath, filePath);
+  } finally {
+    await fileOperations.unlink(temporaryPath).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
 }
