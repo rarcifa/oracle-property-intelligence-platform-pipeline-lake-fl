@@ -14,6 +14,8 @@ import {
 } from "../scripts/lake/publish-run.mjs";
 import {
   REQUIRED_PUBLISH_ACTIONS,
+  REPLICATION_ONLY_ACTIONS,
+  REPLICATION_TERMINAL_STAGE,
   advancePublicationAttempt,
   assertPublicationAuthorizationActive,
   authorizePublicationAttempt,
@@ -29,6 +31,8 @@ import {
   verifyPublishAuthorization,
   validatePublicationTarget,
   verifyConsumedPublicationResume,
+  verifyReplicationResume,
+  validatePublicationLedger,
 } from "../src/core/publish-gate.mjs";
 
 const directories = [];
@@ -111,6 +115,243 @@ function approval(exactTarget, keyPair, overrides = {}) {
     keyPair.privateKey,
   );
 }
+
+function replicaTarget() {
+  const original = target();
+  return {
+    ...original,
+    executionScope: "replication-only",
+    actions: [...REPLICATION_ONLY_ACTIONS],
+    primaryCars: {
+      ...original.primaryCars,
+      archive: {
+        key: `runs/${original.runId}/archive.car`,
+        bytes: 200,
+        sha256: `sha256:${"6".repeat(64)}`,
+        cid: original.rootCid,
+      },
+    },
+    secondaryPin: {
+      ...secondaryPinTarget(original.runId, "lighthouse"),
+      archivePinName: `${original.ipnsLabel}/${original.runId}/archive`,
+    },
+  };
+}
+
+function replicaEvidence(exactTarget) {
+  return {
+    retentionVerified: false,
+    promotionHeld: true,
+    ...Object.fromEntries(
+      ["root", "manifest", "archive"].map((kind) => [
+        kind,
+        {
+          provider: "lighthouse",
+          serviceHost: "api.lighthouse.storage",
+          cid: exactTarget.primaryCars[kind].cid,
+          name: exactTarget.secondaryPin[`${kind}PinName`],
+          status: "request-accepted",
+          retentionVerified: false,
+          requestIntent: { state: "request-submitting" },
+          requestAccepted: {
+            state: "request-accepted",
+            httpStatus: 202,
+            responseDigest: `sha256:${"7".repeat(64)}`,
+          },
+        },
+      ]),
+    ),
+  };
+}
+
+async function prepareReplica() {
+  const exactTarget = replicaTarget();
+  const keyPair = keys();
+  const signed = approval(exactTarget, keyPair);
+  const ledgerPath = await scratchLedger();
+  const attemptId = await prepare(ledgerPath, exactTarget);
+  await authorizePublicationAttempt(ledgerPath, attemptId, signed, keyPair.publicKey, {
+    now: NOW,
+    at: NOW,
+  });
+  const uploaded = (kind) => ({
+    ...exactTarget.primaryCars[kind],
+    action: "created",
+    reportedCid: null,
+  });
+  await advancePublicationAttempt(
+    ledgerPath,
+    attemptId,
+    "ROOT_UPLOAD_RECORDED",
+    {
+      ...uploaded("root"),
+      archive: uploaded("archive"),
+    },
+    { at: NOW },
+  );
+  await advancePublicationAttempt(
+    ledgerPath,
+    attemptId,
+    "MANIFEST_UPLOAD_RECORDED",
+    uploaded("manifest"),
+    { at: NOW },
+  );
+  return { exactTarget, keyPair, signed, ledgerPath, attemptId };
+}
+
+describe("signed replication-only terminal boundary", () => {
+  it("preserves omitted scope and rejects missing/extra/reordered actions or archive", () => {
+    const original = target();
+    expect(validatePublicationTarget(original)).toEqual(original);
+    expect(validatePublicationTarget(original)).not.toHaveProperty("executionScope");
+    expect(validatePublicationTarget(replicaTarget()).actions).toEqual(REPLICATION_ONLY_ACTIONS);
+    for (const patch of [
+      { actions: [...REQUIRED_PUBLISH_ACTIONS] },
+      { actions: [...REPLICATION_ONLY_ACTIONS].reverse() },
+      { executionScope: "full" },
+      { primaryCars: target().primaryCars },
+    ])
+      expect(() => validatePublicationTarget({ ...replicaTarget(), ...patch })).toThrow();
+  });
+
+  it("cannot transfer a signature in either direction or tamper scope/actions", () => {
+    const limited = replicaTarget();
+    const full = { ...limited, actions: [...REQUIRED_PUBLISH_ACTIONS] };
+    delete full.executionScope;
+    const keyPair = keys();
+    for (const [source, destination] of [
+      [limited, full],
+      [full, limited],
+    ]) {
+      const signed = approval(source, keyPair);
+      expect(() =>
+        verifyPublishAuthorization(signed, keyPair.publicKey, destination, { now: NOW }),
+      ).toThrow(/exact target/);
+      const tampered = { ...signed, payload: { ...signed.payload, target: destination } };
+      expect(() =>
+        verifyPublishAuthorization(tampered, keyPair.publicKey, destination, { now: NOW }),
+      ).toThrow(/signature/);
+    }
+  });
+
+  it("records bounded evidence, rejects promotion and resumes locally after expiry without consuming", async () => {
+    const fixture = await prepareReplica();
+    const { exactTarget, keyPair, signed, ledgerPath, attemptId } = fixture;
+    for (const stage of [
+      "SECONDARY_PIN_RECORDED",
+      "VERIFIED",
+      "HISTORY_RECORDED",
+      "IPNS_REPOINT_RECORDED",
+      "IPNS_VERIFIED",
+      "APPROVAL_CONSUMED",
+      "FINALIZED",
+    ]) {
+      await expect(
+        advancePublicationAttempt(ledgerPath, attemptId, stage, { status: "pinned" }),
+      ).rejects.toThrow(/signed execution scope/);
+    }
+    const receipt = replicaEvidence(exactTarget);
+    const completed = await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      REPLICATION_TERMINAL_STAGE,
+      receipt,
+      { at: NOW },
+    );
+    const ledger = await readPublicationLedger(ledgerPath);
+    expect(ledger.consumedApprovals).toEqual([]);
+    expect(nextPublicationRecoveryAction(completed)).toBe("review-provider-retention-evidence");
+    expect(
+      verifyReplicationResume(ledger, attemptId, signed, keyPair.publicKey, { now: LATER }),
+    ).toEqual(completed);
+    expect(() =>
+      verifyReplicationResume(ledger, attemptId, signed, keys().publicKey, { now: LATER }),
+    ).toThrow(/keyId/);
+    expect(() =>
+      verifyReplicationResume(ledger, attemptId, signed, keyPair.publicKey, { now: EXPIRED }),
+    ).toThrow(/time/);
+    expect(() =>
+      verifyConsumedPublicationResume(ledger, attemptId, signed, keyPair.publicKey, { now: LATER }),
+    ).toThrow(/terminal/);
+    await expect(consumePublicationAuthorization(ledgerPath, attemptId)).rejects.toThrow(
+      /replication-only/,
+    );
+    await expect(
+      advancePublicationAttempt(ledgerPath, attemptId, "SECONDARY_PIN_RECORDED", {
+        status: "pinned",
+      }),
+    ).rejects.toThrow(/signed execution scope/);
+    expect(
+      await advancePublicationAttempt(ledgerPath, attemptId, REPLICATION_TERMINAL_STAGE, receipt),
+    ).toEqual(completed);
+  });
+
+  it("validates the branch independently, including forged success, upload and pin evidence", async () => {
+    const { exactTarget, ledgerPath, attemptId } = await prepareReplica();
+    await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      REPLICATION_TERMINAL_STAGE,
+      replicaEvidence(exactTarget),
+      { at: NOW },
+    );
+    const original = await readPublicationLedger(ledgerPath);
+    for (const mutate of [
+      (attempt) => {
+        attempt.state = "SECONDARY_PIN_RECORDED";
+        attempt.transitions.at(-1).stage = attempt.state;
+      },
+      (attempt) => {
+        attempt.transitions.at(-1).receipt.root.status = "pinned";
+      },
+      (attempt) => {
+        attempt.transitions.at(-1).receipt.root.cid = exactTarget.primaryCars.manifest.cid;
+      },
+      (attempt) => {
+        attempt.transitions.at(-1).receipt.root.requestAccepted.responseBody =
+          "private acknowledgement";
+      },
+      (attempt) => {
+        attempt.transitions.find((entry) => entry.stage === "ROOT_UPLOAD_RECORDED").receipt.bytes +=
+          1;
+      },
+    ]) {
+      const ledger = structuredClone(original);
+      mutate(ledger.attempts[attemptId]);
+      expect(() => validatePublicationLedger(ledger)).toThrow();
+    }
+    const consumed = structuredClone(original);
+    consumed.consumedApprovals.push({
+      nonce: consumed.attempts[attemptId].authorization.nonce,
+      attemptId,
+      consumedAt: NOW,
+    });
+    expect(() => validatePublicationLedger(consumed)).toThrow(/replication-only/);
+  });
+
+  it("keeps the bounded nonce reserved rather than allowing a second full attempt", async () => {
+    const { exactTarget, keyPair, signed, ledgerPath, attemptId } = await prepareReplica();
+    await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      REPLICATION_TERMINAL_STAGE,
+      replicaEvidence(exactTarget),
+      { at: NOW },
+    );
+    const full = { ...exactTarget, actions: [...REQUIRED_PUBLISH_ACTIONS] };
+    delete full.executionScope;
+    const fullId = await prepare(ledgerPath, full);
+    await expect(
+      authorizePublicationAttempt(
+        ledgerPath,
+        fullId,
+        approval(full, keyPair, { nonce: signed.payload.nonce }),
+        keyPair.publicKey,
+        { now: NOW },
+      ),
+    ).rejects.toThrow(/already attached/);
+  });
+});
 
 describe("exact Lighthouse publication destination", () => {
   it("requires explicit selection and does not transfer a Pinata authorization", () => {

@@ -240,6 +240,43 @@ Two gateways alone can
 still retrieve blocks from Filebase. Do not demand sealed Filecoin deals or add
 a new certification workflow merely to replace the provider's acknowledgement.
 
+### Signed replication-only scope
+
+For a separately approved upload-and-pin request, add
+`--execution-scope replication-only --secondary-provider lighthouse` to both
+the existing preparation and live commands. Keep `--dry-run` during preparation;
+local code approval is not live execution authority. The unsigned request is
+`<run-id>.replication-only.publication-request.json`; do not sign the older
+all-action request. The existing human-only approval helper signs that request's
+exact target with its candidate commit, byte bindings, provider, predecessor,
+expiry and nonce. No new workflow or certificate is introduced.
+
+The signed actions are exactly `upload-root-car`, `upload-manifest-car`, and
+`pin-secondary-copy`. The first action includes the bound archive CAR upload;
+the third includes the root, manifest and archive pin requests. Omitting the
+scope preserves existing full-publication targets and signatures without adding
+a parsing default. Neither signature can authorize the other scope.
+
+After the three byte-verified immutable uploads and actual provider evidence,
+the ledger stops at `REPLICATION_REQUESTS_RECORDED`, a separate terminal branch
+after `MANIFEST_UPLOAD_RECORDED`. Lighthouse evidence distinguishes acknowledged
+requests, inventory/metadata registrations and interrupted requests whose outcome
+is uncertain. Bounded polling may finish with pending evidence; an interrupted
+POST is never described as accepted and is never blindly repeated. Private
+checkpoints retain redacted acknowledgements; the ledger retains their digests,
+not their response bodies. HTTP acceptance or registration is not retention.
+
+This result explicitly has `retentionVerified: false` and `promotionHeld: true`.
+Ledger validation, transitions and dispatch forbid two-gateway verification,
+successful run history, IPNS mutation, full-success approval consumption and
+`FINALIZED` under that scope. Latest, row hashes and the RAG data selector stay
+unchanged. The nonce remains reserved to the same attempt. A terminal retry
+verifies the original signature locally, including after expiry, then returns
+the recorded evidence with zero repeated remote effects. This is not the
+assignment's completed public-publication proof. Provider retention evidence
+and a separate exact full-publication go/signature are still required for
+promotion; never widen the limited signature to make that happen.
+
 A bounded read-only review of the official Pin CID, List Files and File Info
 documentation and Go SDK did not establish a documented completed-retention
 response contract. The SDK's Pin method returns an HTTP-call error/result, while

@@ -9,6 +9,7 @@ import {
   assertSecondaryRetention,
   ensureLighthouseRegistration,
   findLighthouseRegistration,
+  publicLighthouseReceipt,
   writeLighthouseCheckpoint,
 } from "../src/core/secondary-pin.mjs";
 
@@ -38,6 +39,72 @@ const reply = (body, status = 200) =>
 afterEach(() => vi.restoreAllMocks());
 
 describe("Lighthouse same-CID registration (not retention proof)", () => {
+  it("returns acknowledged pending evidence only when explicitly enabled and strips private bodies", async () => {
+    const fetchImpl = vi.fn(async (_url, options) =>
+      options?.method === "POST"
+        ? reply({ message: `accepted ${TOKEN}` }, 202)
+        : reply(inventory()),
+    );
+    const evidence = vi.fn();
+    const receipt = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      fetchImpl,
+      attempts: 1,
+      allowPendingEvidence: true,
+      onEvidence: evidence,
+    });
+    expect(receipt.status).toBe("request-accepted");
+    expect(receipt.retentionVerified).toBe(false);
+    expect(receipt.requestAccepted.responseBody).toContain("[REDACTED]");
+    const publicReceipt = publicLighthouseReceipt(receipt);
+    expect(publicReceipt.requestAccepted).not.toHaveProperty("responseBody");
+    expect(JSON.stringify(publicReceipt)).not.toContain(TOKEN);
+    expect(publicReceipt.requestAccepted.responseDigest).toBe(
+      receipt.requestAccepted.responseDigest,
+    );
+    expect(evidence).toHaveBeenCalledTimes(3);
+    expect(() =>
+      assertSecondaryRetention([publicReceipt, publicReceipt, publicReceipt], "lighthouse"),
+    ).toThrow(/retention/);
+    fetchImpl.mockClear();
+    const resumed = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      fetchImpl,
+      attempts: 1,
+      allowPendingEvidence: true,
+      previousEvidence: receipt,
+    });
+    expect(resumed).toEqual(receipt);
+    expect(fetchImpl.mock.calls.every(([_url, options]) => options?.method !== "POST")).toBe(true);
+  });
+
+  it("reports an interrupted POST as uncertain, never accepted or retained, and does not rePOST", async () => {
+    const fetchImpl = vi.fn(async () => reply(inventory()));
+    const previousEvidence = {
+      provider: "lighthouse",
+      serviceHost: "api.lighthouse.storage",
+      cid: OBJECT,
+      name: NAME,
+      requestIntent: { state: "request-submitting" },
+      requestAccepted: null,
+    };
+    const receipt = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      fetchImpl,
+      attempts: 1,
+      allowPendingEvidence: true,
+      previousEvidence,
+    });
+    expect(receipt).toMatchObject({
+      status: "request-outcome-uncertain",
+      retentionVerified: false,
+      requestAccepted: null,
+    });
+    expect(fetchImpl.mock.calls.every(([_url, options]) => options?.method !== "POST")).toBe(true);
+    await expect(
+      ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, attempts: 1, previousEvidence }),
+    ).rejects.toThrow(/not reconciled/);
+  });
   it("reconciles inventory and metadata without POST or invented pinned status", async () => {
     const fetchImpl = vi
       .fn()

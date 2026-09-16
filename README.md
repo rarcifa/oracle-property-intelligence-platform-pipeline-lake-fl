@@ -153,11 +153,23 @@ unchanged; this is not approval for a different paid tier or remote execution.
 Live publication still needs its own exact-target approval. The subscription was established
 by the owner; the pipeline did not purchase, renew, cancel or change it. Data
 retention depends on an active provider plan, not an infinite-storage guarantee.
-The Lighthouse adapter's local verification on 2026-09-17 passed all 980 pipeline
-tests (81 files), including provider/credential isolation, interrupted-request
+The Lighthouse adapter and signed replication scope's local verification on
+2026-09-17 passed all 994 pipeline tests (82 files), including provider/credential isolation, interrupted-request
 reconciliation, 20-second request deadlines, atomic private checkpoints and
 rejection of unsupported retention receipts. Arceus confirmed this bounded
-Oracle-adapter route; this is code verification, not live publication proof.
+Oracle-adapter route and reviewed the independent scope boundaries; this is
+code verification, not live publication proof.
+
+The existing publisher also supports a separately signed
+`--execution-scope replication-only` target: the three immutable CAR uploads and
+root/manifest/archive pin requests, with actual accepted/registered/uncertain
+evidence. Its terminal ledger branch is `REPLICATION_REQUESTS_RECORDED`, with
+retention unverified and promotion held. That scope cannot verify gateways,
+append successful history, repoint IPNS or change latest/row hashes/RAG selection;
+terminal retries return evidence locally without repeating remote effects.
+Omitted scope keeps old full-publication signatures unchanged. This local repair
+does not execute uploads or pins and does not satisfy public publication by
+itself; see [the scoped handoff](docs/runbook.md#signed-replication-only-scope).
 
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root

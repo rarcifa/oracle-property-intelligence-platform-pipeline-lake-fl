@@ -20,6 +20,7 @@ import {
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { CID } from "multiformats/cid";
 
 import { canonicalJson } from "./coverage-publication.mjs";
 import { assertSecondaryRetention } from "./secondary-pin.mjs";
@@ -42,6 +43,9 @@ export const REQUIRED_PUBLISH_ACTIONS = Object.freeze([
   "repoint-ipns",
 ]);
 
+export const REPLICATION_ONLY_ACTIONS = Object.freeze(REQUIRED_PUBLISH_ACTIONS.slice(0, 3));
+export const REPLICATION_TERMINAL_STAGE = "REPLICATION_REQUESTS_RECORDED";
+
 export const PUBLICATION_STAGES = Object.freeze([
   "PREPARED",
   "FROZEN",
@@ -57,6 +61,16 @@ export const PUBLICATION_STAGES = Object.freeze([
   "APPROVAL_CONSUMED",
   "FINALIZED",
 ]);
+
+const REPLICATION_STAGES = Object.freeze([
+  ...PUBLICATION_STAGES.slice(0, 6),
+  REPLICATION_TERMINAL_STAGE,
+]);
+
+/** Omission deliberately preserves legacy targets and their canonical signatures. */
+export function publicationStages(target) {
+  return target.executionScope === "replication-only" ? REPLICATION_STAGES : PUBLICATION_STAGES;
+}
 
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const COUNTY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -155,15 +169,20 @@ export const publicationTargetSchema = z
     ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
     ipnsPredecessor: ipnsPredecessorSchema,
     predecessorRecoveryDigest: digest.optional(),
-    actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)).length(REQUIRED_PUBLISH_ACTIONS.length),
+    executionScope: z.literal("replication-only").optional(),
+    actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)),
   })
   .strict()
   .superRefine((target, context) => {
-    if (canonicalJson(target.actions) !== canonicalJson(REQUIRED_PUBLISH_ACTIONS)) {
+    const requiredActions =
+      target.executionScope === "replication-only"
+        ? REPLICATION_ONLY_ACTIONS
+        : REQUIRED_PUBLISH_ACTIONS;
+    if (canonicalJson(target.actions) !== canonicalJson(requiredActions)) {
       context.addIssue({
         code: "custom",
         path: ["actions"],
-        message: "must equal the required ordered publication actions",
+        message: "must equal the required ordered actions for the signed execution scope",
       });
     }
     if (target.ipnsLabel !== `oracle-open-data-${target.county}`) {
@@ -195,6 +214,13 @@ export const publicationTargetSchema = z
         code: "custom",
         path: ["primaryCars", "archive"],
         message: "archive upload and independent archive pin must be bound together",
+      });
+    }
+    if (target.executionScope === "replication-only" && !target.primaryCars.archive) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "archive"],
+        message: "replication-only must bind all three CARs and secondary pin names",
       });
     }
     if (
@@ -476,7 +502,7 @@ export const publishAuthorizationSchema = z
 const transitionSchema = z
   .object({
     sequence: z.number().int().positive(),
-    stage: z.enum([...PUBLICATION_STAGES, "ROLLED_BACK"]),
+    stage: z.enum([...PUBLICATION_STAGES, REPLICATION_TERMINAL_STAGE, "ROLLED_BACK"]),
     at: isoTimestamp,
     receipt: jsonValue,
   })
@@ -493,7 +519,7 @@ const attemptSchema = z
       preIdentityPublicationTargetSchema,
       legacyPublicationTargetSchema,
     ]),
-    state: z.enum([...PUBLICATION_STAGES, "ROLLED_BACK"]),
+    state: z.enum([...PUBLICATION_STAGES, REPLICATION_TERMINAL_STAGE, "ROLLED_BACK"]),
     createdAt: isoTimestamp,
     updatedAt: isoTimestamp,
     authorization: z
@@ -564,6 +590,110 @@ export function validatePublicationTarget(value) {
   return result.data;
 }
 
+/** Bounded evidence is not a retention or successful-publication certificate. */
+function assertReplicationReceipt(target, value) {
+  const sameCid = (left, right) => CID.parse(left).toV1().equals(CID.parse(right).toV1());
+  const receipt = z
+    .object({
+      retentionVerified: z.literal(false),
+      promotionHeld: z.literal(true),
+      root: z.unknown(),
+      manifest: z.unknown(),
+      archive: z.unknown(),
+    })
+    .strict()
+    .parse(value);
+  for (const kind of ["root", "manifest", "archive"]) {
+    const copy = receipt[kind];
+    if (
+      !copy ||
+      copy.cid !== target.primaryCars[kind].cid ||
+      copy.name !== target.secondaryPin[`${kind}PinName`] ||
+      copy.serviceHost !== new URL(target.secondaryPin.apiOrigin).host
+    )
+      throw new Error("Replication evidence does not match the signed CID/name/provider");
+    if (target.secondaryPin.provider === "pinata") {
+      z.object({
+        serviceHost: z.string(),
+        requestId: z.string().min(1),
+        cid: z.string(),
+        name: z.string(),
+        status: z.literal("pinned"),
+      })
+        .strict()
+        .parse(copy);
+      continue;
+    }
+    const accepted = z
+      .object({
+        state: z.literal("request-accepted"),
+        httpStatus: z.number().int().min(200).max(299),
+        responseDigest: digest,
+      })
+      .strict();
+    const registration = z
+      .object({
+        id: z.string().min(1),
+        cid: z.string(),
+        fileName: z.string(),
+        fileSizeInBytes: z.number().int().nonnegative(),
+        encryption: z.literal(false),
+      })
+      .strict();
+    const parsed = z
+      .object({
+        serviceHost: z.string(),
+        provider: z.literal("lighthouse"),
+        cid: z.string(),
+        name: z.string(),
+        status: z.enum([
+          "request-accepted",
+          "request-outcome-uncertain",
+          "registration-reconciled",
+        ]),
+        retentionVerified: z.literal(false),
+        requestAccepted: accepted.nullable(),
+        requestIntent: z
+          .object({ state: z.literal("request-submitting") })
+          .strict()
+          .nullable(),
+        registration: registration.optional(),
+        metadata: z
+          .object({
+            cid: z.string(),
+            fileSizeInBytes: z.number().int().nonnegative(),
+            encryption: z.literal(false),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .parse(copy);
+    if (parsed.status === "request-accepted" && !parsed.requestAccepted)
+      throw new Error("Accepted replication evidence requires an actual HTTP acknowledgement");
+    if (
+      parsed.status === "request-outcome-uncertain" &&
+      (!parsed.requestIntent || parsed.requestAccepted)
+    )
+      throw new Error(
+        "Uncertain replication evidence requires unacknowledged durable request intent",
+      );
+    if (parsed.status === "registration-reconciled") {
+      if (
+        !parsed.registration ||
+        !parsed.metadata ||
+        !sameCid(parsed.registration.cid, copy.cid) ||
+        parsed.registration.fileName !== copy.name ||
+        !sameCid(parsed.metadata.cid, copy.cid) ||
+        parsed.registration.fileSizeInBytes !== parsed.metadata.fileSizeInBytes
+      )
+        throw new Error("Registered replication evidence requires matching inventory and metadata");
+    } else if (parsed.registration || parsed.metadata) {
+      throw new Error("Pending replication evidence cannot claim reconciled registration");
+    }
+  }
+}
+
 /** @param {unknown} value @returns {import("zod").infer<typeof publicationLedgerSchema>} */
 export function validatePublicationLedger(value) {
   const result = publicationLedgerSchema.safeParse(value);
@@ -598,7 +728,7 @@ export function validatePublicationLedger(value) {
       throw new Error("Invalid publication ledger: a legacy target must be rolled back");
     }
     const activeStages = rolledBack ? stages.slice(0, -1) : stages;
-    const expectedStages = PUBLICATION_STAGES.slice(0, activeStages.length);
+    const expectedStages = publicationStages(attempt.target).slice(0, activeStages.length);
     if (canonicalJson(activeStages) !== canonicalJson(expectedStages)) {
       throw new Error(
         `Invalid publication ledger: ${attemptId} transitions are not a stage prefix`,
@@ -611,6 +741,42 @@ export function validatePublicationLedger(value) {
     if (reachedAuthorization !== (attempt.authorization !== null)) {
       throw new Error(
         `Invalid publication ledger: ${attemptId} authorization receipt is inconsistent`,
+      );
+    }
+    if (attempt.state === REPLICATION_TERMINAL_STAGE) {
+      assertReplicationReceipt(attempt.target, attempt.transitions.at(-1).receipt);
+      const rootUpload = attempt.transitions.find(
+        (entry) => entry.stage === "ROOT_UPLOAD_RECORDED",
+      )?.receipt;
+      const manifestUpload = attempt.transitions.find(
+        (entry) => entry.stage === "MANIFEST_UPLOAD_RECORDED",
+      )?.receipt;
+      for (const [kind, uploaded] of [
+        ["root", rootUpload],
+        ["archive", rootUpload?.archive],
+        ["manifest", manifestUpload],
+      ]) {
+        const binding = attempt.target.primaryCars[kind];
+        if (
+          !uploaded ||
+          uploaded.key !== binding.key ||
+          uploaded.bytes !== binding.bytes ||
+          uploaded.sha256 !== binding.sha256 ||
+          uploaded.cid !== binding.cid ||
+          !["created", "reconciled-existing"].includes(uploaded.action) ||
+          (uploaded.reportedCid !== null && uploaded.reportedCid !== binding.cid)
+        )
+          throw new Error(
+            "Invalid publication ledger: replication upload evidence does not match signed CAR bytes",
+          );
+      }
+    }
+    if (
+      attempt.target.executionScope === "replication-only" &&
+      result.data.consumedApprovals.some((entry) => entry.attemptId === attemptId)
+    ) {
+      throw new Error(
+        "Invalid publication ledger: replication-only cannot consume full publication authority",
       );
     }
   }
@@ -800,9 +966,11 @@ export async function advancePublicationAttempt(
   if (attempt.state === "ROLLED_BACK") {
     throw new Error("a rolled-back publication attempt cannot be resumed");
   }
-  const currentIndex = PUBLICATION_STAGES.indexOf(attempt.state);
-  const desiredIndex = PUBLICATION_STAGES.indexOf(stage);
-  if (desiredIndex < 0) throw new Error(`Unknown publication stage ${stage}`);
+  const stages = publicationStages(attempt.target);
+  const currentIndex = stages.indexOf(attempt.state);
+  const desiredIndex = stages.indexOf(stage);
+  if (desiredIndex < 0)
+    throw new Error(`Publication stage ${stage} is outside the signed execution scope`);
   if (desiredIndex <= currentIndex) {
     const prior = attempt.transitions.find((transition) => transition.stage === stage);
     if (!prior || canonicalJson(prior.receipt) !== canonicalJson(receipt)) {
@@ -825,6 +993,7 @@ export async function advancePublicationAttempt(
     );
   }
   if (stage === "VERIFIED") assertCompleteVerification(receipt);
+  if (stage === REPLICATION_TERMINAL_STAGE) assertReplicationReceipt(attempt.target, receipt);
   const next = {
     ...attempt,
     state: stage,
@@ -979,8 +1148,9 @@ export async function authorizePublicationAttempt(
     expiresAt: verified.payload.expiresAt,
     approver: verified.payload.approver,
   };
-  const currentIndex = PUBLICATION_STAGES.indexOf(attempt.state);
-  const authorizedIndex = PUBLICATION_STAGES.indexOf("AUTHORIZED");
+  const stages = publicationStages(attempt.target);
+  const currentIndex = stages.indexOf(attempt.state);
+  const authorizedIndex = stages.indexOf("AUTHORIZED");
   if (currentIndex >= authorizedIndex) {
     if (
       canonicalJson(attempt.authorization) !== canonicalJson(authorizationRecord) ||
@@ -1067,6 +1237,44 @@ export function verifyConsumedPublicationResume(
   return attempt;
 }
 
+/** Read recorded bounded effects after expiry; never grant new remote authority. */
+export function verifyReplicationResume(
+  ledger,
+  attemptId,
+  authorization,
+  publicKeyPem,
+  options = {},
+) {
+  const attempt = validatePublicationLedger(ledger).attempts[attemptId];
+  if (
+    !attempt ||
+    attempt.target.executionScope !== "replication-only" ||
+    attempt.state !== REPLICATION_TERMINAL_STAGE
+  ) {
+    throw new Error("Replication resume requires the same bounded terminal attempt");
+  }
+  const authorizedAt = attempt.transitions.find((entry) => entry.stage === "AUTHORIZED")?.at;
+  const now = options.now ?? new Date().toISOString();
+  if (
+    !authorizedAt ||
+    !Number.isFinite(Date.parse(now)) ||
+    Date.parse(now) < Date.parse(attempt.updatedAt)
+  ) {
+    throw new Error("Replication reconciliation time is invalid");
+  }
+  const verified = verifyPublishAuthorization(authorization, publicKeyPem, attempt.target, {
+    now: authorizedAt,
+  });
+  if (
+    attempt.authorization.nonce !== verified.payload.nonce ||
+    attempt.authorization.approvalDigest !== digestJson(verified) ||
+    attempt.authorization.keyId !== verified.signature.keyId
+  ) {
+    throw new Error("Replication resume does not match the original authorization receipt");
+  }
+  return attempt;
+}
+
 /**
  * Refuse a new network side effect after an authorization's exact time window.
  * Local reconciliation and finalization may continue after expiry once the
@@ -1104,6 +1312,9 @@ export async function consumePublicationAuthorization(
   const ledger = await readPublicationLedger(ledgerPath);
   const attempt = ledger.attempts[attemptId];
   if (!attempt?.authorization) throw new Error("publication attempt has no verified authorization");
+  if (attempt.target.executionScope === "replication-only") {
+    throw new Error("replication-only cannot consume full publication authority");
+  }
   const existing = ledger.consumedApprovals.find(
     (entry) => entry.nonce === attempt.authorization.nonce,
   );
@@ -1187,6 +1398,7 @@ export function nextPublicationRecoveryAction(attempt) {
     IPNS_VERIFIED: "consume-authorization",
     APPROVAL_CONSUMED: "finalize-publication",
     FINALIZED: "none",
+    REPLICATION_REQUESTS_RECORDED: "review-provider-retention-evidence",
     ROLLED_BACK: "none",
   };
   return actions[attempt.state];

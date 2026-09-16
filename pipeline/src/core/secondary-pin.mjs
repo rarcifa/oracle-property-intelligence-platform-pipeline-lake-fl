@@ -272,13 +272,15 @@ export async function ensureLighthouseRegistration({
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   attempts = 30,
   intervalMs = 10_000,
+  allowPendingEvidence = false,
 }) {
   lighthouseBase(endpoint);
   if (
     !Number.isSafeInteger(attempts) ||
     attempts < 1 ||
     !Number.isSafeInteger(intervalMs) ||
-    intervalMs < 0
+    intervalMs < 0 ||
+    typeof allowPendingEvidence !== "boolean"
   ) {
     throw new Error("Invalid Lighthouse polling bounds");
   }
@@ -384,9 +386,55 @@ export async function ensureLighthouseRegistration({
     }
     if (attempt < attempts - 1) await sleep(intervalMs);
   }
+  if (allowPendingEvidence) {
+    const receipt = {
+      serviceHost: new URL(endpoint).host,
+      provider: "lighthouse",
+      cid,
+      name,
+      status: requestAccepted ? "request-accepted" : "request-outcome-uncertain",
+      retentionVerified: false,
+      requestIntent,
+      requestAccepted,
+    };
+    await onEvidence(receipt);
+    return receipt;
+  }
   throw new Error(
-    "Lighthouse accepted the request but registration was not reconciled; do not create again blindly",
+    "Lighthouse request registration was not reconciled; do not create again blindly",
   );
+}
+
+/** Acknowledgement bodies stay private; the ledger binds their digest only. */
+export function publicLighthouseReceipt(receipt) {
+  return {
+    serviceHost: receipt.serviceHost,
+    provider: receipt.provider,
+    cid: receipt.cid,
+    name: receipt.name,
+    status: receipt.status,
+    retentionVerified: false,
+    requestIntent: receipt.requestIntent,
+    requestAccepted: receipt.requestAccepted
+      ? {
+          state: receipt.requestAccepted.state,
+          httpStatus: receipt.requestAccepted.httpStatus,
+          responseDigest: receipt.requestAccepted.responseDigest,
+        }
+      : null,
+    ...(receipt.registration
+      ? {
+          registration: {
+            id: receipt.registration.id,
+            cid: receipt.registration.cid,
+            fileName: receipt.registration.fileName,
+            fileSizeInBytes: receipt.registration.fileSizeInBytes,
+            encryption: receipt.registration.encryption,
+          },
+          metadata: receipt.metadata,
+        }
+      : {}),
+  };
 }
 
 /** A registered/requested copy must never silently advance the retained-pin gate. */

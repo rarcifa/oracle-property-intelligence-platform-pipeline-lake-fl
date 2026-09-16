@@ -65,6 +65,8 @@ import {
   LIGHTHOUSE_SECONDARY_PIN_API_ORIGIN,
   LIGHTHOUSE_SECONDARY_PIN_API_PATH,
   REQUIRED_PUBLISH_ACTIONS,
+  REPLICATION_ONLY_ACTIONS,
+  REPLICATION_TERMINAL_STAGE,
   advancePublicationAttempt,
   assertPublicationAuthorizationActive,
   authorizePublicationAttempt,
@@ -77,10 +79,12 @@ import {
   sha256Digest,
   validatePublicationTarget,
   verifyConsumedPublicationResume,
+  verifyReplicationResume,
 } from "../../src/core/publish-gate.mjs";
 import {
   ensureSecondaryPin,
   ensureLighthouseRegistration,
+  publicLighthouseReceipt,
   assertSecondaryRetention,
   writeLighthouseCheckpoint,
   validateSecondaryPinServiceEndpoint,
@@ -601,9 +605,13 @@ export async function publishRun({
   predecessorRecoveryPath = null,
   recoveryPublicKeyPath = null,
   secondaryPinProvider = "pinata",
+  executionScope = undefined,
 }) {
   if (mode !== "full" && mode !== "incremental") {
     throw new Error("Publication mode must be full or incremental");
+  }
+  if (executionScope !== undefined && executionScope !== "replication-only") {
+    throw new Error("Unsupported publication execution scope");
   }
   const selectedSecondaryTarget = secondaryPinTarget(runId, secondaryPinProvider);
   // This is deliberately the first asynchronous boundary. Source/runtime
@@ -633,13 +641,13 @@ export async function publishRun({
 
   // Before the DAG is hashed, the CAR uploaded, or IPNS moved — a truncated
   // acquisition must fail here, not become an immutable published root.
-  const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
   const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousRun = await readPreviousRun(historyPath);
   const startingLedger = await readPublicationLedger(PUBLICATION_LEDGER_PATH);
   const terminalCandidates = Object.values(startingLedger.attempts).filter(
     (entry) =>
-      ["APPROVAL_CONSUMED", "FINALIZED"].includes(entry.state) &&
+      ["APPROVAL_CONSUMED", "FINALIZED", REPLICATION_TERMINAL_STAGE].includes(entry.state) &&
+      entry.target.executionScope === executionScope &&
       entry.target.runId === runId &&
       entry.target.candidateCommit === candidateCommit &&
       entry.target.provenanceDigest === provenanceDigest &&
@@ -653,6 +661,15 @@ export async function publishRun({
   const terminalCandidate = terminalCandidates[0] ?? null;
   let allowedHistoryAppend = null;
   if (terminalCandidate && !dryRun && approvalPath && approvalPublicKeyPath) {
+    if (executionScope === "replication-only") {
+      const recorded = verifyReplicationResume(
+        startingLedger,
+        terminalCandidate.attemptId,
+        JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8")),
+        await readFile(approvalPublicKeyPath),
+      );
+      return replicationResult(recorded);
+    }
     verifyConsumedPublicationResume(
       startingLedger,
       terminalCandidate.attemptId,
@@ -693,6 +710,7 @@ export async function publishRun({
         `Expected IPNS predecessor ${expectedIpnsPredecessorCid} does not match immutable local history ${previousRun?.rootCid ?? "none"}`,
       );
   }
+  const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
   const accountingPredecessor = recoveryAnchor ?? previousRun;
   assertTablesPlausible(coverageTableRows(coverage), accountingPredecessor);
 
@@ -844,7 +862,12 @@ export async function publishRun({
       sequence: expectedIpnsPredecessorSequence,
     },
     ...(recoveryAnchor ? { predecessorRecoveryDigest: recoveryAnchor.receiptDigest } : {}),
-    actions: [...REQUIRED_PUBLISH_ACTIONS],
+    ...(executionScope ? { executionScope } : {}),
+    actions: [
+      ...(executionScope === "replication-only"
+        ? REPLICATION_ONLY_ACTIONS
+        : REQUIRED_PUBLISH_ACTIONS),
+    ],
   };
   const attemptId = publicationAttemptId(target);
   await beginPublicationAttempt(PUBLICATION_LEDGER_PATH, target);
@@ -859,7 +882,7 @@ export async function publishRun({
   });
   const approvalRequestPath = path.join(
     path.dirname(manifestPath),
-    `${runId}.publication-request.json`,
+    `${runId}${executionScope ? `.${executionScope}` : ""}.publication-request.json`,
   );
   await writeFile(
     approvalRequestPath,
@@ -886,6 +909,7 @@ export async function publishRun({
       manifestCid,
       carCid: archiveFile.cid,
       dryRun: true,
+      ...(executionScope ? { executionScope } : {}),
       publicationState: "PREPARED_LOCAL",
       attemptId,
       approvalRequestPath,
@@ -1095,6 +1119,7 @@ export async function publishRun({
         return ensureLighthouseRegistration({
           ...options,
           previousEvidence: acceptedEvidence,
+          allowPendingEvidence: target.executionScope === "replication-only",
           expectedBytes:
             kind === "manifest"
               ? manifestBytes.length
@@ -1119,6 +1144,25 @@ export async function publishRun({
         cid: archiveFile.cid,
         name: target.secondaryPin.archivePinName,
       });
+      if (target.executionScope === "replication-only") {
+        const sanitize =
+          target.secondaryPin.provider === "lighthouse"
+            ? publicLighthouseReceipt
+            : (receipt) => receipt;
+        attempt = await advancePublicationAttempt(
+          PUBLICATION_LEDGER_PATH,
+          attemptId,
+          REPLICATION_TERMINAL_STAGE,
+          {
+            root: sanitize(rootPin),
+            manifest: sanitize(manifestPin),
+            archive: sanitize(archivePin),
+            retentionVerified: false,
+            promotionHeld: true,
+          },
+        );
+        return replicationResult(attempt);
+      }
       assertSecondaryRetention([rootPin, manifestPin, archivePin], target.secondaryPin.provider);
       attempt = await advancePublicationAttempt(
         PUBLICATION_LEDGER_PATH,
@@ -1127,6 +1171,10 @@ export async function publishRun({
         { root: rootPin, manifest: manifestPin, archive: archivePin },
       );
     }
+  }
+
+  if (target.executionScope === "replication-only") {
+    throw new Error("Replication-only execution cannot enter publication promotion");
   }
 
   const evidencePath = path.join(ARTIFACTS_DIR, `verification-${runId}.json`);
@@ -1397,6 +1445,27 @@ export function runStatus(dryRun, verifications) {
   return verifications.some((entry) => entry.verified) ? "partial" : "failed";
 }
 
+/** This terminal result explicitly does not represent a successful publication. */
+function replicationResult(attempt) {
+  return {
+    runId: attempt.target.runId,
+    mode: attempt.target.mode,
+    candidateWorkflowRunId: attempt.target.candidateWorkflowRunId,
+    candidateCommit: attempt.target.candidateCommit,
+    rootCid: attempt.target.rootCid,
+    manifestCid: attempt.target.primaryCars.manifest.cid,
+    carCid: attempt.target.primaryCars.archive.cid,
+    executionScope: "replication-only",
+    publicationState: REPLICATION_TERMINAL_STAGE,
+    attemptId: attempt.attemptId,
+    dryRun: false,
+    retentionVerified: false,
+    promotionHeld: true,
+    evidence: attempt.transitions.at(-1).receipt,
+    nextAction: nextPublicationRecoveryAction(attempt),
+  };
+}
+
 /**
  * Read the county's IPNS label back from Filebase and report the CID it
  * currently resolves to.
@@ -1659,6 +1728,7 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
     recoveryPublicKeyPath:
       typeof flags["recovery-public-key"] === "string" ? flags["recovery-public-key"] : null,
     secondaryPinProvider: String(flags["secondary-provider"] ?? "pinata"),
+    executionScope: flags["execution-scope"],
     expectedIpnsPredecessorSequence:
       typeof predecessorSequenceFlag === "string" &&
       /^(?:0|[1-9][0-9]*)$/.test(predecessorSequenceFlag)
