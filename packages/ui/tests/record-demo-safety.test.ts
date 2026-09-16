@@ -40,4 +40,29 @@ describe("record-demo release safety", () => {
     expect(source).toContain("release.business.attributedAcrossParcels.toLocaleString()");
     expect(source).not.toMatch(/33,346|32,738|2,060|4,451|2,726/);
   });
+
+  it("requires fresh all-CID, manifest, CAR and immutable predecessor proof before recording", async () => {
+    const source = await readFile(scriptPath, "utf8");
+    expect(source).toContain("DEMO_MANIFEST_PATH");
+    expect(source).toContain("DEMO_PRIOR_MANIFEST_PATH");
+    expect(source).toContain("manifest.directoryCars?.length");
+    expect(source).toContain("queryArtifact.sha256 === priorQueryArtifact.sha256");
+    expect(source.indexOf("await verifyManifestAcrossGateways")).toBeLessThan(
+      source.indexOf("await chromium.launch"),
+    );
+    expect(source).toContain("prior immutable query bytes must remain publicly retrievable");
+  });
+
+  it("records both agent prompts, explicit radius controls and refuses console/blank failures", async () => {
+    const source = await readFile(scriptPath, "utf8");
+    expect(source).toContain(
+      "Which properties in Lake County within five miles of Clermont have roofs older than 15 years?",
+    );
+    expect(source).toContain("open roofing permits that have been open for many years");
+    expect(source).toContain('getByLabel("Radius (miles)", { exact: true }).fill("5")');
+    expect(source).toContain('getByLabel("Exact", { exact: true }).fill("16")');
+    expect(source).toContain('page.on("pageerror"');
+    expect(source).toContain('message.type() === "error"');
+    expect(source).toContain("hosted application became blank");
+  });
 });

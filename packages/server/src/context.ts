@@ -49,6 +49,19 @@ export function createContext(
   pointer: PublishedRunPointer | null = null,
 ): AppContext {
   const dataset = asHandle(source, pointer);
+  if (
+    dataset.store.localEvidencePreview &&
+    (!config.localEvidencePreview ||
+      !["127.0.0.1", "localhost", "::1"].includes(config.host) ||
+      config.ipnsName !== null ||
+      config.dataRootCid !== null ||
+      config.openaiApiKey !== null ||
+      dataset.pointer !== null)
+  ) {
+    throw new Error(
+      "Local evidence preview requires a matching loopback-only, unpublished context without model access",
+    );
+  }
   let cached: { at: number; value: ProvenanceContext } | null = null;
 
   return {
@@ -59,6 +72,15 @@ export function createContext(
     async provenance(): Promise<ProvenanceContext> {
       const now = Date.now();
       const store = dataset.store;
+      if (store.localEvidencePreview) {
+        return {
+          runId: config.dataRunId,
+          rootCid: null,
+          dataSource: "local-unaccepted-evidence-preview",
+          dataSourceKind: "local",
+          localEvidencePreview: true,
+        };
+      }
       const servedCid = rootCidOf(store.activeSource ?? store.source);
       // The cache is keyed on the bytes being served, so an upgrade to a newer
       // run invalidates it immediately rather than citing the old run for up to
@@ -77,6 +99,7 @@ export function createContext(
         rootCid: servedCid ?? dataset.pointer?.rootCid ?? identity.rootCid,
         dataSource: store.source,
         dataSourceKind: store.sourceKind,
+        ...(store.sourceObservationsOnly ? { sourceObservationsOnly: true } : {}),
       };
       cached = { at: now, value };
       return value;

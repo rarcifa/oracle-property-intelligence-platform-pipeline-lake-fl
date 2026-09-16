@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "oracle.sanitized-retained-clermont-fixtures.v1",
+  "synthetic": true,
+  "origin": "Minimized reconstructed HTML structures from the approved verified retained sample; private origin bindings are excluded.",
+  "fixtures": [
+    {
+      "id": "synthetic-clermont-001",
+      "synthetic": true,
+      "expectedPermitNumber": "SYNTHETIC-PERMIT-001",
+      "html": "<!doctype html><html><body><!-- SANITIZED SYNTHETIC FIXTURE: structure derived from verified retained capture; not a real property or permit. --><span id=\"ctl00_cplMain_ctl99_lblPermitNoLbl\">Permit Number:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNo\">SYNTHETIC-PERMIT-001</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitTypeLbl\">Type:</span><span id=\"ctl00_cplMain_ctl99_lblPermitType\">SYNTHETIC PERMIT TYPE</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitDescLbl\">Short Description:</span><span id=\"ctl00_cplMain_ctl99_lblPermitDesc\">SYNTHETIC FIXTURE primary-roof replacement; not an accepted source work class</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitStatusLbl\">Status:</span><span id=\"ctl00_cplMain_ctl99_lblPermitStatus\">FINALED</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDateLbl\">Applied Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDate\">1/5/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDateLbl\">Approved Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDate\">1/7/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDateLbl\">Issued Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDate\">1/8/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDateLbl\">Finaled Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDate\">2/20/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDateLbl\">Expiration Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDate\"></span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitNotesLbl\">Notes:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNotes\"></span><div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00_Header\"><thead><tr><th>Contact Type</th><th>Name</th><th>Phone</th><th>E-mail</th><th>Address</th><th>City/State/Zip</th></tr></thead><tbody><tr><td colspan=\"6\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__0\"><td>APPLICANT</td><td>SYNTHETIC CONTACT 1</td><td>000-000-0000</td><td>synthetic-1@example.invalid</td><td>SYNTHETIC ADDRESS 1</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__1\"><td>CONTRACTOR</td><td>SYNTHETIC CONTACT 2</td><td>000-000-0000</td><td>synthetic-2@example.invalid</td><td>SYNTHETIC ADDRESS 2</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__2\"><td>OWNER</td><td>SYNTHETIC CONTACT 3</td><td>000-000-0000</td><td>synthetic-3@example.invalid</td><td>SYNTHETIC ADDRESS 3</td><td>SYNTHETIC CITY, FL 00000</td></tr></tbody></table></div>\n<div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_Header\"><thead><tr><th>Type</th><th>SEQ#</th><th>Result</th><th>Scheduled Date</th><th>Time</th><th>Completed</th><th>Time</th><th>More Info</th></tr></thead><tbody><tr><td colspan=\"8\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__0\"><td>SYNTHETIC INSPECTION TYPE 1</td><td>1</td><td>SYNTHETIC INSPECTION RESULT</td><td>2/19/2015</td><td></td><td>2/20/2015</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl04_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-001','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__1\"><td>SYNTHETIC INSPECTION TYPE 2</td><td>2</td><td>SYNTHETIC INSPECTION RESULT</td><td>1/15/2015</td><td></td><td>1/15/2015</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl05_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-001','JF:0000000000000000');return false;\">More Info</a></td></tr></tbody></table></div></body></html>\n",
+      "expected": {
+        "contactRows": 3,
+        "inspectionRows": 2,
+        "contactHeaderLabels": [
+          "Contact Type",
+          "Name",
+          "Phone",
+          "E-mail",
+          "Address",
+          "City/State/Zip"
+        ],
+        "inspectionHeaderLabels": [
+          "Type",
+          "SEQ#",
+          "Result",
+          "Scheduled Date",
+          "Time",
+          "Completed",
+          "Time",
+          "More Info"
+        ],
+        "syntheticInspectionIdentifier": "JF:0000000000000000",
+        "headerTableFillerPreserved": true
+      }
+    },
+    {
+      "id": "synthetic-clermont-002",
+      "synthetic": true,
+      "expectedPermitNumber": "SYNTHETIC-PERMIT-002",
+      "html": "<!doctype html><html><body><!-- SANITIZED SYNTHETIC FIXTURE: structure derived from verified retained capture; not a real property or permit. --><span id=\"ctl00_cplMain_ctl99_lblPermitNoLbl\">Permit Number:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNo\">SYNTHETIC-PERMIT-002</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitTypeLbl\">Type:</span><span id=\"ctl00_cplMain_ctl99_lblPermitType\">SYNTHETIC PERMIT TYPE</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitDescLbl\">Short Description:</span><span id=\"ctl00_cplMain_ctl99_lblPermitDesc\">SYNTHETIC FIXTURE accessory-roof repair; not an accepted source work class</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitStatusLbl\">Status:</span><span id=\"ctl00_cplMain_ctl99_lblPermitStatus\">VOID</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDateLbl\">Applied Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDate\">6/18/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDateLbl\">Approved Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDate\">6/18/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDateLbl\">Issued Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDate\">6/18/2015</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDateLbl\">Finaled Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDate\"></span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDateLbl\">Expiration Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDate\"></span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitNotesLbl\">Notes:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNotes\">SYNTHETIC FIXTURE NOTES</span><div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00_Header\"><thead><tr><th>Contact Type</th><th>Name</th><th>Phone</th><th>E-mail</th><th>Address</th><th>City/State/Zip</th></tr></thead><tbody><tr><td colspan=\"6\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__0\"><td>APPLICANT</td><td>SYNTHETIC CONTACT 1</td><td>000-000-0000</td><td>synthetic-1@example.invalid</td><td>SYNTHETIC ADDRESS 1</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__1\"><td>CONTRACTOR</td><td>SYNTHETIC CONTACT 2</td><td>000-000-0000</td><td>synthetic-2@example.invalid</td><td>SYNTHETIC ADDRESS 2</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__2\"><td>OWNER</td><td>SYNTHETIC CONTACT 3</td><td>000-000-0000</td><td>synthetic-3@example.invalid</td><td>SYNTHETIC ADDRESS 3</td><td>SYNTHETIC CITY, FL 00000</td></tr></tbody></table></div>\n<div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_Header\"><thead><tr><th>Type</th><th>SEQ#</th><th>Result</th><th>Scheduled Date</th><th>Time</th><th>Completed</th><th>Time</th><th>More Info</th></tr></thead><tbody><tr><td colspan=\"8\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__0\"><td>SYNTHETIC INSPECTION TYPE 1</td><td>1</td><td>SYNTHETIC INSPECTION RESULT</td><td>6/18/2015</td><td></td><td>6/18/2015</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl04_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-002','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__1\"><td>SYNTHETIC INSPECTION TYPE 2</td><td>2</td><td></td><td></td><td></td><td></td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl05_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-002','JF:0000000000000000');return false;\">More Info</a></td></tr></tbody></table></div></body></html>\n",
+      "expected": {
+        "contactRows": 3,
+        "inspectionRows": 2,
+        "contactHeaderLabels": [
+          "Contact Type",
+          "Name",
+          "Phone",
+          "E-mail",
+          "Address",
+          "City/State/Zip"
+        ],
+        "inspectionHeaderLabels": [
+          "Type",
+          "SEQ#",
+          "Result",
+          "Scheduled Date",
+          "Time",
+          "Completed",
+          "Time",
+          "More Info"
+        ],
+        "syntheticInspectionIdentifier": "JF:0000000000000000",
+        "headerTableFillerPreserved": true
+      }
+    },
+    {
+      "id": "synthetic-clermont-003",
+      "synthetic": true,
+      "expectedPermitNumber": "SYNTHETIC-PERMIT-003",
+      "html": "<!doctype html><html><body><!-- SANITIZED SYNTHETIC FIXTURE: structure derived from verified retained capture; not a real property or permit. --><span id=\"ctl00_cplMain_ctl99_lblPermitNoLbl\">Permit Number:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNo\">SYNTHETIC-PERMIT-003</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitTypeLbl\">Type:</span><span id=\"ctl00_cplMain_ctl99_lblPermitType\">SYNTHETIC PERMIT TYPE</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitDescLbl\">Short Description:</span><span id=\"ctl00_cplMain_ctl99_lblPermitDesc\">SYNTHETIC FIXTURE primary-roof replacement; not an accepted source work class</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitStatusLbl\">Status:</span><span id=\"ctl00_cplMain_ctl99_lblPermitStatus\">FINALED</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDateLbl\">Applied Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDate\">10/16/2024</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDateLbl\">Approved Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDate\">11/1/2024</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDateLbl\">Issued Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDate\">11/1/2024</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDateLbl\">Finaled Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDate\">12/16/2026</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDateLbl\">Expiration Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDate\"></span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitNotesLbl\">Notes:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNotes\">SYNTHETIC FIXTURE NOTES</span><div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00_Header\"><thead><tr><th>Contact Type</th><th>Name</th><th>Phone</th><th>E-mail</th><th>Address</th><th>City/State/Zip</th></tr></thead><tbody><tr><td colspan=\"6\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__0\"><td>APPLICANT</td><td>SYNTHETIC CONTACT 1</td><td>000-000-0000</td><td>synthetic-1@example.invalid</td><td>SYNTHETIC ADDRESS 1</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__1\"><td>CONTRACTOR</td><td>SYNTHETIC CONTACT 2</td><td>000-000-0000</td><td>synthetic-2@example.invalid</td><td>SYNTHETIC ADDRESS 2</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__2\"><td>OWNER</td><td>SYNTHETIC CONTACT 3</td><td>000-000-0000</td><td>synthetic-3@example.invalid</td><td>SYNTHETIC ADDRESS 3</td><td>SYNTHETIC CITY, FL 00000</td></tr></tbody></table></div>\n<div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_Header\"><thead><tr><th>Type</th><th>SEQ#</th><th>Result</th><th>Scheduled Date</th><th>Time</th><th>Completed</th><th>Time</th><th>More Info</th></tr></thead><tbody><tr><td colspan=\"8\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__0\"><td>SYNTHETIC INSPECTION TYPE 1</td><td>1</td><td>SYNTHETIC INSPECTION RESULT</td><td>12/16/2024</td><td>AM</td><td>12/16/2024</td><td>AM</td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl04_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-003','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__1\"><td>SYNTHETIC INSPECTION TYPE 2</td><td>2</td><td>SYNTHETIC INSPECTION RESULT</td><td>12/16/2024</td><td></td><td>12/16/2024</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl05_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-003','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__2\"><td>SYNTHETIC INSPECTION TYPE 3</td><td>3</td><td>SYNTHETIC INSPECTION RESULT</td><td>12/2/2024</td><td></td><td>12/2/2024</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl06_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-003','JF:0000000000000000');return false;\">More Info</a></td></tr></tbody></table></div></body></html>\n",
+      "expected": {
+        "contactRows": 3,
+        "inspectionRows": 3,
+        "contactHeaderLabels": [
+          "Contact Type",
+          "Name",
+          "Phone",
+          "E-mail",
+          "Address",
+          "City/State/Zip"
+        ],
+        "inspectionHeaderLabels": [
+          "Type",
+          "SEQ#",
+          "Result",
+          "Scheduled Date",
+          "Time",
+          "Completed",
+          "Time",
+          "More Info"
+        ],
+        "syntheticInspectionIdentifier": "JF:0000000000000000",
+        "headerTableFillerPreserved": true
+      }
+    },
+    {
+      "id": "synthetic-clermont-004",
+      "synthetic": true,
+      "expectedPermitNumber": "SYNTHETIC-PERMIT-004",
+      "html": "<!doctype html><html><body><!-- SANITIZED SYNTHETIC FIXTURE: structure derived from verified retained capture; not a real property or permit. --><span id=\"ctl00_cplMain_ctl99_lblPermitNoLbl\">Permit Number:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNo\">SYNTHETIC-PERMIT-004</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitTypeLbl\">Type:</span><span id=\"ctl00_cplMain_ctl99_lblPermitType\">SYNTHETIC PERMIT TYPE</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitDescLbl\">Short Description:</span><span id=\"ctl00_cplMain_ctl99_lblPermitDesc\">SYNTHETIC FIXTURE primary-roof replacement; not an accepted source work class</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitStatusLbl\">Status:</span><span id=\"ctl00_cplMain_ctl99_lblPermitStatus\">FINALED</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDateLbl\">Applied Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitAppliedDate\">11/30/2016</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDateLbl\">Approved Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitApprovedDate\">12/14/2016</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDateLbl\">Issued Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitIssuedDate\">12/14/2016</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDateLbl\">Finaled Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitFinaledDate\">6/15/2017</span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDateLbl\">Expiration Date:</span><span id=\"ctl00_cplMain_ctl99_lblPermitExpirationDate\"></span>\n<span id=\"ctl00_cplMain_ctl99_lblPermitNotesLbl\">Notes:</span><span id=\"ctl00_cplMain_ctl99_lblPermitNotes\">SYNTHETIC FIXTURE NOTES</span><div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00_Header\"><thead><tr><th>Contact Type</th><th>Name</th><th>Phone</th><th>E-mail</th><th>Address</th><th>City/State/Zip</th></tr></thead><tbody><tr><td colspan=\"6\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__0\"><td>APPLICANT</td><td>SYNTHETIC CONTACT 1 CCC0000000</td><td>000-000-0000</td><td>synthetic-1@example.invalid</td><td>SYNTHETIC ADDRESS 1</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__1\"><td>OWNER</td><td>SYNTHETIC CONTACT 2</td><td>000-000-0000</td><td>synthetic-2@example.invalid</td><td>SYNTHETIC ADDRESS 2</td><td>SYNTHETIC CITY, FL 00000</td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgContactInfo_ctl00__2\"><td>CONTRACTOR</td><td>SYNTHETIC CONTACT 3 CCC0000000</td><td>000-000-0000</td><td>synthetic-3@example.invalid</td><td>SYNTHETIC ADDRESS 3</td><td>SYNTHETIC CITY, FL 00000</td></tr></tbody></table></div>\n<div class=\"GridHeader\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_Header\"><thead><tr><th>Type</th><th>SEQ#</th><th>Result</th><th>Scheduled Date</th><th>Time</th><th>Completed</th><th>Time</th><th>More Info</th></tr></thead><tbody><tr><td colspan=\"8\"></td></tr></tbody></table></div><div class=\"GridDataDiv\"><table id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00\"><thead><tr><th>&nbsp;</th></tr></thead><tbody><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__0\"><td>SYNTHETIC INSPECTION TYPE 1</td><td>1</td><td>SYNTHETIC INSPECTION RESULT</td><td>6/15/2017</td><td></td><td>6/15/2017</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl04_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-004','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgAltRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__1\"><td>SYNTHETIC INSPECTION TYPE 2</td><td>2</td><td>SYNTHETIC INSPECTION RESULT</td><td>6/14/2017</td><td></td><td>6/14/2017</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl05_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-004','JF:0000000000000000');return false;\">More Info</a></td></tr><tr class=\"rgRow\" id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00__2\"><td>SYNTHETIC INSPECTION TYPE 3</td><td>3</td><td>SYNTHETIC INSPECTION RESULT</td><td>6/12/2017</td><td></td><td>6/12/2017</td><td></td><td><a id=\"ctl00_cplMain_ctl99_rgInspectionInfo_ctl00_ctl06_lbMoreInfo\" href=\"#\" onclick=\"openMoreInfo('INSPECTION','PERMIT','SYNTHETIC-PERMIT-004','JF:0000000000000000');return false;\">More Info</a></td></tr></tbody></table></div></body></html>\n",
+      "expected": {
+        "contactRows": 3,
+        "inspectionRows": 3,
+        "contactHeaderLabels": [
+          "Contact Type",
+          "Name",
+          "Phone",
+          "E-mail",
+          "Address",
+          "City/State/Zip"
+        ],
+        "inspectionHeaderLabels": [
+          "Type",
+          "SEQ#",
+          "Result",
+          "Scheduled Date",
+          "Time",
+          "Completed",
+          "Time",
+          "More Info"
+        ],
+        "syntheticInspectionIdentifier": "JF:0000000000000000",
+        "headerTableFillerPreserved": true
+      }
+    }
+  ]
+}

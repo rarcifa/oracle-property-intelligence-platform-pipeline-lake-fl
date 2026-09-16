@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config.js";
+import { loadRegressionConfig } from "./fixture-config.js";
 import { createContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
 import { Router, type HttpResponse } from "../src/http/router.js";
@@ -47,7 +47,7 @@ interface SearchBody {
 function buildRouter(): Router {
   // The config carries no model key and the store is never opened: retrieval
   // depends on neither.
-  const config = loadConfig({
+  const config = loadRegressionConfig({
     ...process.env,
     OPENAI_API_KEY: "",
     ORACLE_DATA_RUN_ID: "",

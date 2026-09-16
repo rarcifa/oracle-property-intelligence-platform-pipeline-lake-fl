@@ -13,6 +13,7 @@ export const EXPECTED_MCP_TOOLS = Object.freeze([
   "getOracleProperty",
   "getPropertyPermits",
   "getPropertyQuerySchema",
+  "listOracleBusinessAccounts",
   "listOracleProperties",
   "queryProperties",
 ]);
@@ -61,6 +62,12 @@ export function assertDemoContract({
   if (!/^b[a-z2-7]{20,}$/.test(expectedRootCid)) fail("DEMO_ROOT_CID is not a CID");
 
   assertIdentity(meta?.run, expectedRunId, expectedRootCid, "/api/meta/run");
+  if (meta?.coverage?.runId !== expectedRunId) {
+    fail("coverage snapshot describes a different run");
+  }
+  if (meta.coverage.sourceObservationsOnly === true) {
+    fail("source-only partial exports cannot demonstrate accepted current/open roofing decisions");
+  }
   assertIdentity(
     contractor?.provenance,
     expectedRunId,
@@ -76,7 +83,7 @@ export function assertDemoContract({
 
   const toolNames = tools?.result?.tools?.map((tool) => tool?.name).sort();
   if (JSON.stringify(toolNames) !== JSON.stringify([...EXPECTED_MCP_TOOLS].sort())) {
-    fail(`MCP must expose exactly nine expected tools; received ${JSON.stringify(toolNames)}`);
+    fail(`MCP must expose exactly ten expected tools; received ${JSON.stringify(toolNames)}`);
   }
 
   const coverage = meta?.coverage?.tables?.contractors;
@@ -134,6 +141,7 @@ export function assertDemoContract({
     businessCoverage?.sharedAddressGroups,
     "shared-address groups",
   );
+  const unmatchedAccounts = sourceAccounts - matchedToParcel;
   if (
     sourceAccounts === 0 ||
     withSitusAddress > sourceAccounts ||
@@ -142,6 +150,16 @@ export function assertDemoContract({
     propertiesWithAccount === 0
   ) {
     fail("business coverage counts are internally inconsistent");
+  }
+  if (
+    businessCoverage?.accountTableAvailable !== true ||
+    businessCoverage?.queryableSourceAccounts !== sourceAccounts ||
+    businessCoverage?.queryableValidUnmatchedAccounts !== unmatchedAccounts ||
+    business?.businessesAvailable !== true ||
+    business?.totals?.source_business_accounts !== sourceAccounts ||
+    business?.totals?.unmatched_business_accounts !== unmatchedAccounts
+  ) {
+    fail("all source business accounts, including valid unmatched accounts, must be queryable");
   }
   if (
     business?.totals?.business_accounts !== attributedAcrossParcels ||
@@ -165,6 +183,7 @@ export function assertDemoContract({
       attributedAcrossParcels,
       propertiesWithAccount,
       sharedAddressGroups,
+      unmatchedAccounts,
     },
   };
 }

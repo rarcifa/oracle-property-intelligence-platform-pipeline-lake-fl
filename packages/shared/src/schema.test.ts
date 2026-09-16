@@ -13,6 +13,9 @@ import {
   parseSourceSystems,
   QUERY_TABLE_COLUMN_COUNT,
   QUERY_TABLE_COLUMN_NAMES,
+  assertLocalEvidenceSchemaMatches,
+  LOCAL_EVIDENCE_PROPERTY_COLUMNS,
+  LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS,
 } from "./schema.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +53,56 @@ describe("published schema", () => {
   it("whitelists only published columns", () => {
     expect(isQueryTableColumn("roof_age_years")).toBe(true);
     expect(isQueryTableColumn("roof_age_years; DROP")).toBe(false);
+  });
+});
+
+describe("closed local evidence compatibility", () => {
+  const types: Record<string, string> = {
+    UTF8: "VARCHAR",
+    INT32: "INTEGER",
+    DOUBLE: "DOUBLE",
+    BOOLEAN: "BOOLEAN",
+  };
+  const described = LOCAL_EVIDENCE_PROPERTY_COLUMNS.map((column) => ({
+    column_name: column.name,
+    column_type: types[column.type] as string,
+  }));
+  it("keeps the 82-column private contract separate from the strict public schema", () => {
+    expect(described).toHaveLength(82);
+    expect(() =>
+      assertLocalEvidenceSchemaMatches(described, LOCAL_EVIDENCE_PROPERTY_COLUMNS),
+    ).not.toThrow();
+    expect(() => assertSchemaMatches(described.map((column) => column.column_name))).toThrow(
+      /expected 63/,
+    );
+  });
+  it("rejects extra, missing, reordered and wrong-type preview columns", () => {
+    expect(() =>
+      assertLocalEvidenceSchemaMatches(
+        [...described, { column_name: "private_extra", column_type: "VARCHAR" }],
+        LOCAL_EVIDENCE_PROPERTY_COLUMNS,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertLocalEvidenceSchemaMatches(described.slice(1), LOCAL_EVIDENCE_PROPERTY_COLUMNS),
+    ).toThrow();
+    expect(() =>
+      assertLocalEvidenceSchemaMatches([...described].reverse(), LOCAL_EVIDENCE_PROPERTY_COLUMNS),
+    ).toThrow();
+    expect(() =>
+      assertLocalEvidenceSchemaMatches(
+        described.map((column, index) =>
+          index === 0 ? { ...column, column_type: "INTEGER" } : column,
+        ),
+        LOCAL_EVIDENCE_PROPERTY_COLUMNS,
+      ),
+    ).toThrow();
+  });
+  it("does not expose unaccepted prior roof/status decisions", () => {
+    const names = LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS.map((column) => column.name);
+    expect(names).toContain("roof_age_caveat");
+    expect(names).not.toContain("previous_unaccepted_roof_age_years");
+    expect(names).not.toContain("source_export_open_permit_count");
   });
 });
 

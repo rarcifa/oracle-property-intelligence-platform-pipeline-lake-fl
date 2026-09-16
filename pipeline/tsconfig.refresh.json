@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.batch.json",
+  "compilerOptions": { "outDir": "dist/refresh" },
+  "include": [
+    "scripts/lake/summarize-permit-refresh.ts",
+    "tests/lake-permit-refresh-deltas.test.ts"
+  ]
+}

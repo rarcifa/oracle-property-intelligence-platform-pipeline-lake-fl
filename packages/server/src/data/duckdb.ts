@@ -8,12 +8,19 @@
  * where SQL meets data and exactly one schema gate.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import {
   assertPermitSchemaMatches,
   assertSchemaMatches,
+  assertLocalEvidenceSchemaMatches,
+  LOCAL_EVIDENCE_CONTRACT_VERSION,
+  LOCAL_EVIDENCE_PROPERTY_COLUMNS,
+  LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS,
+  LOCAL_EVIDENCE_PERMIT_COLUMNS,
+  LOCAL_EVIDENCE_PERMIT_SAFE_COLUMNS,
+  quote,
   buildEmptyPermitTableSql,
   buildCreateViewSql,
   buildDescribeSql,
@@ -22,7 +29,11 @@ import {
   parquetCandidates,
   PERMITS_VIEW,
   PROPERTIES_VIEW,
+  BUSINESSES_VIEW,
+  assertBusinessSchemaMatches,
+  buildEmptyBusinessTableSql,
 } from "@oracle-lake/shared";
+import { isLocalParquetPath } from "../config.js";
 
 /**
  * The directory DuckDB should resolve its extensions from, or `undefined` to
@@ -137,8 +148,14 @@ export interface DataStoreOptions {
   source: string;
   /** Optional permit Parquet override. `null` deliberately disables it. */
   permitSource?: string | null;
+  /** Optional account-grain TPP artifact. Null deliberately disables it. */
+  businessSource?: string | null;
   /** Skip the published-schema column gate. Only used by fixture-backed tests. */
   skipSchemaCheck?: boolean;
+  /** Closed opt-in compatibility mode, restricted to local unaccepted artifacts. */
+  localEvidencePreview?: boolean;
+  /** Derivative calculation year, not an accepted live-status/freshness clock. */
+  localEvidenceAsOfYear?: number;
 }
 
 export class OracleDataStore {
@@ -147,15 +164,22 @@ export class OracleDataStore {
   readonly sourceKind: "ipfs" | "local";
 
   readonly permitSource: string | null;
+  readonly businessSource: string | null;
+  readonly localEvidencePreview: boolean;
+  readonly localEvidenceAsOfYear: number | null;
+  /** Detected from the immutable account/property artifact, not an approval override. */
+  sourceObservationsOnly = false;
 
   /** True only when a real `permit-table.parquet` was opened and gated. */
   permitsAvailable = false;
+  businessesAvailable = false;
 
   #instance: DuckDBInstance | null = null;
   /** The URL that actually served the table, which may not be `source`. */
   activeSource: string | null = null;
 
   activePermitSource: string | null = null;
+  activeBusinessSource: string | null = null;
 
   #connection: DuckDBConnection | null = null;
 
@@ -170,11 +194,53 @@ export class OracleDataStore {
       );
     }
     this.source = options.source;
+    this.localEvidencePreview = options.localEvidencePreview === true;
+    this.localEvidenceAsOfYear = this.localEvidencePreview
+      ? (options.localEvidenceAsOfYear ?? null)
+      : null;
+    if (
+      this.localEvidencePreview &&
+      (options.skipSchemaCheck ||
+        !isLocalParquetPath(options.source) ||
+        !options.permitSource ||
+        !isLocalParquetPath(options.permitSource))
+    ) {
+      throw new Error(
+        "Local evidence preview requires explicit local property/permit files and the closed schema gate",
+      );
+    }
+    if (
+      this.localEvidencePreview &&
+      (process.env.AWS_LAMBDA_FUNCTION_NAME ||
+        process.env.AWS_EXECUTION_ENV ||
+        process.env.LAMBDA_TASK_ROOT)
+    ) {
+      throw new Error("Local evidence preview is unavailable in Lambda");
+    }
+    if (
+      this.localEvidencePreview &&
+      (!Number.isInteger(this.localEvidenceAsOfYear) ||
+        (this.localEvidenceAsOfYear ?? 0) < 1700 ||
+        (this.localEvidenceAsOfYear ?? 0) > 2199)
+    ) {
+      throw new Error("Local evidence preview requires the derivative's explicit as-of year");
+    }
     this.sourceKind = /^https?:\/\//.test(options.source) ? "ipfs" : "local";
     this.permitSource =
       options.permitSource === undefined
         ? inferPermitSource(options.source, this.sourceKind)
         : options.permitSource;
+    this.businessSource =
+      options.businessSource === undefined
+        ? inferBusinessSource(options.source, this.sourceKind)
+        : options.businessSource;
+    if (
+      this.localEvidencePreview &&
+      this.businessSource &&
+      !isLocalParquetPath(this.businessSource)
+    ) {
+      throw new Error("Local evidence preview requires a local business artifact");
+    }
     this.#skipSchemaCheck = options.skipSchemaCheck === true;
   }
 
@@ -186,7 +252,9 @@ export class OracleDataStore {
     // Lambda container can serve that for minutes. Clearing the slot on
     // rejection makes the next call a real attempt.
     this.#ready ??= this.#open().catch((error: unknown) => {
-      this.#ready = null;
+      this.close();
+      if (this.localEvidencePreview)
+        throw new Error("Local evidence preview failed its read-only schema or eligibility checks");
       throw error;
     });
     return this.#ready;
@@ -202,92 +270,142 @@ export class OracleDataStore {
     this.#instance = instance;
     this.#connection = connection;
 
-    if (this.sourceKind === "ipfs") {
-      // httpfs gives DuckDB HTTP Range reads over the gateway. It is not
-      // statically linked, so it must already be on disk. When the bundle has
-      // shipped it, say so plainly instead of falling through to an INSTALL
-      // that cannot work: /var/task is read-only and a deployed cold start must
-      // not depend on reaching extensions.duckdb.org.
-      try {
-        await connection.run("LOAD httpfs");
-      } catch (cause) {
-        if (extensionDirectory !== undefined) {
-          throw new Error(
-            `LOAD httpfs failed from ${extensionDirectory}. The deployment bundle must ship ` +
-              "the httpfs extension for this DuckDB version and platform; rebuild it.",
-            { cause },
-          );
+    if (this.localEvidencePreview) {
+      await this.#openLocalEvidence(connection);
+    } else {
+      if (this.sourceKind === "ipfs") {
+        // httpfs gives DuckDB HTTP Range reads over the gateway. It is not
+        // statically linked, so it must already be on disk. When the bundle has
+        // shipped it, say so plainly instead of falling through to an INSTALL
+        // that cannot work: /var/task is read-only and a deployed cold start must
+        // not depend on reaching extensions.duckdb.org.
+        try {
+          await connection.run("LOAD httpfs");
+        } catch (cause) {
+          if (extensionDirectory !== undefined) {
+            throw new Error(
+              `LOAD httpfs failed from ${extensionDirectory}. The deployment bundle must ship ` +
+                "the httpfs extension for this DuckDB version and platform; rebuild it.",
+              { cause },
+            );
+          }
+          await connection.run("INSTALL httpfs");
+          await connection.run("LOAD httpfs");
         }
-        await connection.run("INSTALL httpfs");
-        await connection.run("LOAD httpfs");
       }
-    }
 
-    // The dataset is MATERIALISED into memory, not left as a lazy view over the
-    // source file, so that external access can be switched off immediately
-    // afterwards. A lazy view would need filesystem access on every query and
-    // would force the lockdown below to stay open.
-    //
-    // Read over several gateways rather than one. Pinning `ipfs.filebase.io` —
-    // the vendor that also pins the data — made the runtime depend on a single
-    // account, against this project's own rule that a vendor URL is not the
-    // source of truth. The CID is; every candidate below asks for the same CID.
-    const rootCid = this.sourceKind === "ipfs" ? rootCidOf(this.source) : null;
-    const candidates = rootCid === null ? [this.source] : parquetCandidates(rootCid, this.source);
+      // The dataset is MATERIALISED into memory, not left as a lazy view over the
+      // source file, so that external access can be switched off immediately
+      // afterwards. A lazy view would need filesystem access on every query and
+      // would force the lockdown below to stay open.
+      //
+      // Read over several gateways rather than one. Pinning `ipfs.filebase.io` —
+      // the vendor that also pins the data — made the runtime depend on a single
+      // account, against this project's own rule that a vendor URL is not the
+      // source of truth. The CID is; every candidate below asks for the same CID.
+      const rootCid = this.sourceKind === "ipfs" ? rootCidOf(this.source) : null;
+      const candidates = rootCid === null ? [this.source] : parquetCandidates(rootCid, this.source);
 
-    const failures: string[] = [];
-    let opened: string | null = null;
-    for (const candidate of candidates) {
-      try {
-        await connection.run(
-          buildCreateViewSql(candidate, PROPERTIES_VIEW).replace(
-            `CREATE OR REPLACE VIEW ${PROPERTIES_VIEW} AS`,
-            `CREATE OR REPLACE TABLE ${PROPERTIES_VIEW} AS`,
-          ),
-        );
-        opened = candidate;
-        break;
-      } catch (error) {
-        failures.push(
-          `${gatewayOf(candidate)?.id ?? candidate}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
-        );
-      }
-    }
-    if (opened === null) {
-      throw new Error(
-        `No IPFS gateway served the published table. Tried ${candidates.length}: ${failures.join("; ")}`,
-      );
-    }
-    this.activeSource = opened;
-
-    // A separate permit-grain artifact preserves every available permit,
-    // including records that do not join the assessed parcel roll. Legacy
-    // publications predate it; those open an empty typed table and report
-    // permitsAvailable=false instead of making the property surface unusable.
-    if (this.permitSource !== null) {
-      const permitCandidates =
-        this.sourceKind === "ipfs" && rootCid !== null
-          ? parquetArtifactCandidates(rootCid, "permit-table.parquet", this.permitSource)
-          : [this.permitSource];
-      for (const candidate of permitCandidates) {
+      const failures: string[] = [];
+      let opened: string | null = null;
+      for (const candidate of candidates) {
         try {
           await connection.run(
-            buildCreateViewSql(candidate, PERMITS_VIEW).replace(
-              `CREATE OR REPLACE VIEW ${PERMITS_VIEW} AS`,
-              `CREATE OR REPLACE TABLE ${PERMITS_VIEW} AS`,
+            buildCreateViewSql(candidate, PROPERTIES_VIEW).replace(
+              `CREATE OR REPLACE VIEW ${PROPERTIES_VIEW} AS`,
+              `CREATE OR REPLACE TABLE ${PROPERTIES_VIEW} AS`,
             ),
           );
-          this.activePermitSource = candidate;
-          this.permitsAvailable = true;
+          opened = candidate;
           break;
-        } catch {
-          // Keep trying transports for the same immutable artifact.
+        } catch (error) {
+          failures.push(
+            `${gatewayOf(candidate)?.id ?? candidate}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`,
+          );
         }
       }
+      if (opened === null) {
+        throw new Error(
+          `No IPFS gateway served the published table. Tried ${candidates.length}: ${failures.join("; ")}`,
+        );
+      }
+      this.activeSource = opened;
+
+      // A separate permit-grain artifact preserves every available permit,
+      // including records that do not join the assessed parcel roll. Legacy
+      // publications predate it; those open an empty typed table and report
+      // permitsAvailable=false instead of making the property surface unusable.
+      if (this.permitSource !== null) {
+        const permitCandidates =
+          this.sourceKind === "ipfs" && rootCid !== null
+            ? parquetArtifactCandidates(rootCid, "permit-table.parquet", this.permitSource)
+            : [this.permitSource];
+        for (const candidate of permitCandidates) {
+          try {
+            await connection.run(
+              buildCreateViewSql(candidate, PERMITS_VIEW).replace(
+                `CREATE OR REPLACE VIEW ${PERMITS_VIEW} AS`,
+                `CREATE OR REPLACE TABLE ${PERMITS_VIEW} AS`,
+              ),
+            );
+            this.activePermitSource = candidate;
+            this.permitsAvailable = true;
+            break;
+          } catch {
+            // Keep trying transports for the same immutable artifact.
+          }
+        }
+      }
+      if (!this.permitsAvailable) {
+        await connection.run(buildEmptyPermitTableSql(PERMITS_VIEW));
+      }
     }
-    if (!this.permitsAvailable) {
-      await connection.run(buildEmptyPermitTableSql(PERMITS_VIEW));
+
+    // Optional account-grain records retain unmatched businesses. A missing
+    // legacy artifact is unavailable, not a claim that there are zero accounts.
+    if (this.businessSource !== null) {
+      const rootCid = this.sourceKind === "ipfs" ? rootCidOf(this.source) : null;
+      const businessCandidates =
+        rootCid === null
+          ? [this.businessSource]
+          : parquetArtifactCandidates(rootCid, "business-table.parquet", this.businessSource);
+      for (const candidate of businessCandidates) {
+        try {
+          await connection.run(
+            `CREATE OR REPLACE TABLE ${BUSINESSES_VIEW} AS SELECT * FROM read_parquet(${quote(candidate)})`,
+          );
+        } catch {
+          continue;
+        }
+        const description = await connection.runAndReadAll(`DESCRIBE ${BUSINESSES_VIEW}`);
+        assertBusinessSchemaMatches(
+          description.getRowObjects().map((row) => ({
+            column_name: String(row.column_name),
+            column_type: String(row.column_type),
+          })),
+        );
+        const gate = await connection.runAndReadAll(`SELECT count(*) AS rows,
+          count(DISTINCT business_id) AS identities,
+          count(*) FILTER (WHERE business_id IS NULL OR account_id IS NULL OR trim(account_id) = ''
+            OR business_id IS DISTINCT FROM 'lake:fl_dor_tpp:' || account_id
+            OR county IS DISTINCT FROM 'lake' OR matched_parcel_count IS NULL OR matched_parcel_count < 0) AS invalid
+          FROM ${BUSINESSES_VIEW}`);
+        const checked = gate.getRowObjects()[0];
+        if (
+          !checked ||
+          Number(checked.rows) !== Number(checked.identities) ||
+          Number(checked.invalid) !== 0
+        ) {
+          throw new Error(
+            "Business account identities or parcel-match counts failed reconciliation",
+          );
+        }
+        this.activeBusinessSource = candidate;
+        this.businessesAvailable = true;
+        break;
+      }
     }
+    if (!this.businessesAvailable) await connection.run(buildEmptyBusinessTableSql());
 
     // Take the AWS credentials away from DuckDB before anything can read them.
     //
@@ -327,12 +445,153 @@ export class OracleDataStore {
     await connection.run("SET enable_external_access=false");
     await connection.run("SET lock_configuration=true");
 
-    if (!this.#skipSchemaCheck) {
+    if (!this.#skipSchemaCheck && !this.localEvidencePreview) {
       const described = await this.query(buildDescribeSql(PROPERTIES_VIEW));
       assertSchemaMatches(described.map((row) => String(row.column_name)));
       const permitDescription = await this.query(buildDescribeSql(PERMITS_VIEW));
       assertPermitSchemaMatches(permitDescription.map((row) => String(row.column_name)));
+      const mode = await this.queryOne(`SELECT count(*) AS rows,
+        count(*) FILTER (WHERE ';' || coalesce(enrichment_status, '') || ';' LIKE '%;source_observations_only;%') AS source_only_rows
+        FROM ${PROPERTIES_VIEW}`);
+      const sourceOnlyRows = Number(mode?.source_only_rows ?? 0);
+      if (sourceOnlyRows > 0 && sourceOnlyRows !== Number(mode?.rows))
+        throw new Error("Mixed source-only and decision-enabled property rows are unsupported");
+      this.sourceObservationsOnly = sourceOnlyRows > 0;
+      if (this.sourceObservationsOnly) {
+        const heldProperties = [
+          "roof_last_permit_date",
+          "roofing_permit_count",
+          "open_permit_count",
+          "open_roofing_permit_count",
+          "longest_open_permit_days",
+          "longest_open_roofing_permit_days",
+          "bbb_rating",
+          "has_bbb_contractor",
+          "has_sunbiz_tenant",
+        ];
+        const heldPermits = [
+          "completed_date",
+          "is_roofing",
+          "is_open",
+          "days_open",
+          "contractor_license",
+          "bbb_rating",
+        ];
+        for (const [table, held] of [
+          [PROPERTIES_VIEW, heldProperties],
+          [PERMITS_VIEW, heldPermits],
+        ] as const) {
+          if (
+            Number(
+              await this.queryScalar(
+                `SELECT count(*) FROM ${table} WHERE ${held.map((name) => `${name} IS NOT NULL`).join(" OR ")}`,
+              ),
+            ) !== 0
+          )
+            throw new Error("Source-only artifact attempted to promote unsupported decisions");
+        }
+      }
     }
+  }
+
+  /** Source raw columns never become a table/view queryable by REST, MCP or SQL. */
+  async #openLocalEvidence(connection: DuckDBConnection): Promise<void> {
+    const permitSource = this.permitSource;
+    if (!permitSource || !statSync(this.source).isFile() || !statSync(permitSource).isFile()) {
+      throw new Error("Preview inputs must be regular local files");
+    }
+    const inputs = [
+      {
+        source: this.source,
+        table: PROPERTIES_VIEW,
+        expected: LOCAL_EVIDENCE_PROPERTY_COLUMNS,
+        safe: LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS,
+      },
+      {
+        source: permitSource,
+        table: PERMITS_VIEW,
+        expected: LOCAL_EVIDENCE_PERMIT_COLUMNS,
+        safe: LOCAL_EVIDENCE_PERMIT_SAFE_COLUMNS,
+      },
+    ];
+    for (const input of inputs) {
+      const description = await connection.runAndReadAll(
+        `DESCRIBE SELECT * FROM read_parquet(${quote(input.source)})`,
+      );
+      const described = description.getRowObjects().map((row) => ({
+        column_name: String(row.column_name),
+        column_type: String(row.column_type),
+      }));
+      assertLocalEvidenceSchemaMatches(described, input.expected);
+    }
+
+    const propertyHolds = [
+      "property_cid",
+      "roof_last_permit_date",
+      "roofing_permit_count",
+      "open_permit_count",
+      "open_roofing_permit_count",
+      "longest_open_permit_days",
+      "longest_open_roofing_permit_days",
+      "contractor_company_id",
+      "accepted_primary_roof_permit_count",
+      "bbb_rating",
+      "has_bbb_contractor",
+      "has_sunbiz_tenant",
+    ];
+    const permitHolds = [
+      "is_open",
+      "is_roofing",
+      "days_open",
+      "completed_date",
+      "contractor_license",
+      "bbb_rating",
+      "current_permit_status",
+      "contractor_company_id",
+      "accepted_primary_roof_work_class",
+      "accepted_roof_anchor_date",
+      "permit_printed_license",
+      "observation_time",
+    ];
+    const propertyInvalid = `${propertyHolds.map((name) => `${name} IS NOT NULL`).join(" OR ")}
+      OR evidence_contract_version IS DISTINCT FROM ${quote(LOCAL_EVIDENCE_CONTRACT_VERSION)}
+      OR (roof_age_years IS NOT NULL AND (roof_age_years < 0 OR roof_age_years <> ${this.localEvidenceAsOfYear} - built_year OR roof_age_basis IS DISTINCT FROM 'built_year_proxy' OR roof_age_confidence IS DISTINCT FROM 'low' OR roof_age_decision IS DISTINCT FROM 'eligible_proxy' OR built_year_evidence_state IS DISTINCT FROM 'confirmed_present' OR built_year IS NULL OR built_year < 1700 OR built_year > ${this.localEvidenceAsOfYear}))
+      OR (roof_age_years IS NULL AND (roof_age_basis IS NOT NULL OR roof_age_confidence IS NOT NULL OR roof_age_decision IS DISTINCT FROM 'needs_review'))
+      OR nullif(trim(roof_age_caveat), '') IS NULL
+      OR contractor_attribution_kind IS DISTINCT FROM 'source_display_name_only; not a verified legal company identity'`;
+    const permitInvalid = `${permitHolds.map((name) => `${name} IS NOT NULL`).join(" OR ")}
+      OR evidence_contract_version IS DISTINCT FROM ${quote(LOCAL_EVIDENCE_CONTRACT_VERSION)}
+      OR decisions_outcome IS DISTINCT FROM 'needs_review'
+      OR status_basis IS DISTINCT FROM 'captured_observation_only; not live/current'`;
+    for (const [source, invalid] of [
+      [this.source, propertyInvalid],
+      [permitSource, permitInvalid],
+    ]) {
+      const checked = await connection.runAndReadAll(
+        `SELECT count(*) AS violations FROM read_parquet(${quote(source as string)}) WHERE ${invalid}`,
+      );
+      if (Number(checked.getRowObjects()[0]?.violations) !== 0) {
+        throw new Error("Preview attempted to enable unaccepted conclusions");
+      }
+    }
+    for (const input of inputs) {
+      const columns = input.safe
+        .map((column) => {
+          const cast =
+            input.table === PERMITS_VIEW &&
+            ["applied_date", "approved_date", "issued_date", "last_modified_date"].includes(
+              column.name,
+            );
+          return cast ? `CAST(${column.name} AS VARCHAR) AS ${column.name}` : column.name;
+        })
+        .join(", ");
+      await connection.run(
+        `CREATE TABLE ${input.table} AS SELECT ${columns} FROM read_parquet(${quote(input.source)})`,
+      );
+    }
+    this.activeSource = this.source;
+    this.activePermitSource = permitSource;
+    this.permitsAvailable = true;
   }
 
   /** Run a statement and return normalised rows. */
@@ -367,6 +626,12 @@ export class OracleDataStore {
     this.#instance?.closeSync();
     this.#instance = null;
     this.#ready = null;
+    this.activeSource = null;
+    this.activePermitSource = null;
+    this.permitsAvailable = false;
+    this.activeBusinessSource = null;
+    this.businessesAvailable = false;
+    this.sourceObservationsOnly = false;
   }
 }
 
@@ -379,6 +644,22 @@ export function inferPermitSource(source: string, sourceKind: "ipfs" | "local"):
   try {
     const url = new URL(source);
     url.pathname = url.pathname.replace(/query-table\.parquet$/, "permit-table.parquet");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Optional sibling account table; older immutable releases predate it. */
+export function inferBusinessSource(source: string, sourceKind: "ipfs" | "local"): string | null {
+  if (sourceKind === "local") {
+    const candidate = resolve(dirname(source), "business-table.parquet");
+    return existsSync(candidate) ? candidate : null;
+  }
+  try {
+    const url = new URL(source);
+    if (!url.pathname.endsWith("query-table.parquet")) return null;
+    url.pathname = url.pathname.replace(/query-table\.parquet$/, "business-table.parquet");
     return url.toString();
   } catch {
     return null;

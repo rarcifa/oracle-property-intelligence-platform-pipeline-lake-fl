@@ -7,7 +7,7 @@
  * the parcel ids behind a claim.
  */
 import { describe, expect, it } from "vitest";
-import { ChatUnavailableError, createChatAgent } from "../src/chat/agent.js";
+import { ChatUnavailableError, createChatAgent, SYSTEM_PROMPT } from "../src/chat/agent.js";
 import { loadConfig } from "../src/config.js";
 import { createContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
@@ -17,6 +17,22 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const agentSource = readFileSync(resolve(here, "../src/chat/agent.ts"), "utf8");
+
+describe("source-evidence prompt boundaries", () => {
+  it("queries unmatched business accounts and avoids stale one-year/absence conclusions", () => {
+    expect(SYSTEM_PROMPT).toContain("2015–2026");
+    expect(SYSTEM_PROMPT).toContain("searchBusinessAccounts");
+    expect(SYSTEM_PROMPT).toContain("including unmatched ones");
+    expect(SYSTEM_PROMPT).toContain("not a distinct-company count");
+    expect(SYSTEM_PROMPT).not.toContain("Clermont adds its enumerated 2026 municipal records");
+    expect(SYSTEM_PROMPT).not.toContain("which is an established absence");
+  });
+  it("does not bypass unknown current-status evidence or inflate built-year proxy confidence", () => {
+    expect(SYSTEM_PROMPT).toContain("Do not bypass unsupported-decision errors with SQL");
+    expect(SYSTEM_PROMPT).toContain("not measured roof age");
+    expect(SYSTEM_PROMPT).toContain("not a ten-year tenure claim");
+  });
+});
 
 function agentWith(apiKey: string | undefined) {
   const config = loadConfig({ ...process.env, OPENAI_API_KEY: apiKey ?? "" });

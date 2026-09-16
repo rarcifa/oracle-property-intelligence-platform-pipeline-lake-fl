@@ -7,6 +7,8 @@ import {
   buildEmptyPermitTableSql,
   PERMIT_TABLE_COLUMN_NAMES,
   PERMIT_TABLE_COLUMNS,
+  LOCAL_EVIDENCE_PERMIT_COLUMNS,
+  LOCAL_EVIDENCE_PERMIT_SAFE_COLUMNS,
 } from "./permits.js";
 import { buildPropertyPermitsSql, PERMITS_VIEW } from "./sql.js";
 
@@ -49,5 +51,33 @@ describe("permit-table schema", () => {
     expect(sql).toContain("FROM permits");
     expect(sql).toContain("parcel_identifier = 'parcel''one'");
     expect(sql).toContain("LIMIT 10");
+  });
+});
+
+describe("private permit compatibility contract", () => {
+  it("keeps its exact 47-column source schema outside the legacy public gate", () => {
+    expect(LOCAL_EVIDENCE_PERMIT_COLUMNS).toHaveLength(47);
+    expect(() =>
+      assertPermitSchemaMatches(LOCAL_EVIDENCE_PERMIT_COLUMNS.map((column) => column.name)),
+    ).toThrow(/expected 22/);
+    expect(
+      LOCAL_EVIDENCE_PERMIT_COLUMNS.find((column) => column.name === "applied_date")?.type,
+    ).toBe("DATE");
+  });
+  it("omits raw/private provenance and discovered license candidates", () => {
+    const names = LOCAL_EVIDENCE_PERMIT_SAFE_COLUMNS.map((column) => column.name);
+    for (const name of [
+      "source_observations_json",
+      "permit_contact_text_license",
+      "directory_license_candidate",
+      "source_input_sha256",
+      "contact_text_input_sha256",
+      "observation_time",
+      "evidence_states_json",
+      "evidence_review_reasons_json",
+    ]) {
+      expect(names).not.toContain(name);
+    }
+    expect(names).toContain("decisions_outcome");
   });
 });

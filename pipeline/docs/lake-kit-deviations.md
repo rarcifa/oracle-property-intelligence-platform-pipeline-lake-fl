@@ -174,8 +174,16 @@ returning all 215,806 rows from the published CID in about two seconds.
 
 ## 9. Not run, and why
 
-- **Sunbiz corporate ingest** — not in the acceptance criteria. Business records come from
-  the DOR TPP roll instead.
+- **Sunbiz corporate ingest** — historically not run; the DOR TPP roll supplied business
+  facts, not the official corporate identity baseline. The current official kit's
+  `skills/onboard-county/SKILL.md` stage 6 and `skills/use-oracle/SKILL.md` mandatory operating
+  sequence require Sunbiz first, then an adequate official DBPR snapshot, before future
+  permit harvesting. DBPR adequacy includes dated qualifier/person and qualified-business
+  relationships, status, and effective periods covering the attribution window
+  (`skills/dbpr-license-ingest/SKILL.md`, section 1; `skills/use-oracle/reference/permit-evidence-preflight.md`,
+  registry prerequisite gate). This baseline remains unresolved. DOR TPP is not a substitute,
+  and no approved exception to this identity prerequisite is recorded; prior owner execution
+  approval does not create one.
 - **Overture places** — not in the acceptance criteria.
 - **BBB harvest** — the default request and browser route returned 403. A prohibited
   desktop-user-agent spoof later returned 200, as recorded below; no result was retained or

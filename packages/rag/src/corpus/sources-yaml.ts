@@ -325,7 +325,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
       lines: [
         `${sales.source}. ${count(sales.record_count)} sale records covering ${count(sales.parcels_with_a_sale)} parcels.`,
         `Sale window published: ${String(sales.window_first ?? "?")} to ${String(sales.window_last ?? "?")} only.`,
-        `Ten-year ownership tenure provable from published sources: ${sales.ten_year_tenure_provable ? "yes" : "NO"}.`,
+        `Ten-year ownership tenure provable from the loaded and inspected DOR evidence: ${sales.ten_year_tenure_provable ? "yes" : "NO"}.`,
         sales.ten_year_tenure_evidence ? `Evidence: ${sales.ten_year_tenure_evidence}` : null,
         "Consequence for the query table: no_recorded_sale_in_dor_window is a lower bound on tenure, never a tenure length. A property with no sale in the window may have changed hands in 2019 and the loaded data cannot tell.",
       ],
@@ -448,7 +448,7 @@ export function buildSourceDocs(sources: SourcesYaml, provenance: Provenance): C
       docType: "source",
       title: "Data source: Florida Sunbiz corporate registration — NOT ingested for this run",
       lines: [
-        "Sunbiz corporate registration is a Florida statewide bulk source. It was deliberately not ingested for this run: it is outside this assignment's acceptance criteria, and the kit's bulk data-download portal is Cloudflare-challenged from this egress. Sunbiz name search is reachable, but it is not the approved bulk ingest channel.",
+        "Sunbiz corporate registration is a Florida statewide bulk source. It was historically not ingested for this run. Under the current official kit, Sunbiz is mandatory and unresolved: load and reconcile Sunbiz first, then an adequate official DBPR snapshot, before future permit harvesting (use-oracle's mandatory operating sequence and dbpr-license-ingest's adequacy gate). DOR TPP is not a substitute for this identity baseline, and owner execution approval alone is not a kit waiver. The kit's bulk data-download portal is Cloudflare-challenged from this egress. Sunbiz name search is reachable, but it is not the approved bulk ingest channel.",
         "Consequence: has_sunbiz_tenant is a real selected-table column that is null for every row. Null means unknown/not established because Sunbiz was not ingested; it must never be rendered or interpreted as false or as 'no company is registered at this address'.",
         "Business activity at an address is instead evidenced by business_account_count, from the DOR tangible-personal-property roll.",
       ],

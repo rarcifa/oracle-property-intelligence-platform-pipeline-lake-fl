@@ -9,16 +9,13 @@
 
 import { existsSync } from "node:fs";
 import { createApp } from "../src/app.js";
-import { loadConfig, type ServerConfig } from "../src/config.js";
+import { type ServerConfig } from "../src/config.js";
+import { loadRegressionConfig } from "./fixture-config.js";
 import { createContext, type AppContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
 import type { HttpResponse, Router } from "../src/http/router.js";
 
-export const config: ServerConfig = loadConfig({
-  ...process.env,
-  // The test suite never reaches a model provider.
-  OPENAI_API_KEY: "",
-});
+export const config: ServerConfig = loadRegressionConfig();
 
 /** True when a published Parquet is available to test against. */
 export const hasParquet =

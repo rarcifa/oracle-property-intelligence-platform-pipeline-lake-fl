@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.batch.json",
+  "compilerOptions": { "outDir": "dist/business" },
+  "include": ["scripts/lake/build-business-table.ts"]
+}

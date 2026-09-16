@@ -49,6 +49,61 @@ export const PERMIT_TABLE_COLUMN_NAMES: readonly string[] = Object.freeze(
   PERMIT_TABLE_COLUMNS.map((column) => column.name),
 );
 
+/** Exact private derivative source contract; never enabled by the public gate. */
+export const LOCAL_EVIDENCE_PERMIT_COLUMNS = Object.freeze([
+  ...PERMIT_TABLE_COLUMNS.map((column) => ({
+    ...column,
+    type: ["applied_date", "approved_date", "issued_date", "last_modified_date"].includes(
+      column.name,
+    )
+      ? "DATE"
+      : column.type,
+  })),
+  ...[
+    ["current_permit_status", "VARCHAR"],
+    ["contractor_company_id", "VARCHAR"],
+    ["accepted_primary_roof_work_class", "VARCHAR"],
+    ["accepted_roof_anchor_date", "VARCHAR"],
+    ["permit_printed_license", "VARCHAR"],
+    ["source_observed_is_open", "BOOLEAN"],
+    ["source_observed_is_roofing", "BOOLEAN"],
+    ["source_export_days_open", "BIGINT"],
+    ["source_export_completed_date", "DATE"],
+    ["source_export_contractor_license", "VARCHAR"],
+    ["completion_source_label", "VARCHAR"],
+    ["validated_source_finaled_or_co_date", "DATE"],
+    ["permit_contact_text_license", "JSON"],
+    ["directory_license_candidate", "VARCHAR"],
+    ["license_origin", "VARCHAR"],
+    ["license_verification", "VARCHAR"],
+    ["status_basis", "VARCHAR"],
+    ["decisions_outcome", "VARCHAR"],
+    ["evidence_states_json", "VARCHAR"],
+    ["evidence_review_reasons_json", "VARCHAR"],
+    ["source_observations_json", "VARCHAR"],
+    ["source_input_sha256", "VARCHAR"],
+    ["contact_text_input_sha256", "VARCHAR"],
+    ["observation_time", "JSON"],
+    ["evidence_contract_version", "VARCHAR"],
+  ].map(([name, type]) => ({ name: name as string, type: type as string, optional: true })),
+]);
+
+/** Conservative metadata only. Raw/license candidates and private provenance stay unregistered. */
+export const LOCAL_EVIDENCE_PERMIT_SAFE_COLUMNS = Object.freeze([
+  ...PERMIT_TABLE_COLUMNS,
+  ...LOCAL_EVIDENCE_PERMIT_COLUMNS.filter((column) =>
+    [
+      "current_permit_status",
+      "contractor_company_id",
+      "accepted_primary_roof_work_class",
+      "accepted_roof_anchor_date",
+      "status_basis",
+      "decisions_outcome",
+      "evidence_contract_version",
+    ].includes(column.name),
+  ),
+]);
+
 /** One row of `permit-table.parquet`. */
 export interface PermitRow {
   permit_id: string;

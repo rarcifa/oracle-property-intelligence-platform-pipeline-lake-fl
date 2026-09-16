@@ -333,6 +333,12 @@ export function PropertyView({ parcelId }: { parcelId: string }): JSX.Element {
                       </td>
                       <td>
                         {permit.permit_status ?? "—"}
+                        {data.provenance.localEvidencePreview ||
+                        data.provenance.sourceObservationsOnly ? (
+                          <div className="micro">
+                            retained source status; capture time unknown, not current
+                          </div>
+                        ) : null}
                         {permit.is_roofing ? <div className="micro">roofing</div> : null}
                         {permit.is_open ? <div className="micro">open</div> : null}
                       </td>
@@ -345,12 +351,24 @@ export function PropertyView({ parcelId }: { parcelId: string }): JSX.Element {
                         <br />
                         <span className="micro">completed</span>{" "}
                         {permit.completed_date ? formatDate(permit.completed_date) : "—"}
+                        {data.provenance.localEvidencePreview ||
+                        data.provenance.sourceObservationsOnly ? (
+                          <div className="micro">
+                            source lifecycle observations; completion semantics unaccepted
+                          </div>
+                        ) : null}
                       </td>
                       <td className="num">
                         {permit.days_open === null ? "—" : formatDays(permit.days_open)}
                       </td>
                       <td>
                         {permit.contractor_name ?? "—"}
+                        {data.provenance.localEvidencePreview ||
+                        data.provenance.sourceObservationsOnly ? (
+                          <div className="micro">
+                            source-listed name only; not verified legal/license identity
+                          </div>
+                        ) : null}
                         {permit.contractor_license ? (
                           <div className="micro">{permit.contractor_license}</div>
                         ) : null}

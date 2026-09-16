@@ -143,5 +143,5 @@ export function BarChart({
 export const ROOF_BASIS_SERIES: readonly SeriesStyle[] = [
   { key: "from_completed_permit", label: "Completed roofing permit", color: "#5ed39a" },
   { key: "from_issued_permit", label: "Issued roofing permit", color: "#5fc6d9" },
-  { key: "from_year_built", label: "Year built (no roofing permit)", color: "#e8b269" },
+  { key: "from_year_built", label: "Year built (building-age proxy)", color: "#e8b269" },
 ];

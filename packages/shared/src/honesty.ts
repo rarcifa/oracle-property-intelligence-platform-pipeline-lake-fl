@@ -14,7 +14,7 @@
 export interface GatingNotice {
   readonly token: string;
   readonly field: string | null;
-  readonly severity: "gated" | "absent" | "present";
+  readonly severity: "gated" | "absent" | "present" | "unknown";
   readonly headline: string;
   readonly detail: string;
 }
@@ -46,14 +46,14 @@ const NOTICES: Readonly<Record<string, Omit<GatingNotice, "token">>> = Object.fr
     severity: "present",
     headline: "Contractor of record published",
     detail:
-      "Clermont's eTRAKiT portal names the contractor on its permit detail pages, and this parcel's permits were harvested from it. The name shown is the contractor on the most recently dated permit, not the only contractor who has worked here.",
+      "Clermont's eTRAKiT portal lists a contractor name. The most recently dated permit supplies this display name, not a verified legal company or license identity and not every contractor who has worked here.",
   },
   contractor_absent_on_permit: {
     field: "contractor_name",
-    severity: "absent",
-    headline: "No contractor named on the permit",
+    severity: "unknown",
+    headline: "Contractor absence is not proven",
     detail:
-      "This parcel's permits were harvested from Clermont's eTRAKiT portal, which does publish a contractor of record, and none of them named one - an owner-builder permit, for example. This is an established absence rather than a gated field.",
+      "This legacy token describes a missing source name. It does not prove a successful, contractor-capable detail lookup returned an empty assignment. Do not treat it as an unassigned lead or established absence.",
   },
   bbb_gated_403: {
     field: "bbb_rating",
@@ -61,6 +61,53 @@ const NOTICES: Readonly<Record<string, Omit<GatingNotice, "token">>> = Object.fr
     headline: "BBB rating is gated at the source",
     detail:
       "BBB's default request/browser route returned HTTP 403. One prohibited browser-fingerprint spoof returned 200 during verification, so this is a policy/API boundary rather than proof the site is unreachable. No BBB result was retained or ingested, and no approved official-API route is configured; bbb_rating stays null rather than being fabricated.",
+  },
+  retained_source_observations: {
+    field: null,
+    severity: "present",
+    headline: "Retained source observations",
+    detail:
+      "Historical observations are retained, not accepted as current permit decisions or complete county history.",
+  },
+  current_permit_status_not_revalidated: {
+    field: "open_roofing_permit_count",
+    severity: "unknown",
+    headline: "Current permit status unknown",
+    detail:
+      "Captured status was not revalidated under an accepted source/freshness contract. Open counts and durations remain unknown, not zero.",
+  },
+  primary_roof_completion_needs_review: {
+    field: "roof_age_years",
+    severity: "unknown",
+    headline: "Built-year proxy only",
+    detail:
+      "Permit-backed primary-roof completion is unaccepted. A valid built year supplies only a low-confidence proxy; partial history may omit a later replacement.",
+  },
+  contractor_source_name_only: {
+    field: "contractor_name",
+    severity: "present",
+    headline: "Source-listed contractor name only",
+    detail: "A displayed source name is not verified company, qualifier or license identity.",
+  },
+  contractor_absence_not_proven: {
+    field: "contractor_name",
+    severity: "unknown",
+    headline: "Contractor assignment unknown",
+    detail: "Missing contractor data does not prove an unassigned permit or confirmed absence.",
+  },
+  sunbiz_temporal_dbpr_required: {
+    field: null,
+    severity: "gated",
+    headline: "Official identity evidence required",
+    detail:
+      "Loaded, reconciled Sunbiz and dated official DBPR relationships are required before verified legal-company attribution.",
+  },
+  bbb_policy_api_gated: {
+    field: "bbb_rating",
+    severity: "gated",
+    headline: "BBB enrichment unavailable",
+    detail:
+      "No approved BBB enrichment was ingested; missing ratings do not prove a negative rating or no contractor.",
   },
 });
 
@@ -77,7 +124,7 @@ export function parseEnrichmentStatus(status: string | null | undefined): Gating
       return {
         token,
         field: null,
-        severity: "absent" as const,
+        severity: "unknown" as const,
         headline: token,
         detail: "Unrecognised enrichment status token, reported verbatim from the published row.",
       };
@@ -86,7 +133,9 @@ export function parseEnrichmentStatus(status: string | null | undefined): Gating
 
 /** The subset of notices that explain a null column. */
 export function gatedFieldNotices(status: string | null | undefined): GatingNotice[] {
-  return parseEnrichmentStatus(status).filter((notice) => notice.severity === "gated");
+  return parseEnrichmentStatus(status).filter(
+    (notice) => notice.severity === "gated" || notice.severity === "unknown",
+  );
 }
 
 /** Column-level gating explanations, keyed by column name. */
@@ -109,12 +158,13 @@ export const ALWAYS_NULL_COLUMNS: Readonly<Record<string, string>> = Object.free
  */
 export const PARTIALLY_POPULATED_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
   contractor_name:
-    "Populated for Clermont only, the one Lake County jurisdiction of fifteen whose permit portal publishes a contractor of record. Null elsewhere; enrichment_status says whether that null is gated or an established absence.",
+    "Source-listed names for Clermont only, one of fifteen Lake County jurisdictions. Null elsewhere; a missing name is not established absence or a verified legal identity.",
 });
 
 /**
  * Tenure honesty: `no_recorded_sale_in_dor_window` is a lower bound, not proof
- * of long tenure, because only the current DOR roll is published.
+ * of long tenure within the inspected DOR evidence; other published history
+ * must be evaluated separately rather than declared absent.
  */
 export const TENURE_CAVEAT =
-  "The published DOR roll carries only 2025-2026 sales, and the historical DOR map-data files carry parcel geometry only. 'No recorded sale' is a lower bound on tenure, not a tenure claim.";
+  "The loaded and inspected DOR evidence covers 2025-2026 sales only. 'No recorded sale' is a lower bound on tenure, not a ten-year tenure claim. The Lake property appraiser advertises historical sales exports; they are not loaded or accepted as a complete chain of title here.";

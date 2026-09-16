@@ -1,29 +1,39 @@
 # Demo script — Lake County, FL
 
 This script records one **explicit finalized public release**. It refuses to start when the
-deployed run/root, complete Clermont evidence, contractor posture, or MCP tool surface does
+deployed run/root/coverage, full business-account table, complete Clermont evidence,
+contractor posture, or MCP tool surface does
 not match that release. The older public runtime and the one-year local candidate therefore
 cannot be presented as the completed submission and must not lend their CIDs or verification
 receipts to a newer run.
 
-There is no local step anywhere in this script. If a beat renders, the hosted runtime served
-it — that is the point of running it this way rather than from a checkout.
+The hosted UI and public gateway views are real. Before recording, the script reads the
+two operator-selected immutable manifest files and performs fresh public size/digest checks
+for every current CID, the manifest itself and the predecessor query bytes. Local manifests
+are not substituted for public retrieval. The source-only partial export cannot pass the
+full current/open-roofing demo; neither it nor the stale hosted app is submission-ready.
 
 ```bash
 U=https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws
-META=$(curl -fsS "$U/api/meta/run")
-RUN=$(printf '%s' "$META" | jq -er .run.runId)
-ROOT=$(printf '%s' "$META" | jq -er .run.rootCid)
+RUN='<final verified incremental run ID>'
+ROOT='<that run manifest root CID>'
+MANIFEST='<path to that exact immutable manifest JSON>'
+PRIOR_MANIFEST='<path to its prior successful manifest JSON>'
 
 DEMO_BASE_URL="$U" DEMO_RUN_ID="$RUN" DEMO_ROOT_CID="$ROOT" \
+  DEMO_MANIFEST_PATH="$MANIFEST" DEMO_PRIOR_MANIFEST_PATH="$PRIOR_MANIFEST" \
   pnpm --filter @oracle-lake/ui exec node scripts/record-demo.mjs out/
 ```
 
 Before Playwright creates a video, the recorder asserts `/api/meta/run` names exactly
-`$RUN/$ROOT`, `/mcp` exposes the expected nine tools, and the contractor view and coverage
+`$RUN/$ROOT`, the coverage has the same run ID, `/mcp` exposes the expected ten tools,
+all source/unmatched business accounts are queryable, and the contractor view and coverage
 snapshot report complete 2015–2026 Clermont evidence as one of 15 jurisdictions while BBB
 remains zero and policy/API-gated. Any missed beat exits non-zero; an incomplete take is never
-reported as a successful recording.
+reported as a successful recording. It also refuses source-only held decisions, unchanged
+query bytes presented as incremental ingestion, missing directory CAR mappings, incomplete
+two-gateway checks, or a predecessor absent from successful history. During recording,
+uncaught browser/console errors and an empty app root reject the take.
 
 ## 1. The published run
 
@@ -39,14 +49,15 @@ immutable root that name points at, so a scheduled publish lands without a redep
 
 ## 2. Aged roofs, by radius — the assignment's first question
 
-In `/#/search`, type: `aged roofs with an open roofing permit in Clermont`.
+In `/#/search`, type: `aged roofs in Clermont`, then explicitly set latitude
+`28.5494`, longitude `-81.7729`, radius `5` miles and age threshold `16`.
 
-The phrase compiles into explicit filters — `city = CLERMONT`, `minRoofAge = 15`,
-`hasOpenRoofingPermit = true` — so the query stays inspectable rather than opaque. Results
+The interpreted filters and radius controls stay visible. Ages are whole years:
+strictly older than 15 uses `minRoofAge = 16`; an at-least-15 question uses 15. Results
 carry roof age, the basis that age was derived from, coordinates, and per-row source systems.
 
 ```bash
-curl -s "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=5&minRoofAge=15&limit=5" \
+curl -s "$U/api/properties?lat=28.5494&lon=-81.7729&radiusMiles=5&minRoofAge=16&limit=5" \
   | jq '{matched, first: .rows[0] | {parcel_identifier, roof_age_years, roof_age_basis}}'
 
 COUNTY=$(curl -fsS "$U/api/properties?minRoofAge=15&limit=1" | jq -er '.matched')
@@ -56,6 +67,11 @@ test "$ONE" -le "$FIVE" && test "$FIVE" -le "$COUNTY"
 printf 'aged roofs: county=%s five_miles=%s one_mile=%s\n' "$COUNTY" "$FIVE" "$ONE"
 ```
 
+Year built is an allowed low-confidence building-age proxy, not measured roof age.
+Partial permit history may omit replacements. Next query `open roofing permits in
+Clermont`, explicitly restore the same radius and set minimum roofing permit days open
+to `365`; inspect literal status, lifecycle/as-of/duration basis and source-listed names.
+
 The displayed counts are read from this exact finalized runtime instead of copied from an
 older candidate. The one-mile count must not exceed the five-mile count, which must not
 exceed the county count; the radius is a real great-circle distance rather than a bounding
@@ -63,7 +79,7 @@ box.
 
 ## 3. What the data cannot say
 
-Open `/#/contractor`. Contractor of record is populated only where the certified Clermont
+Open `/#/contractor`. Source-listed contractor names are populated only where the retained Clermont
 2015–2026 harvest names one. The other 14 permitting jurisdictions do not have accessible
 contractor coverage, and BBB ratings remain gated at source and null.
 
@@ -74,9 +90,9 @@ curl -s "$U/api/views/contractor" \
 ```
 
 Every displayed contractor count is therefore labelled Clermont-only, never countywide.
-Where Clermont publishes a permit but no contractor, the row records
-`contractor_absent_on_permit`; outside that evidence boundary it records
-`contractor_gated_403`. Nothing is inferred to fill either null.
+Missing extraction, unavailable detail and an authoritatively established absence are
+different states. No missing contractor is promoted to proven absence. Source-listed
+names are not verified licensing or historical legal-company relationships.
 
 ## 4. Business coverage, including its own double count
 
@@ -104,6 +120,11 @@ with an account, and shared-address groups. The recorder uses those same fields 
 selected runtime and fails before opening a browser if their provenance or arithmetic does
 not match `$RUN/$ROOT`.
 
+Also inspect the account-grain table and `/api/businesses?linked=false&limit=5`.
+All 33,346 source accounts must be queryable, including 31,286 valid unmatched accounts;
+4,451 address-based candidate parcel associations are not distinct business companies.
+Raw payloads and fiduciary/contact fields are private, not demo artifacts.
+
 ## 5. Read-only SQL, in the browser
 
 Open `/#/sql`. Run a real aggregate:
@@ -129,13 +150,16 @@ curl -s "$U/api/sql" -H 'content-type: application/json' \
 If the public runtime reports `chatEnabled: true`, open `/#/ask` and ask the question that
 has an unanswerable half:
 
-> Within five miles of Clermont, which properties have roofs older than 15 years and an open
-> roofing permit — and who is the contractor?
+> Which properties in Lake County within five miles of Clermont have roofs older than 15 years?
+
+Then ask separately:
+
+> Which properties within five miles of Clermont have open roofing permits that have been open for many years, and who is the listed contractor?
 
 The OpenAI-backed agent must answer with cited tool calls against the published run and apply
-the row-level contractor semantics: report a published Clermont contractor when present,
-state an established absence for `contractor_absent_on_permit`, and state the source gate for
-`contractor_gated_403`. It must not turn the Clermont-only count into countywide coverage. If
+the row-level evidence boundaries: explain the roof-age proxy, report source-listed names
+when present, state duration/as-of assumptions and missing BBB data, and distinguish unknown
+from proven absence. It must not turn the Clermont-only count into countywide coverage. If
 the model key is not configured, the expected result is the explicit `chat_unavailable`
 notice; use the REST/MCP queries instead and do not present the notice as a passing agent
 demo.
@@ -152,9 +176,17 @@ done
 curl -s "$U/api/meta/run" | jq -r '.runHistory.runs[].rootCid'
 ```
 
-`artifacts/verification-<run>.json` records which gateways answered for every artifact, with
-the digest each returned. Directory digests hash the dag-pb node bytes, so a verifier can
-refetch a block and check it independently.
+Older receipts cover only selected objects and are not complete proof. The repaired
+publisher requires matching public bytes from two independent gateways for **every**
+manifest entry and the manifest itself. Directory digests hash raw dag-pb bytes, fetched
+with `?format=raw`, not HTML listings. Redirects to one host do not count as two gateways.
+The manifest's `directoryCars` maps every directory to an actual CID-addressed CAR file;
+the archive declares each directory as a root, contains every reachable block and is
+validated offline. A `?format=car` URL alone is not delivered CAR proof.
+
+The recorder visibly retrieves the actual manifest from two successful gateways and shows
+the hosted run history. Its later incremental run must contain changed query bytes and a
+distinct root; predecessor query bytes are freshly retrieved, not assumed from history.
 
 ## 8. MCP readiness
 
@@ -172,5 +204,13 @@ curl -s "$U/mcp" -H 'content-type: application/json' \
 # counts from the newer local candidate.
 ```
 
-The release demo requires exactly nine tools, including `getPropertyPermits`. Eight tools is
-evidence that the hosted runtime is stale, and the recorder fails before opening a browser.
+The release demo requires exactly ten tools, including `getPropertyPermits` and
+`listOracleBusinessAccounts`. This is an implementation consistency check, not an invented
+assignment rubric weight. The actual same-release run summary must show counts by source,
+collection timestamps and limitations; unknown historic capture times stay unknown.
+
+Finally show the portable consumer DuckDB/MCP read path, who funds pinning/optional hosting
+and model usage, and the Oracle/builder evidence together. No live owner messaging or
+Roofing CRM workflow demonstration is required. Both original agent prompts, source-count
+summary, manifest/two gateways, later immutable snapshot and CAR delivery must be present;
+an unavailable-agent notice or source-only refusal is an honest limitation, not a passed beat.

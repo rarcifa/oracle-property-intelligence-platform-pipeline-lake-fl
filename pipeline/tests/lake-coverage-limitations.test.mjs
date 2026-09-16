@@ -41,6 +41,27 @@ const clermont = {
 };
 
 describe("published limitations", () => {
+  it("states the new complete account grain without promoting held source-only decisions", () => {
+    const limitations = buildLimitations(
+      linkage,
+      { ...business, loaded_accounts: 33346 },
+      clermont,
+      true,
+    );
+    expect(limitations.find((entry) => entry.startsWith("Business coverage"))).toContain(
+      "all 33346 source accounts, including 31286 valid unmatched accounts",
+    );
+    expect(limitations.find((entry) => entry.startsWith("Roof age"))).toContain(
+      "actual building year only, at LOW confidence",
+    );
+    expect(limitations.join(" ")).toContain(
+      "missing captured name does not prove contractor absence",
+    );
+    expect(limitations.join(" ")).toContain(
+      "unknown; absent accepted conclusions are not zero-valued signals",
+    );
+    expect(limitations.join(" ")).not.toContain("uses valid nonfuture completion dates");
+  });
   it("covers every source boundary the dataset has", () => {
     const limitations = buildLimitations(linkage, business, clermont);
     expect(limitations).toHaveLength(11);

@@ -185,6 +185,100 @@ export function assertSchemaMatches(columns: readonly string[]): void {
   }
 }
 
+/** Closed compatibility contract for the private, unaccepted local derivative. */
+export const LOCAL_EVIDENCE_CONTRACT_VERSION = "oracle.lake-retained-evidence.v1";
+
+export const LOCAL_EVIDENCE_PROPERTY_EXTRA_COLUMNS: readonly QueryTableColumn[] = Object.freeze([
+  c("source_observed_built_year", "UTF8", true, "Raw built year", DERIVED),
+  c("source_observed_effective_built_year", "UTF8", true, "Raw effective year", DERIVED),
+  c("previous_unaccepted_roof_age_years", "INT32", true, "Unaccepted prior age", DERIVED),
+  c("previous_unaccepted_roof_age_basis", "UTF8", true, "Unaccepted prior basis", DERIVED),
+  c("previous_unaccepted_roof_anchor_date", "UTF8", true, "Unaccepted prior anchor", DERIVED),
+  c("roofing_discovery_permit_count", "INT32", true, "Discovery count", DERIVED),
+  c("source_export_open_permit_count", "INT32", true, "Unaccepted indexed count", DERIVED),
+  c(
+    "source_export_open_roofing_permit_count",
+    "INT32",
+    true,
+    "Unaccepted indexed roofing count",
+    DERIVED,
+  ),
+  c(
+    "source_export_longest_open_permit_days",
+    "INT32",
+    true,
+    "Unaccepted indexed duration",
+    DERIVED,
+  ),
+  c(
+    "source_export_longest_open_roofing_permit_days",
+    "INT32",
+    true,
+    "Unaccepted indexed roofing duration",
+    DERIVED,
+  ),
+  c("roof_age_confidence", "UTF8", true, "Roof-age confidence", DERIVED),
+  c("built_year_evidence_state", "UTF8", true, "Built-year evidence", DERIVED),
+  c("effective_built_year_evidence_state", "UTF8", true, "Effective-year evidence", DERIVED),
+  c("roof_age_decision", "UTF8", true, "Roof-age eligibility", DERIVED),
+  c("roof_age_caveat", "UTF8", true, "Roof-age caveat", DERIVED),
+  c("contractor_attribution_kind", "UTF8", true, "Contractor attribution", DERIVED),
+  c("contractor_company_id", "UTF8", true, "Verified contractor company (unaccepted)", DERIVED),
+  c(
+    "accepted_primary_roof_permit_count",
+    "INT32",
+    true,
+    "Accepted primary-roof count (unaccepted)",
+    DERIVED,
+  ),
+  c("evidence_contract_version", "UTF8", true, "Local evidence contract", DERIVED),
+]);
+
+export const LOCAL_EVIDENCE_PROPERTY_COLUMNS = Object.freeze([
+  ...QUERY_TABLE_COLUMNS,
+  ...LOCAL_EVIDENCE_PROPERTY_EXTRA_COLUMNS,
+]);
+
+/** Prior decisions/raw source values remain on disk, never in the query surface. */
+export const LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS = Object.freeze([
+  ...QUERY_TABLE_COLUMNS,
+  ...LOCAL_EVIDENCE_PROPERTY_EXTRA_COLUMNS.slice(10),
+]);
+
+export interface DescribedColumn {
+  column_name: string;
+  column_type: string;
+}
+
+/** Name, order AND type gate. This is compatibility, not source acceptance. */
+export function assertLocalEvidenceSchemaMatches(
+  columns: readonly DescribedColumn[],
+  expected: readonly { name: string; type: string }[],
+): void {
+  const types: Readonly<Record<string, string>> = {
+    UTF8: "VARCHAR",
+    DOUBLE: "DOUBLE",
+    INT32: "INTEGER",
+    BOOLEAN: "BOOLEAN",
+  };
+  if (columns.length !== expected.length) {
+    throw new Error(
+      `Local preview schema has ${columns.length} columns, expected ${expected.length}`,
+    );
+  }
+  for (let index = 0; index < expected.length; index++) {
+    const actual = columns[index];
+    const wanted = expected[index];
+    if (
+      !wanted ||
+      actual?.column_name !== wanted.name ||
+      actual.column_type !== (types[wanted.type] ?? wanted.type)
+    ) {
+      throw new Error(`Local preview schema mismatch at column ${index}`);
+    }
+  }
+}
+
 /** One published row. Every column is nullable except `property_id`. */
 export interface PropertyRow {
   property_id: string;
@@ -256,7 +350,8 @@ export interface PropertyRow {
 export const ROOF_AGE_BASIS_LABELS: Readonly<Record<string, string>> = Object.freeze({
   roofing_permit_completed: "Completed roofing permit",
   roofing_permit_issued: "Issued roofing permit",
-  year_built: "Year built (no roofing permit on record)",
+  year_built: "Year built (building-age proxy)",
+  built_year_proxy: "Built-year proxy (low confidence; not measured roof age)",
 });
 
 /** Human labels for the source-system tokens in `source_systems`. */

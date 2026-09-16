@@ -50,6 +50,12 @@ import {
   type ResponseProvenance,
   type SearchOptions,
   type SearchResponse,
+  BUSINESSES_VIEW,
+  assertBusinessSchemaMatches,
+  buildEmptyBusinessTableSql,
+  BUSINESS_ACCOUNT_COUNTS_SQL,
+  BUSINESS_ACCOUNT_NOTE,
+  buildBusinessSearchSql,
 } from "@oracle-lake/shared";
 import { numberCell, rowToNumberRecord, stringCell, tableToRows } from "./arrow.js";
 import { BUSINESS_VIEW_NOTE, CONTRACTOR_VIEW_NOTE, GATED_ENRICHMENT_TOKENS } from "../lib/notes.js";
@@ -71,6 +77,7 @@ import {
 /** The name the Parquet is registered under inside the WASM filesystem. */
 const REGISTERED_FILE = "query-table.parquet";
 const REGISTERED_PERMIT_FILE = "permit-table.parquet";
+const REGISTERED_BUSINESS_FILE = "business-table.parquet";
 
 /** How long the whole bootstrap gets before we fail over to the server. */
 export const DUCKDB_INIT_TIMEOUT_MS = 20_000;
@@ -163,7 +170,8 @@ export function warmDuckDbRuntime(): Promise<{
   worker: Worker;
   workerUrl: string;
 }> {
-  runtimePromise ??= (async () => {
+  if (runtimePromise) return runtimePromise;
+  const pending = (async () => {
     const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
     if (!bundle.mainWorker) {
       throw new Error("No DuckDB-WASM worker bundle is available for this browser");
@@ -179,11 +187,20 @@ export function warmDuckDbRuntime(): Promise<{
     const db = new duckdb.AsyncDuckDB(logger, worker);
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
     return { db, worker, workerUrl };
-  })().catch((error: unknown) => {
-    runtimePromise = null;
+  })();
+  const guarded = pending.catch((error: unknown) => {
+    if (runtimePromise === guarded) runtimePromise = null;
     throw error;
   });
-  return runtimePromise;
+  runtimePromise = guarded;
+  return guarded;
+}
+
+/** A source exclusively owns its worker; retry/swap cannot reuse a terminated shared runtime. */
+export function takeDuckDbRuntime(): ReturnType<typeof warmDuckDbRuntime> {
+  const pending = warmDuckDbRuntime();
+  runtimePromise = null;
+  return pending;
 }
 
 export async function createDuckDbSource(options: {
@@ -199,13 +216,14 @@ export async function createDuckDbSource(options: {
   const timeoutMs = options.timeoutMs ?? DUCKDB_INIT_TIMEOUT_MS;
   let url = candidates[0]!;
 
-  // The runtime is instantiated once per tab and the gateway is retried around
-  // it. Booting per candidate was tried and was a regression: instantiate alone
+  // Each source owns one runtime and retries gateways around it. A replacement
+  // source must not share the old source's worker, which close() terminates.
+  // Booting per candidate was tried and was a regression: instantiate alone
   // costs about nine seconds, so splitting the budget across four gateways timed
   // every one of them out and the page silently fell back to the server path.
   // Only attaching the file and reading its footer is per-gateway, and that is
   // cheap.
-  const runtime = await withTimeout(warmDuckDbRuntime(), timeoutMs, "DuckDB-WASM initialisation");
+  const runtime = await withTimeout(takeDuckDbRuntime(), timeoutMs, "DuckDB-WASM initialisation");
   const { db, worker, workerUrl } = runtime;
 
   /** Point the instantiated runtime at one gateway and prove it reads. */
@@ -263,6 +281,31 @@ export async function createDuckDbSource(options: {
     permitsAvailable = true;
   } catch {
     await connection.query(buildEmptyPermitTableSql(PERMITS_VIEW));
+  }
+
+  let businessesAvailable = false;
+  try {
+    await db.registerFileURL(
+      REGISTERED_BUSINESS_FILE,
+      url.replace(/query-table\.parquet$/, "business-table.parquet"),
+      duckdb.DuckDBDataProtocol.HTTP,
+      false,
+    );
+    await connection.query(buildCreateViewSql(REGISTERED_BUSINESS_FILE, BUSINESSES_VIEW));
+    businessesAvailable = true;
+  } catch {
+    await connection.query(buildEmptyBusinessTableSql());
+  }
+  if (businessesAvailable) {
+    const described = tableToRows(
+      (await connection.query(`DESCRIBE ${BUSINESSES_VIEW}`)) as unknown as Table,
+    );
+    assertBusinessSchemaMatches(
+      described.map((row) => ({
+        column_name: String(row.column_name),
+        column_type: String(row.column_type),
+      })),
+    );
   }
 
   const teardown = async (): Promise<void> => {
@@ -420,6 +463,12 @@ export async function createDuckDbSource(options: {
       const cityRows = await runQuery(bySql);
       const typeRows = await runQuery(byTypeSql);
       const totals = rowToNumberRecord(totalsRow);
+      totals.properties_with_accounts = totals.with_business_account ?? 0;
+      if (businessesAvailable)
+        Object.assign(totals, rowToNumberRecord(await runQueryOne(BUSINESS_ACCOUNT_COUNTS_SQL)));
+      const accounts = businessesAvailable
+        ? await runQuery(buildBusinessSearchSql({ limit: 50 }))
+        : [];
       const byCity: BusinessByCity[] = cityRows.map((row) => ({
         city: stringCell(row, "city") ?? "",
         properties_with_accounts: numberCell(row, "properties_with_accounts"),
@@ -436,7 +485,11 @@ export async function createDuckDbSource(options: {
         byCity,
         byType,
         provenance: provenance(`${totalsSql};\n\n${bySql};\n\n${byTypeSql}`, ["fl_dor_tpp_2026p"]),
-        note: BUSINESS_VIEW_NOTE,
+        note: businessesAvailable
+          ? `${BUSINESS_VIEW_NOTE} ${BUSINESS_ACCOUNT_NOTE}`
+          : BUSINESS_VIEW_NOTE,
+        businessesAvailable,
+        accounts,
       };
     },
 

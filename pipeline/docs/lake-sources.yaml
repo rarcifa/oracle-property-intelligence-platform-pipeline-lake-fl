@@ -45,14 +45,18 @@ sales:
   window_last: "2026"
   ten_year_tenure_provable: false
   ten_year_tenure_evidence: >-
-    Only the current roll is published: the NAL folder exposes 2026P alone, and both
+    In the inspected DOR sources, the NAL folder exposes 2026P alone, and both
     SDF and NAL SALE_YR1 span 2025-2026 only. The DOR Map Data archive publishes Lake
     parcel files back to 2005F, but they carry parcel geometry only - the 2010 Lake
     file was downloaded and its attribute table holds exactly two fields, CO_NO and
     PARCEL_ID, across 178,377 records. Attribute-bearing PAR files begin at 2024F.
-    Ownership tenure beyond the 2025-2026 window therefore cannot be proven from any
-    published Lake source. The query table exposes no_recorded_sale_in_dor_window as
-    an explicit lower bound and never claims a tenure length.
+    Ownership tenure beyond the 2025-2026 window cannot be proven from those inspected
+    DOR files. The deliberately unused Lake property appraiser and unexamined sales
+    history or archives remain unknown, not unavailable; this is not an absence claim
+    about every published Lake source. The query table exposes no_recorded_sale_in_dor_window
+    as an explicit lower bound and never claims a tenure length. This preserves the
+    unknown-versus-unavailable distinction in the official kit's
+    skills/use-oracle/reference/permit-evidence-preflight.md field evidence states.
 
 permits:
   expected_jurisdiction_count: 15
@@ -418,9 +422,13 @@ business:
   construction_naics_count: 1883
   roofing_naics_238160_count: 44
   note: >-
-    Business and contractor records come from the tangible-personal-property roll, which
-    carries NAICS codes, owner names and situs addresses. Sunbiz corporate ingest is not
-    in this assignment's acceptance criteria and was not run.
+    Loaded business facts come from the tangible-personal-property roll, which carries
+    NAICS codes, owner names and situs addresses; it is not the corporate or licensing
+    identity baseline. Sunbiz corporate ingest was historically not run and remains a
+    mandatory unresolved prerequisite under the current official kit's
+    skills/onboard-county/SKILL.md stage 6 and skills/use-oracle/SKILL.md mandatory operating
+    sequence: Sunbiz first, then adequate official DBPR, before future permit harvesting.
+    DOR TPP is not a substitute and no approved exception to that prerequisite is recorded.
 
 source_inventory:
   property_bulk: https://floridarevenue.com/property/dataportal

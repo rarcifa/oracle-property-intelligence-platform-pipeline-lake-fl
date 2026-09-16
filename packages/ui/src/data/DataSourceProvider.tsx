@@ -49,6 +49,13 @@ const BOOTSTRAP_SOURCE = createApiSource("server");
 
 const DataSourceContext = createContext<DataSourceContextValue | null>(null);
 
+/** Pure eligibility check, including manual retries: private previews never use IPFS. */
+export function browserDataSourceEligible(
+  meta: Pick<RunMetaResponse, "run" | "localEvidencePreview" | "sourceObservationsOnly">,
+): boolean {
+  return !meta.localEvidencePreview && !meta.sourceObservationsOnly && Boolean(meta.run?.rootCid);
+}
+
 function readPreference(): "browser" | "server" | null {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -95,15 +102,6 @@ export function DataSourceProvider({ children }: { children: ReactNode }): JSX.E
       setMode("connecting");
       setMetaError(null);
 
-      // Start the WASM runtime NOW, not after the run pointer arrives. It costs
-      // about nine seconds — two CDN round trips and the parquet extension —
-      // and none of it depends on which CID we are about to read, so the two
-      // waits used to run back to back for no reason. Errors are swallowed
-      // here: this is a warm-up, and the real attempt below reports failures.
-      const warming = import("./duckdbSource.js")
-        .then((module) => module.warmDuckDbRuntime())
-        .catch(() => undefined);
-
       let runMeta: RunMetaResponse;
       try {
         runMeta = await getJson<RunMetaResponse>("/api/meta/run");
@@ -121,6 +119,20 @@ export function DataSourceProvider({ children }: { children: ReactNode }): JSX.E
       setMeta(runMeta);
       const api = createApiSource(runMeta.dataSource);
       setSource(api);
+
+      // Local/private preview must never load a CDN worker or borrow a public CID.
+      if (!browserDataSourceEligible(runMeta)) {
+        disposeBrowser();
+        setMode("server");
+        setReason(
+          runMeta.localEvidencePreview
+            ? "Local unpublished data uses the server only; browser IPFS mode is unavailable."
+            : runMeta.sourceObservationsOnly
+              ? "Historical source-only data uses the guarded server interface; current/open permit decisions remain unavailable."
+              : "No published root CID is available for browser IPFS reads.",
+        );
+        return;
+      }
 
       const preference = readPreference();
       if (preference === "server") {
@@ -141,9 +153,6 @@ export function DataSourceProvider({ children }: { children: ReactNode }): JSX.E
       }
 
       try {
-        // Already in flight since the top of `connect`; awaiting it here just
-        // joins that work rather than starting it.
-        await warming;
         const { createDuckDbSource } = await import("./duckdbSource.js");
         const browser = await createDuckDbSource({
           rootCid,

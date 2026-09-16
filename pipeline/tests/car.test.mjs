@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CAR_VERSION, readCarRoots, writeCarFile } from "../src/core/car.mjs";
+import { CAR_VERSION, readCarRoots, validateCarArchive, writeCarFile } from "../src/core/car.mjs";
 import {
   UNIXFS_CHUNK_SIZE,
   buildUnixfsDirectory,
@@ -84,9 +84,7 @@ describe("writeCarFile", () => {
     });
     const onDisk = await readFile(carPath);
     expect(result.bytes).toBe(onDisk.length);
-    expect(result.sha256).toBe(
-      `sha256:${createHash("sha256").update(onDisk).digest("hex")}`,
-    );
+    expect(result.sha256).toBe(`sha256:${createHash("sha256").update(onDisk).digest("hex")}`);
     expect(result.sha256).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
@@ -178,5 +176,52 @@ describe("readCarRoots", () => {
     const brokenPath = path.join(directory, "broken.car");
     await writeFile(brokenPath, car.subarray(0, 5));
     await expect(readCarRoots(brokenPath)).rejects.toThrow(/truncated/);
+  });
+});
+
+describe("validateCarArchive", () => {
+  it("imports the complete block set for every declared directory snapshot", async () => {
+    const directory = await scratchDirectory();
+    const file = computeUnixfsFileCid(new Uint8Array(UNIXFS_CHUNK_SIZE + 5));
+    const child = buildUnixfsDirectory([{ name: "rows.bin", ...file }]);
+    const root = buildUnixfsDirectory([{ name: "shards", ...child }]);
+    const outputPath = path.join(directory, "all-directories.car");
+    await writeCarFile({ roots: [root.cid, child.cid], blocks: root.blocks, outputPath });
+    const bytes = await readFile(outputPath);
+    const imported = validateCarArchive(bytes);
+    expect(imported.roots).toEqual([root.cid, child.cid]);
+    expect(new Set(imported.blocks.map((block) => block.cid))).toEqual(
+      new Set(root.blocks.map((block) => block.cid)),
+    );
+    // The delivered CAR is a file object, not its data DAG root CID.
+    expect(computeUnixfsFileCid(bytes).cid).not.toBe(root.cid);
+  });
+
+  it("rejects a CAR with a present root but an absent reachable child", async () => {
+    const directory = await scratchDirectory();
+    const file = computeUnixfsFileCid("missing child");
+    const root = buildUnixfsDirectory([{ name: "rows.txt", ...file }]);
+    const outputPath = path.join(directory, "missing-child.car");
+    await writeCarFile({
+      roots: [root.cid],
+      blocks: [{ cid: root.cid, bytes: root.bytes }],
+      outputPath,
+    });
+    expect(() => validateCarArchive(new Uint8Array())).toThrow();
+    expect(() => validateCarArchive(Buffer.from([0]))).toThrow();
+    expect(() => validateCarArchive(root.bytes)).toThrow();
+    const bytes = await readFile(outputPath);
+    expect(() => validateCarArchive(bytes)).toThrow(/missing reachable block/);
+  });
+
+  it("rejects truncated and digest-corrupted block frames", async () => {
+    const directory = await scratchDirectory();
+    const file = computeUnixfsFileCid("integrity");
+    const outputPath = path.join(directory, "integrity.car");
+    await writeCarFile({ roots: [file.cid], blocks: file.blocks, outputPath });
+    const bytes = await readFile(outputPath);
+    expect(() => validateCarArchive(bytes.subarray(0, bytes.length - 1))).toThrow(/truncated/);
+    bytes[bytes.length - 1] ^= 1;
+    expect(() => validateCarArchive(bytes)).toThrow(/does not hash/);
   });
 });

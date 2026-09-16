@@ -81,6 +81,9 @@ export interface BusinessViewResponse {
   byType: BusinessByType[];
   provenance: ResponseProvenance;
   note: string;
+  /** Older immutable releases lack the account-grain artifact, not the businesses themselves. */
+  businessesAvailable?: boolean;
+  accounts?: Record<string, unknown>[];
 }
 
 /** `GET /api/views/contractor`. */
@@ -173,6 +176,8 @@ export interface RunHistory {
 
 /** `GET /api/meta/run`. */
 export interface RunMetaResponse {
+  localEvidencePreview?: boolean;
+  sourceObservationsOnly?: boolean;
   run: LatestRunPointer | null;
   coverage: CoverageSnapshot | null;
   verification: VerificationReport | null;

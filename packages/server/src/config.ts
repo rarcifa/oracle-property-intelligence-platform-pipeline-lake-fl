@@ -25,6 +25,10 @@ export interface ServerConfig {
   /** Parquet the DuckDB layer opens: a local path or an https gateway URL. */
   parquetSource: string;
   parquetSourceKind: "ipfs" | "local";
+  /** Explicit read-only, loopback-only unaccepted evidence preview. Never deployment. */
+  localEvidencePreview?: boolean;
+  permitSource?: string;
+  localEvidenceAsOfYear?: number;
   /**
    * IPNS name the published dataset lives behind, when one is configured.
    *
@@ -76,6 +80,47 @@ export function resolveRunDir(env: NodeJS.ProcessEnv = process.env): string | nu
 
 /** Build the effective configuration from an environment. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  if (
+    env.ORACLE_LOCAL_EVIDENCE_PREVIEW !== undefined &&
+    env.ORACLE_LOCAL_EVIDENCE_PREVIEW !== "1" &&
+    env.ORACLE_LOCAL_EVIDENCE_PREVIEW !== "0"
+  ) {
+    throw new Error("ORACLE_LOCAL_EVIDENCE_PREVIEW must be exactly 1 or 0");
+  }
+  const localEvidencePreview = env.ORACLE_LOCAL_EVIDENCE_PREVIEW === "1";
+  if (localEvidencePreview) {
+    if (
+      env.AWS_LAMBDA_FUNCTION_NAME ||
+      env.AWS_EXECUTION_ENV ||
+      env.LAMBDA_TASK_ROOT ||
+      (env.HOST !== undefined && !["127.0.0.1", "localhost", "::1"].includes(env.HOST))
+    ) {
+      throw new Error("Local evidence preview is loopback-only and cannot run in Lambda");
+    }
+    if (env.ORACLE_PARQUET_URL || env.ORACLE_IPNS_NAME || env.ORACLE_DATA_ROOT_CID) {
+      throw new Error(
+        "Local evidence preview cannot use a public URL, IPNS name or publication CID",
+      );
+    }
+    for (const value of [env.ORACLE_PARQUET_PATH, env.ORACLE_PERMIT_PARQUET_PATH]) {
+      if (!value || !isLocalParquetPath(value)) {
+        throw new Error(
+          "Local evidence preview requires explicit local property and permit Parquet paths",
+        );
+      }
+    }
+    if (!env.ORACLE_DATA_RUN_ID || !/^[A-Za-z0-9._-]{1,120}$/.test(env.ORACLE_DATA_RUN_ID)) {
+      throw new Error("Local evidence preview requires an explicit local run ID");
+    }
+    if (
+      !env.ORACLE_LOCAL_EVIDENCE_AS_OF_YEAR ||
+      !/^(?:17|18|19|20|21)\d{2}$/.test(env.ORACLE_LOCAL_EVIDENCE_AS_OF_YEAR)
+    ) {
+      throw new Error(
+        "Local evidence preview requires the existing derivative's explicit as-of year",
+      );
+    }
+  }
   const runDir = resolveRunDir(env);
 
   const explicitParquet = env.ORACLE_PARQUET_URL ?? env.ORACLE_PARQUET_PATH;
@@ -124,5 +169,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // wall with margin. Raising it past 60 s requires RESPONSE_STREAM invoke
     // mode first — the limit is the transport, not this number.
     chatTimeoutMs: Number.parseInt(env.ORACLE_CHAT_TIMEOUT_MS ?? "120000", 10),
+    ...(localEvidencePreview
+      ? {
+          localEvidencePreview: true,
+          host: env.HOST ?? "127.0.0.1",
+          permitSource: env.ORACLE_PERMIT_PARQUET_PATH,
+          localEvidenceAsOfYear: Number(env.ORACLE_LOCAL_EVIDENCE_AS_OF_YEAR),
+          runDir: null,
+          ipnsName: null,
+          dataRootCid: null,
+          openaiApiKey: null,
+        }
+      : {}),
   };
+}
+
+/** No URL schemes, UNC paths or glob replacement scans in a private preview. */
+export function isLocalParquetPath(source: string): boolean {
+  return (
+    source === source.trim() &&
+    source.length > 0 &&
+    !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\\\\)/i.test(source) &&
+    !/[\0*?[\]{}]/.test(source) &&
+    /\.parquet$/i.test(source)
+  );
 }

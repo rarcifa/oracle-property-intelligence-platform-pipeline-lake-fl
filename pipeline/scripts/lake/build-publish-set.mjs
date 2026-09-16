@@ -30,6 +30,10 @@ import {
   LAKE_PERMIT_TABLE_SCHEMA_FIELDS,
 } from "../../src/counties/lake/permit-table.mjs";
 import { LAKE_IPNS_LABEL } from "../../src/counties/lake/enrichment-profile.mjs";
+import {
+  assertBusinessTableColumns,
+  LAKE_BUSINESS_TABLE_SCHEMA_FIELDS,
+} from "../../src/counties/lake/business-table.mjs";
 import { buildCoverageSnapshot } from "../../src/core/query-table.mjs";
 
 const execFileAsync = promisify(execFile, { maxBuffer: 1024 * 1024 * 512 });
@@ -244,7 +248,7 @@ function log(message, fields = {}) {
  * @param {Record<string, unknown>} clermont - Clermont eTRAKiT permit and contractor counts.
  * @returns {string[]} Limitations, one plain sentence group each.
  */
-export function buildLimitations(linkage, business, clermont) {
+export function buildLimitations(linkage, business, clermont, sourceObservationsOnly = false) {
   const matched = Number(business.matched_accounts);
   const accounts = Number(business.total_accounts);
   const clermontParcels = Number(clermont.linked_parcels);
@@ -266,19 +270,28 @@ export function buildLimitations(linkage, business, clermont) {
   const unlinked = Number.isInteger(clermont.valid_unlinked_permits)
     ? `${Number(clermont.valid_unlinked_permits)} captured Clermont permits are valid-unlinked and retained without a property link.`
     : "Clermont-specific valid-unlinked counts are unavailable in this legacy summary; they must not be inferred as zero.";
-  return [
+  const limitations = [
     "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
     "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
     `Contractor of record is published for ONE jurisdiction of fifteen. Clermont's eTRAKiT portal names the contractor on its permit detail pages and is harvested: ${Number(clermont.permits)} permits over ${Number(clermont.parcels)} parcel keys, ${Number(clermont.permits_with_contractor)} of them naming a contractor and ${Number(clermont.distinct_contractors)} distinct captured contractor names, not reconciled legal businesses. Everywhere else contractor_name is null and stays null: the county CD Plus layer publishes no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, and the other thirteen municipalities are blocked, unavailable or manual-only. enrichment_status distinguishes the three cases - contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403 - because a bare null cannot.`,
     `Clermont's permits cover ${clermontParcels} parcels, ${((clermontParcels / rollParcels) * 100).toFixed(1)}% of the ${rollParcels}-parcel roll, and ${captureWindow}. ${Number(clermont.dead_permits)} enumerated permits are certified as proven-dead, separately from valid unmatched records; a missing or absent parcel key is not grounds for declaring a permit dead. ${unlinked} A parcel with no Clermont permit is not a parcel with no permits - it may be outside the one municipality whose permit details can be read or lack an observed match within this capture window. The full portal-year capture does not establish every predecessor/archive system or complete countywide permit history.`,
     "BBB ratings are not published. The default BBB request/browser route returned HTTP 403; one prohibited browser-fingerprint spoof returned 200 during verification, but no result was retained and no approved official-API harvest was run. bbb_rating is a real column that stays null.",
-    "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
+    "The loaded and inspected DOR sales evidence spans 2025-2026, so it cannot prove ten-year ownership tenure. The Lake property appraiser advertises historical exports, but those are not loaded or accepted as a complete chain of title here. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
     "Coordinates come from the 2025 GIO centroid release matched by ALT_KEY against the 2026 assessed roll. Properties without a matching valid complete latitude/longitude pair remain in the property table with null coordinates; the cause of each missing pair has not been established, and no coordinates are fabricated.",
     `${Number(linkage.valid_unlinked_permits)} of ${Number(linkage.total_permits)} permits reference a parcel key absent from the assessed roll or have no usable parcel key (${Number(linkage.unmatched_parcel_keys)} distinct unmatched non-null keys). They are valid records, retained in the permit table and not discarded, but they attach to no published property row. Property permit-count aggregates therefore count linked records only, not every loaded permit.`,
-    `Business coverage is a fraction of the TPP roll, and the published per-parcel total double counts. The roll carries no parcel key, so accounts are located by a normalized street+zip match against the roll's situs addresses: ${Number(business.accounts_with_situs)} of ${Number(business.total_accounts)} accounts carry a situs address and ${Number(business.matched_accounts)} match a parcel (${((matched / accounts) * 100).toFixed(1)}%), so the rest are not published. A matched address group is then attributed to every parcel sharing that address, so summing business_account_count across the ${Number(business.parcels_with_account)} parcels that carry one yields ${Number(business.attributed_accounts)} rather than ${Number(business.matched_accounts)}: ${Number(business.shared_address_groups)} address groups span more than one parcel. ${Number(business.matched_accounts)} is the distinct account match; ${Number(business.attributed_accounts)} counts account-parcel matches, not businesses.`,
+    `Business coverage at parcel-associated grain is a fraction of the TPP roll, and the per-parcel total double counts. The roll carries no parcel key, so accounts are associated by normalized situs street + ZIP: ${Number(business.accounts_with_situs)} of ${accounts} accounts carry a situs address and ${matched} match a parcel (${((matched / accounts) * 100).toFixed(1)}%). ${business.loaded_accounts === accounts ? `The separate account-grain business-table.parquet retains all ${accounts} source accounts, including ${accounts - matched} valid unmatched accounts; raw source payload and owner/fiduciary contact fields stay private.` : "An all-source account table is unavailable in this legacy set; unmatched accounts must not be claimed queryable."} Summing per-parcel attributions yields ${Number(business.attributed_accounts)} rather than ${matched}: these are account–parcel associations, not businesses. ${Number(business.shared_address_groups)} address groups span more than one parcel. Associations cover ${Number(business.parcels_with_account)} properties; address sharing is not exact legal identity.`,
     "Roof age remains a proxy, not a verified primary-roof installation age. It uses valid nonfuture completion dates from closed roofing permits, then valid issue dates from closed roofing permits as an explicit fallback proxy, then year built. Open permits do not reset age. An explicit-text primary-roof replacement versus repair/accessory classifier has not been implemented; partial jurisdiction, predecessor and historical coverage can hide a later replacement.",
     "Contractor names and license text are captured permit-source attribution only. No adequate official DBPR licensing/qualifier/qualified-business temporal snapshot or loaded/reconciled Sunbiz legal-entity baseline is present, so no verified legal-company/license edges are asserted. The current kit's identity-baseline-before-permit-harvest order was not fulfilled; this bounded existing-capture repair does not cure that conformance limitation. BBB reputation and address matches cannot substitute for official identity evidence.",
   ];
+  if (sourceObservationsOnly) {
+    limitations[2] = `Retained source-listed contractor names are available for Clermont only: ${Number(clermont.permits_with_contractor)} permits name a contractor, with ${Number(clermont.distinct_contractors)} distinct source strings, not reconciled legal businesses. A missing captured name does not prove contractor absence. No current status, accepted completion, verified license, or legal-company conclusion is published from undated retained captures.`;
+    limitations[9] =
+      "Roof age uses valid actual building year only, at LOW confidence. Building age is not measured roof age; incomplete jurisdiction/predecessor history may hide a later roof replacement. Retained issue/status/work text is historical source evidence, not an accepted completion or primary-roof classification.";
+    limitations.push(
+      "This is a separate source-only partial dataset. Historical source status and date text remains queryable, but current-open status, open duration, roofing classification, completion, and legal identity are unknown; absent accepted conclusions are not zero-valued signals.",
+    );
+  }
+  return limitations;
 }
 
 /**
@@ -323,6 +336,10 @@ export function buildPermitCountSummary(totals, permitGate, linkage) {
  * @param {string} options.runId - Run identifier.
  * @param {string} options.parquetPath - Source query-table Parquet.
  * @param {string} [options.permitParquetPath] - Source per-permit Parquet.
+ * @param {string} [options.businessParquetPath] - Optional eligible all-source TPP account artifact.
+ * @param {string} [options.sourceSemanticsPath] - Source-only field semantics bound to this run.
+ * @param {string} [options.outputDir] - New immutable run directory (default under publish runs).
+ * @param {string} [options.downloadDir] - Exact source CSV directory used for reconciliation.
  * @param {string} options.clermontEvidencePath - Exact certified baseline JSON used to materialize Clermont.
  * @param {string} options.clermontBaselineSha256 - Digest required by the operator request.
  * @returns {Promise<{ runDir: string, artifacts: string[], counts: Record<string, number> }>} Built run.
@@ -331,15 +348,47 @@ export async function buildPublishSet({
   runId,
   parquetPath,
   permitParquetPath = path.join(path.dirname(parquetPath), "permit-table.parquet"),
+  businessParquetPath,
+  sourceSemanticsPath,
+  outputDir,
+  downloadDir = path.join(RUNTIME_ROOT, "data", "downloads", "lake"),
   clermontEvidencePath,
   clermontBaselineSha256,
 }) {
-  const runDir = path.join(PUBLISH_ROOT, "runs", runId);
-  await mkdir(path.join(runDir, "shards"), { recursive: true });
-  await mkdir(path.join(runDir, "samples"), { recursive: true });
+  if (!/^[A-Za-z0-9._-]{1,120}$/.test(runId) || runId === "." || runId === "..")
+    throw new Error("Invalid immutable publication run identity");
+  const sourceSemantics = sourceSemanticsPath
+    ? JSON.parse(await readFile(sourceSemanticsPath, "utf8"))
+    : null;
+  const sourceObservationsOnly = sourceSemantics?.sourceObservationsOnly === true;
+  if (
+    sourceSemantics &&
+    (sourceSemantics.schemaVersion !== "oracle.lake-source-semantics.v1" ||
+      sourceSemantics.runId !== runId ||
+      !sourceObservationsOnly ||
+      sourceSemantics.countyComplete !== false ||
+      sourceSemantics.currentPermitStatusAccepted !== false ||
+      sourceSemantics.completionAccepted !== false ||
+      sourceSemantics.legalIdentityVerified !== false)
+  )
+    throw new Error("Source-only semantics do not match the proposed run and held conclusions");
+  const runDir = outputDir ? path.resolve(outputDir) : path.join(PUBLISH_ROOT, "runs", runId);
+  await mkdir(path.dirname(runDir), { recursive: true });
+  await mkdir(runDir, { recursive: false });
+  await mkdir(path.join(runDir, "shards"));
+  await mkdir(path.join(runDir, "samples"));
 
   await copyFile(parquetPath, path.join(runDir, "query-table.parquet"));
   await copyFile(permitParquetPath, path.join(runDir, "permit-table.parquet"));
+  if (sourceSemanticsPath)
+    await copyFile(sourceSemanticsPath, path.join(runDir, "source-semantics.json"));
+  if (businessParquetPath) {
+    const columns = await query(
+      `DESCRIBE SELECT * FROM read_parquet('${businessParquetPath.replaceAll("'", "''")}')`,
+    );
+    assertBusinessTableColumns(columns.map((row) => String(row.column_name)));
+    await copyFile(businessParquetPath, path.join(runDir, "business-table.parquet"));
+  }
 
   const permitColumns = await query(
     `SELECT column_name FROM (DESCRIBE SELECT * FROM '${permitParquetPath}')`,
@@ -380,13 +429,24 @@ export async function buildPublishSet({
            count(DISTINCT owner_name) AS distinct_owners
     FROM '${parquetPath}';`);
 
+  if (sourceObservationsOnly) {
+    const [held] = await query(`SELECT
+      (SELECT count(*) FROM '${parquetPath}' WHERE enrichment_status IS NULL OR ';' || enrichment_status || ';' NOT LIKE '%;source_observations_only;%') AS untagged_properties,
+      (SELECT count(*) FROM '${parquetPath}' WHERE roof_last_permit_date IS NOT NULL OR roofing_permit_count IS NOT NULL OR open_permit_count IS NOT NULL OR open_roofing_permit_count IS NOT NULL OR longest_open_permit_days IS NOT NULL OR longest_open_roofing_permit_days IS NOT NULL OR bbb_rating IS NOT NULL OR has_bbb_contractor IS NOT NULL OR has_sunbiz_tenant IS NOT NULL) AS promoted_properties,
+      (SELECT count(*) FROM '${permitParquetPath}' WHERE completed_date IS NOT NULL OR is_roofing IS NOT NULL OR is_open IS NOT NULL OR days_open IS NOT NULL OR contractor_license IS NOT NULL OR bbb_rating IS NOT NULL) AS promoted_permits`);
+    if (!held || Object.values(held).some((value) => Number(value) !== 0))
+      throw new Error(
+        "Source-only publication semantics contradict the actual artifact tags or held conclusions",
+      );
+  }
+
   // Permit linkage is reported explicitly. The kit's contract is to preserve
   // valid unmatched records rather than drop them, and to state linked and
   // valid-unlinked counts separately, so a permit whose parcel is absent from
   // the roll is never silently converted into "no permits".
-  const permitsCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "permits.csv");
-  const clermontCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "clermont-permits.csv");
-  const nalCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "NAL45P202601.csv");
+  const permitsCsv = path.join(downloadDir, "permits.csv");
+  const clermontCsv = path.join(downloadDir, "clermont-permits.csv");
+  const nalCsv = path.join(downloadDir, "NAL45P202601.csv");
   // Permit numbers are unique only within a source, so every DISTINCT below is
   // taken over source_system plus permit_number — the same rule the
   // consolidation SQL applies. Counting on permit_number alone would silently
@@ -486,7 +546,7 @@ export async function buildPublishSet({
     FROM read_csv_auto('${nalCsv}', header=true, all_varchar=true)
   `);
 
-  const tppCsv = path.join(RUNTIME_ROOT, "data", "downloads", "lake", "NAP45P202601.csv");
+  const tppCsv = path.join(downloadDir, "NAP45P202601.csv");
   const [business] = await query(`
     WITH tpp AS (SELECT * FROM read_csv_auto('${tppCsv}', header=true, all_varchar=true)),
          nal AS (SELECT * FROM read_csv_auto('${nalCsv}', header=true, all_varchar=true)),
@@ -508,6 +568,29 @@ export async function buildPublishSet({
            (SELECT count(*) FROM matched WHERE parcels > 1)                      AS shared_address_groups,
            (SELECT coalesce(sum(accounts), 0) FROM matched WHERE parcels > 1)    AS accounts_at_shared_addresses,
            (SELECT coalesce(sum(parcels), 0) FROM matched WHERE parcels > 1)     AS parcels_at_shared_addresses;`);
+
+  if (businessParquetPath) {
+    const [businessGate] = await query(`SELECT count(*) AS rows, count(DISTINCT business_id) AS ids,
+      count(*) FILTER (WHERE business_id IS NULL OR business_id = '' OR matched_parcel_count IS NULL OR matched_parcel_count < 0) AS invalid,
+      count(*) FILTER (WHERE matched_parcel_count > 0) AS matched,
+      count(*) FILTER (WHERE matched_parcel_count = 0) AS unmatched,
+      coalesce(sum(matched_parcel_count), 0) AS attributions
+      FROM read_parquet('${businessParquetPath.replaceAll("'", "''")}')`);
+    if (
+      Number(businessGate.rows) !== Number(business.total_accounts) ||
+      Number(businessGate.ids) !== Number(businessGate.rows) ||
+      Number(businessGate.invalid) !== 0 ||
+      Number(businessGate.matched) !== Number(business.matched_accounts) ||
+      Number(businessGate.attributions) !== Number(business.attributed_accounts) ||
+      Number(businessGate.matched) + Number(businessGate.unmatched) !== Number(businessGate.rows)
+    ) {
+      throw new Error(
+        "All-source business table does not reconcile to the TPP roll and parcel associations",
+      );
+    }
+    business.loaded_accounts = Number(businessGate.rows);
+    business.valid_unmatched_accounts = Number(businessGate.unmatched);
+  }
 
   const shardCount = Math.ceil(Number(totals.properties) / SHARD_SIZE);
   const shards = [];
@@ -565,6 +648,8 @@ export async function buildPublishSet({
         shards,
         queryTable: "query-table.parquet",
         permitTable: "permit-table.parquet",
+        ...(businessParquetPath ? { businessTable: "business-table.parquet" } : {}),
+        ...(sourceSemanticsPath ? { sourceSemantics: "source-semantics.json" } : {}),
         coverage: "coverage.json",
       },
       null,
@@ -612,6 +697,12 @@ export async function buildPublishSet({
           // `carBuildPath` field removed from the manifest, surviving in a
           // place nobody thought to look.
           query: publishedSql(sql),
+          ...(sourceObservationsOnly && name === "open-roofing-permits.json"
+            ? {
+                available: false,
+                note: "Current-open roofing decisions are not accepted in this source-only snapshot; empty rows do not establish zero open permits.",
+              }
+            : {}),
           rowCount: rows.length,
           rows,
         },
@@ -671,6 +762,17 @@ export async function buildPublishSet({
     runId,
     exportedAt: new Date().toISOString(),
     countyComplete: false,
+    ...(sourceObservationsOnly
+      ? {
+          sourceObservationsOnly: true,
+          datasetKind: "source_only_partial",
+          sourceProfileAccepted: false,
+          currentPermitStatusAccepted: false,
+          completionAccepted: false,
+          legalIdentityVerified: false,
+          sourceSemantics: "source-semantics.json",
+        }
+      : {}),
     denominator: {
       basis: "source_roll_row_count",
       source: "Florida DOR 2026 preliminary NAL",
@@ -709,7 +811,10 @@ export async function buildPublishSet({
         availability: "supported_partial",
         rows: Number(clermont.permits_with_contractor),
         distinctContractors: Number(clermont.distinct_contractors),
-        distinctLicenses: Number(clermont.distinct_licenses),
+        distinctLicenses: sourceObservationsOnly ? null : Number(clermont.distinct_licenses),
+        ...(sourceObservationsOnly
+          ? { identityBasis: "source_listed_name_only", verifiedLegalIdentity: false }
+          : {}),
         propertiesCovered: Number(clermont.linked_parcels),
         countyParcels: Number(clermont.roll_parcels),
         jurisdictionsCovered: 1,
@@ -722,6 +827,14 @@ export async function buildPublishSet({
         deadPermits: Number(clermontMeta.deadPermits),
         achievablePermits: Number(clermontMeta.achievablePermits),
         complete: Number(clermont.permits) === Number(clermontMeta.achievablePermits),
+        ...(sourceObservationsOnly
+          ? {
+              completeBasis: "all_achievable_retained_capture_records_only",
+              sourceProfileAccepted: false,
+              currentStatusAccepted: false,
+              legalIdentityAccepted: false,
+            }
+          : {}),
         baselineSha256: clermontCertification.baselineSha256,
         evidenceSha256: clermontCertification.evidenceSha256,
         source: "Clermont eTRAKiT 3 permit detail pages",
@@ -737,6 +850,11 @@ export async function buildPublishSet({
         attributedAcrossParcels: Number(business.attributed_accounts),
         propertiesWithAccount: Number(business.parcels_with_account),
         sharedAddressGroups: Number(business.shared_address_groups),
+        accountTableAvailable: Boolean(businessParquetPath),
+        queryableSourceAccounts: businessParquetPath ? Number(business.loaded_accounts) : null,
+        queryableValidUnmatchedAccounts: businessParquetPath
+          ? Number(business.valid_unmatched_accounts)
+          : null,
         source: "FL DOR TPP 2026P",
       },
     },
@@ -744,9 +862,13 @@ export async function buildPublishSet({
       roofAgeKnown: Number(totals.roof_age_known),
       roofAgeFifteenPlus: Number(totals.roof_age_15_plus),
       propertiesWithPermits: Number(totals.with_permits),
-      roofingPermitRecords: Number(totals.roofing_permit_records),
-      propertiesWithOpenRoofingPermit: Number(totals.with_open_roofing_permit),
-      propertiesWithAnyPermitOpenOverFiveYears: Number(totals.open_permit_over_five_years),
+      roofingPermitRecords: sourceObservationsOnly ? null : Number(totals.roofing_permit_records),
+      propertiesWithOpenRoofingPermit: sourceObservationsOnly
+        ? null
+        : Number(totals.with_open_roofing_permit),
+      propertiesWithAnyPermitOpenOverFiveYears: sourceObservationsOnly
+        ? null
+        : Number(totals.open_permit_over_five_years),
       outOfStateOwners: Number(totals.out_of_state_owners),
       outOfCountyOwners: Number(totals.out_of_county_owners),
       noRecordedSaleInDorWindow: Number(totals.no_sale_in_dor_window),
@@ -766,7 +888,7 @@ export async function buildPublishSet({
       distinctOwners: "distinct_captured_owner_names",
       propertiesWithBusinessAccount: "property_records",
     },
-    limitations: buildLimitations(linkage, business, clermont),
+    limitations: buildLimitations(linkage, business, clermont, sourceObservationsOnly),
   };
   await writeFile(
     path.join(runDir, "coverage.json"),
@@ -803,9 +925,29 @@ export async function buildPublishSet({
     "schema.json",
     "permit-schema.json",
     "clermont-baseline-evidence.json",
+    ...(businessParquetPath ? ["business-table.parquet", "business-schema.json"] : []),
+    ...(sourceSemanticsPath ? ["source-semantics.json"] : []),
     ...shards.map((shard) => shard.name),
     ...Object.keys(samples).map((name) => `samples/${name}`),
   ];
+  if (businessParquetPath)
+    await writeFile(
+      path.join(runDir, "business-schema.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: "oracle.business-account-schema.v1",
+          county: "lake",
+          table: "business-table.parquet",
+          columns: Object.entries(LAKE_BUSINESS_TABLE_SCHEMA_FIELDS).map(([name, field]) => ({
+            name,
+            ...field,
+          })),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
   const sizes = {};
   for (const name of artifacts) {
     sizes[name] = (await stat(path.join(runDir, name))).size;
@@ -823,6 +965,8 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const runIdIndex = process.argv.indexOf("--run-id");
   const evidenceIndex = process.argv.indexOf("--clermont-evidence");
   const baselineDigestIndex = process.argv.indexOf("--clermont-baseline-sha256");
+  const businessIndex = process.argv.indexOf("--business-parquet");
+  const semanticsIndex = process.argv.indexOf("--source-semantics");
   const runId =
     runIdIndex > -1
       ? process.argv[runIdIndex + 1]
@@ -835,6 +979,8 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
     parquetPath: path.join(PUBLISH_ROOT, "query-table.parquet"),
     clermontEvidencePath,
     clermontBaselineSha256,
+    businessParquetPath: businessIndex > -1 ? process.argv[businessIndex + 1] : undefined,
+    sourceSemanticsPath: semanticsIndex > -1 ? process.argv[semanticsIndex + 1] : undefined,
   })
     .then((result) => log("done", { runDir: result.runDir }))
     .catch((error) => {

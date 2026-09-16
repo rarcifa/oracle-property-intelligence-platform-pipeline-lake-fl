@@ -15,10 +15,12 @@ import {
   IPFS_GATEWAYS,
   PARTIALLY_POPULATED_COLUMNS,
   QUERY_TABLE_COLUMNS,
+  LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS,
   readOnlySqlSchema,
   searchOptionsSchema,
   TENURE_CAVEAT,
   UNUSABLE_IPFS_GATEWAYS,
+  businessSearchSchema,
 } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
 import {
@@ -31,6 +33,7 @@ import {
   getTenantView,
   runReadOnlySql,
   searchProperties,
+  searchBusinessAccounts,
 } from "../data/queries.js";
 import { readCoverage, readLatest, readRunHistory, readVerification } from "../data/run.js";
 import { callerOf, createRateLimiter, DEFAULT_QUERY_RATE_LIMIT } from "../chat/rate-limit.js";
@@ -69,6 +72,7 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       runId: provenance.runId,
       rootCid: provenance.rootCid,
       propertyCount,
+      ...(context.store.localEvidencePreview ? { localEvidencePreview: true } : {}),
     });
   });
 
@@ -116,13 +120,43 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       unusableGateways: UNUSABLE_IPFS_GATEWAYS,
       chatEnabled: context.config.openaiApiKey !== null,
       tenureCaveat: TENURE_CAVEAT,
+      ...(context.store.sourceObservationsOnly
+        ? {
+            sourceObservationsOnly: true,
+            countyComplete: false,
+            sourceProfileAccepted: false,
+            currentPermitStatusAccepted: false,
+            completionAccepted: false,
+            legalIdentityVerified: false,
+            notice:
+              "Source-only partial snapshot: historical observations, source-listed names and low-confidence building-age proxies. Capture time/current permit status/completion/legal identity remain unproven.",
+          }
+        : {}),
+      ...(context.store.localEvidencePreview
+        ? {
+            localEvidencePreview: true,
+            derivativeAsOfYear: context.store.localEvidenceAsOfYear,
+            sourceProfileAccepted: false,
+            decisionPromotion: false,
+            productionEligible: false,
+            releaseReady: false,
+            countyComplete: false,
+            notice:
+              "Unpublished local compatibility preview. Current/open status, primary-roof completion and legal-company/license attribution remain unaccepted. Built-year ages are low-confidence proxies, not measured roof age.",
+          }
+        : {}),
     });
   });
 
   router.get("/api/meta/schema", () =>
     json(200, {
-      columnCount: QUERY_TABLE_COLUMNS.length,
-      columns: QUERY_TABLE_COLUMNS,
+      columnCount: (context.store.localEvidencePreview
+        ? LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS
+        : QUERY_TABLE_COLUMNS
+      ).length,
+      columns: context.store.localEvidencePreview
+        ? LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS
+        : QUERY_TABLE_COLUMNS,
       alwaysNullColumns: ALWAYS_NULL_COLUMNS,
       // Served alongside, never merged into, the always-null map. A consumer
       // that saw only the always-null map would read contractor_name's absence
@@ -156,6 +190,21 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
     } catch (error) {
       return fail(400, "invalid_search", error instanceof Error ? error.message : String(error));
     }
+  });
+
+  router.get("/api/businesses", async (request) => {
+    const parsed = businessSearchSchema.strict().safeParse(queryObject(request.query));
+    if (!parsed.success) return fail(400, "invalid_query", "Invalid business account filters");
+    if (!context.store.businessesAvailable)
+      return fail(
+        409,
+        "business_accounts_unavailable",
+        "This dataset has no account-grain business artifact; missing is not zero businesses",
+      );
+    return json(
+      200,
+      await searchBusinessAccounts(context.store, await context.provenance(), parsed.data),
+    );
   });
 
   router.get("/api/properties/:parcelId", async (request) => {

@@ -19,6 +19,8 @@
  *                                       [--since 2026-09-01]
  *                                       [--concurrency 4]
  *                                       [--limit 2000]
+ *                                       [--output-dir <isolated permit directory>]
+ *                                       [--base-permits <immutable full JSON>]
  *
  * @module scripts/lake/fetch-sources
  */
@@ -53,10 +55,6 @@ const ROLLS = Object.freeze([
 ]);
 
 const CENTROID_FIELDS = "OBJECTID,PARCEL_ID,ALT_KEY,CO_NO";
-const PERMIT_FIELDS =
-  "OBJECTID,Permit_Number,Alternate_Key,Parcel_ID,Permit_Type,Permit_Desc,Permit_Status," +
-  "PermitApplied_Date,PermitApproved_Date,PermitIssued_Date,CO_Date,Permit_LastModDate,PermitURL";
-
 /**
  * @param {readonly string[]} argv - Raw CLI arguments.
  * @returns {Record<string, string | boolean>} Parsed flags.
@@ -85,7 +83,9 @@ function parseArgs(argv) {
  * @returns {void}
  */
 function log(message, fields = {}) {
-  process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), event: message, ...fields })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ at: new Date().toISOString(), event: message, ...fields })}\n`,
+  );
 }
 
 /**
@@ -104,7 +104,12 @@ async function downloadRoll(roll) {
   const target = path.join(DOWNLOAD_DIR, roll.file);
   await writeFile(target, bytes);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  log("roll_downloaded", { dataset: roll.dataset, name: selected.name, bytes: bytes.length, sha256 });
+  log("roll_downloaded", {
+    dataset: roll.dataset,
+    name: selected.name,
+    bytes: bytes.length,
+    sha256,
+  });
 
   // Extract here, not somewhere else later. The DOR ships these as ZIPs and
   // build-query-table.sql reads the CSVs inside them by name, so a machine that
@@ -168,7 +173,11 @@ async function fetchCentroids(options) {
     };
   });
   const target = path.join(DOWNLOAD_DIR, "centroids.csv");
-  await writeFile(target, renderCsv(["parcel_id", "alt_key", "latitude", "longitude"], rows), "utf8");
+  await writeFile(
+    target,
+    renderCsv(["parcel_id", "alt_key", "latitude", "longitude"], rows),
+    "utf8",
+  );
   log("centroids_fetched", { rows: rows.length, elapsedMs: Date.now() - started, path: target });
   return { rows, path: target };
 }
@@ -183,6 +192,8 @@ async function fetchCentroids(options) {
  * @returns {Promise<{ permits: Record<string, unknown>[], path: string }>} Normalized permits and the JSON written.
  */
 async function fetchPermits(options) {
+  const downloadDir = options.downloadDir ?? DOWNLOAD_DIR;
+  await mkdir(downloadDir, { recursive: true });
   // One frozen clock for every feature in this acquisition. Publication
   // recomputes against its explicit AS_OF_DATE, but the normalized source
   // artifacts must also be internally reproducible rather than drifting while
@@ -194,16 +205,33 @@ async function fetchPermits(options) {
   const selected = options.limit === null ? objectIds : objectIds.slice(0, options.limit);
   const ranges = toObjectIdRanges(selected, 1000);
   const pages = await mapWithConcurrency(ranges, options.concurrency, async (range, index) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
     const features = await fetchObjectIdRange(CDPLUS_PERMIT_LAYER, range, {
-      outFields: PERMIT_FIELDS,
+      outFields: "*",
       where,
     });
     if ((index + 1) % 5 === 0) log("permit_page", { page: index + 1, of: ranges.length });
     return features;
   });
-  const permits = pages.flat().map((feature) => normalizePermit(feature, { nowMs: started }));
+  const features = pages.flat();
+  const permits = features.map((feature) => normalizePermit(feature, { nowMs: started }));
   const suffix = options.since === null ? "" : "-window";
-  const target = path.join(DOWNLOAD_DIR, `permits${suffix}.json`);
+  const target = path.join(downloadDir, `permits${suffix}.json`);
+  await writeFile(
+    path.join(downloadDir, `permit-source-observations${suffix}.json`),
+    `${JSON.stringify(
+      {
+        capturedAt: new Date(started).toISOString(),
+        source: CDPLUS_PERMIT_LAYER,
+        where,
+        objectIds: selected,
+        features,
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
   await writeFile(target, `${JSON.stringify(permits, null, 2)}\n`, "utf8");
   // An incremental window is merged into the canonical permit set by permit
   // number, so a windowed refresh is idempotent: re-running the same window
@@ -211,16 +239,30 @@ async function fetchPermits(options) {
   // this the window would be a partial snapshot pretending to be the county.
   let merged = permits;
   if (options.since !== null) {
-    merged = await mergePermitWindow(permits);
+    merged = await mergePermitWindow(permits, {
+      basePath: options.basePath ?? path.join(downloadDir, "permits.json"),
+    });
     log("permit_window_merged", { windowed: permits.length, total: merged.length });
   }
   // A CSV twin is written alongside the JSON so the DuckDB consolidation can
   // read permits without a JSON reader. Booleans render as lowercase `true`/
   // `false` so SQL predicates can compare them literally.
   const permitColumns = [
-    "permit_number", "alternate_key", "parcel_id", "permit_type", "permit_desc",
-    "permit_status", "applied_date", "approved_date", "issued_date", "co_date",
-    "last_modified", "permit_url", "is_roofing", "is_open", "days_open",
+    "permit_number",
+    "alternate_key",
+    "parcel_id",
+    "permit_type",
+    "permit_desc",
+    "permit_status",
+    "applied_date",
+    "approved_date",
+    "issued_date",
+    "co_date",
+    "last_modified",
+    "permit_url",
+    "is_roofing",
+    "is_open",
+    "days_open",
   ];
   const csvRows = merged.map((permit) => {
     /** @type {Record<string, string>} */
@@ -231,9 +273,13 @@ async function fetchPermits(options) {
     }
     return row;
   });
-  await writeFile(path.join(DOWNLOAD_DIR, "permits.csv"), renderCsv(permitColumns, csvRows), "utf8");
+  await writeFile(path.join(downloadDir, "permits.csv"), renderCsv(permitColumns, csvRows), "utf8");
   if (options.since !== null) {
-    await writeFile(path.join(DOWNLOAD_DIR, "permits.json"), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+    await writeFile(
+      path.join(downloadDir, "permits.json"),
+      `${JSON.stringify(merged, null, 2)}\n`,
+      "utf8",
+    );
   }
   const distinct = new Set(permits.map((permit) => permit.permit_number)).size;
   log("permits_fetched", {
@@ -254,17 +300,20 @@ async function fetchPermits(options) {
  * @param {readonly Record<string, unknown>[]} windowed - Permits from the window fetch.
  * @returns {Promise<Record<string, unknown>[]>} The merged permit set.
  */
-export async function mergePermitWindow(windowed) {
+export async function mergePermitWindow(windowed, options = {}) {
   /** @type {Map<string, Record<string, unknown>>} */
   const byKey = new Map();
   const key = (permit) => `${permit.permit_number}::${permit.alternate_key}`;
-  try {
-    const existing = JSON.parse(await readFile(path.join(DOWNLOAD_DIR, "permits.json"), "utf8"));
-    for (const permit of existing) byKey.set(key(permit), permit);
-  } catch {
-    // No prior full scan; the window becomes the whole set.
+  // An absent/corrupt base is not authority to label a small window countywide.
+  const basePath = options.basePath ?? path.join(DOWNLOAD_DIR, "permits.json");
+  const existing = JSON.parse(await readFile(basePath, "utf8"));
+  if (!Array.isArray(existing)) throw new Error("Incremental permit base must be an array");
+  for (const permit of [...existing, ...windowed]) {
+    if (typeof permit?.permit_number !== "string" || permit.permit_number.trim() === "") {
+      throw new Error("Incremental permit records require a stable permit number");
+    }
+    byKey.set(key(permit), permit);
   }
-  for (const permit of windowed) byKey.set(key(permit), permit);
   return [...byKey.values()];
 }
 
@@ -279,10 +328,22 @@ async function main() {
   const concurrency = Number(flags.concurrency ?? 4);
   const limit = flags.limit === undefined ? null : Number(flags.limit);
   const since = typeof flags.since === "string" ? new Date(flags.since) : null;
-  await mkdir(DOWNLOAD_DIR, { recursive: true });
+  const downloadDir =
+    typeof flags["output-dir"] === "string" ? path.resolve(flags["output-dir"]) : DOWNLOAD_DIR;
+  if (downloadDir !== DOWNLOAD_DIR && only !== "permits") {
+    throw new Error("An isolated output directory currently supports --only permits");
+  }
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4)
+    throw new Error("Concurrency must be an integer from 1 to 4");
+  if (since && !Number.isFinite(since.getTime())) throw new Error("Invalid incremental since date");
+  await mkdir(downloadDir, { recursive: true });
 
   /** @type {Record<string, unknown>} */
-  const summary = { startedAt: new Date().toISOString(), only, since: since?.toISOString() ?? null };
+  const summary = {
+    startedAt: new Date().toISOString(),
+    only,
+    since: since?.toISOString() ?? null,
+  };
 
   if (only === "all" || only === "rolls") {
     summary.rolls = [];
@@ -295,12 +356,19 @@ async function main() {
     summary.centroids = { rows: centroids.rows.length, path: centroids.path };
   }
   if (only === "all" || only === "permits") {
-    const permits = await fetchPermits({ concurrency, since, limit });
+    const permits = await fetchPermits({
+      concurrency,
+      since,
+      limit,
+      downloadDir,
+      basePath:
+        typeof flags["base-permits"] === "string" ? path.resolve(flags["base-permits"]) : undefined,
+    });
     summary.permits = { features: permits.permits.length, path: permits.path };
   }
 
   summary.finishedAt = new Date().toISOString();
-  const summaryPath = path.join(DOWNLOAD_DIR, "fetch-summary.json");
+  const summaryPath = path.join(downloadDir, "fetch-summary.json");
   await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   log("fetch_complete", { summaryPath });
 }

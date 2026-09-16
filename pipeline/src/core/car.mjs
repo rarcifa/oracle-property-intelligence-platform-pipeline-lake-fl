@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as dagCbor from "@ipld/dag-cbor";
+import * as dagPB from "@ipld/dag-pb";
 import { CID } from "multiformats/cid";
 
 /** CAR version this module writes and accepts. */
@@ -115,9 +116,7 @@ export async function writeCarFile({ roots, blocks, outputPath }) {
   const seen = new Set();
   for (const block of blocks) {
     if (!(block?.bytes instanceof Uint8Array)) {
-      throw new TypeError(
-        `block ${block?.cid ?? "?"} must carry Uint8Array bytes`,
-      );
+      throw new TypeError(`block ${block?.cid ?? "?"} must carry Uint8Array bytes`);
     }
     const cid = CID.parse(block.cid);
     if (cid.version !== 1) {
@@ -132,11 +131,7 @@ export async function writeCarFile({ roots, blocks, outputPath }) {
     }
     if (seen.has(block.cid)) continue;
     seen.add(block.cid);
-    frames.push(
-      encodeVarint(cid.bytes.length + block.bytes.length),
-      cid.bytes,
-      block.bytes,
-    );
+    frames.push(encodeVarint(cid.bytes.length + block.bytes.length), cid.bytes, block.bytes);
   }
   for (const root of rootCids) {
     if (!seen.has(root)) {
@@ -168,9 +163,7 @@ export async function readCarRoots(carPath) {
   if (prefixLength + headerLength > car.length) {
     throw new Error("CAR header is truncated");
   }
-  const header = dagCbor.decode(
-    car.subarray(prefixLength, prefixLength + headerLength),
-  );
+  const header = dagCbor.decode(car.subarray(prefixLength, prefixLength + headerLength));
   if (header?.version !== CAR_VERSION) {
     throw new Error(`Unsupported CAR version ${String(header?.version)}`);
   }
@@ -182,4 +175,50 @@ export async function readCarRoots(carPath) {
     if (cid === null) throw new Error("CAR header root is not a CID");
     return cid.toString();
   });
+}
+
+/**
+ * Validate an importable archive, not just its header. Every addressed block
+ * must hash correctly and every link reachable from every declared root must
+ * be present. This checks the same bytes a third party will import, offline.
+ * @param {Uint8Array} car CARv1 bytes
+ * @returns {{ roots: string[], blocks: Array<{cid: string, bytes: Uint8Array}> }}
+ */
+export function validateCarArchive(car) {
+  const prefix = decodeVarint(car, 0);
+  const start = prefix.length + prefix.value;
+  if (prefix.value === 0 || start > car.length) throw new Error("CAR header is truncated or empty");
+  const header = dagCbor.decode(car.subarray(prefix.length, start));
+  if (header?.version !== CAR_VERSION) throw new Error("Unsupported CAR version");
+  const roots = normalizeRoots(header.roots);
+  const blocks = new Map();
+  let offset = start;
+  while (offset < car.length) {
+    const frame = decodeVarint(car, offset);
+    offset += frame.length;
+    const end = offset + frame.value;
+    if (frame.value === 0 || end > car.length) throw new Error("CAR block is truncated or empty");
+    const [cid, bytes] = CID.decodeFirst(car.subarray(offset, end));
+    if (cid.version !== 1 || cid.multihash.code !== 0x12)
+      throw new Error("CAR blocks require CIDv1 sha2-256");
+    if (cid.code !== 0x55 && cid.code !== 0x70)
+      throw new Error("CAR contains an unsupported DAG codec");
+    const digest = createHash("sha256").update(bytes).digest();
+    if (!digest.equals(Buffer.from(cid.multihash.digest)))
+      throw new Error(`CAR block ${cid} does not hash to its CID`);
+    blocks.set(cid.toString(), { cid: cid.toString(), bytes });
+    offset = end;
+  }
+  const seen = new Set();
+  const visit = (cidString) => {
+    if (seen.has(cidString)) return;
+    seen.add(cidString);
+    const block = blocks.get(cidString);
+    if (!block) throw new Error(`CAR is missing reachable block ${cidString}`);
+    if (CID.parse(cidString).code === 0x70) {
+      for (const link of dagPB.decode(block.bytes).Links) visit(link.Hash.toString());
+    }
+  };
+  for (const root of roots) visit(root);
+  return { roots, blocks: [...blocks.values()] };
 }

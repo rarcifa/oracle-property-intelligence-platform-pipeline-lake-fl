@@ -7,8 +7,8 @@
  * Filebase assigns, which is a CIDv0. This assignment requires CIDv1 base32,
  * a per-run artifact manifest with sizes and digests, a CAR for every
  * directory root, immutable prior CIDs, and retrieval proven from at least
- * two independent public gateways. None of that is covered by any kit skill,
- * so this script extends `county-open-data-publish`'s conventions using the
+ * two independent public gateways. The Lake-specific deterministic companion
+ * extends `county-open-data-publish`'s conventions using the
  * core modules added alongside it: `core/cid.mjs`, `core/car.mjs`,
  * `core/artifact-manifest.mjs`, `core/gateway-verify.mjs` and
  * `core/run-history.mjs`.
@@ -39,7 +39,7 @@ import {
   computeUnixfsFileCid,
   sha256Hex,
 } from "../../src/core/cid.mjs";
-import { writeCarFile } from "../../src/core/car.mjs";
+import { validateCarArchive, writeCarFile } from "../../src/core/car.mjs";
 import { buildArtifactManifest, writeArtifactManifest } from "../../src/core/artifact-manifest.mjs";
 import {
   DEFAULT_GATEWAYS,
@@ -328,6 +328,13 @@ export async function buildRunDag(runDir) {
     allBlocks.push(...file.blocks);
     const parent = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
     const base = relative.slice(relative.lastIndexOf("/") + 1);
+    // Register all ancestors before taking the deepest-first fold snapshot.
+    // Otherwise a/b/file creates a/b but silently omits a from the root.
+    let ancestor = parent;
+    while (ancestor !== "") {
+      if (!directories.has(ancestor)) directories.set(ancestor, []);
+      ancestor = ancestor.includes("/") ? ancestor.slice(0, ancestor.lastIndexOf("/")) : "";
+    }
     if (!directories.has(parent)) directories.set(parent, []);
     directories.get(parent).push({ name: base, cid: file.cid, size: file.size });
     entries.push({
@@ -586,6 +593,39 @@ export async function publishRun({
   const car = await writeCarFile({ roots: [dag.rootCid], blocks: dag.blocks, outputPath: carPath });
   log("car_written", { path: car.path, bytes: car.bytes, rootCid: car.rootCid });
 
+  // Deliver the archive as actual file bytes under its own CID. This has no
+  // self-reference: the data DAG is complete before its archive is encoded.
+  // One multi-root CAR declares every directory snapshot, including subroots.
+  const directoryRoots = [
+    ...new Set([
+      dag.rootCid,
+      ...dag.entries.filter((entry) => entry.codec === "directory").map((entry) => entry.cid),
+    ]),
+  ];
+  const snapshotCar = await writeCarFile({
+    roots: directoryRoots,
+    blocks: dag.blocks,
+    outputPath: path.join(carDir, `${runId}-snapshot.car`),
+  });
+  const snapshotBody = await readFile(snapshotCar.path);
+  const archiveValidation = validateCarArchive(snapshotBody);
+  if (JSON.stringify(archiveValidation.roots) !== JSON.stringify(directoryRoots)) {
+    throw new Error("Snapshot CAR root readback differs from the directory manifest");
+  }
+  const archiveFile = computeUnixfsFileCid(snapshotBody);
+  const archiveTransport = await writeCarFile({
+    roots: [archiveFile.cid],
+    blocks: archiveFile.blocks,
+    outputPath: path.join(carDir, `${runId}-archive-transport.car`),
+  });
+  const archiveEntry = {
+    cid: archiveFile.cid,
+    name: "snapshot.car",
+    size: snapshotBody.length,
+    codec: "file",
+    sha256: sha256Digest(snapshotBody),
+  };
+
   // The manifest's own CID must be reproducible for a given run, so its
   // timestamp comes from the run id rather than the clock. A wall-clock value
   // here changes the manifest bytes on every invocation, which changes its CID
@@ -595,13 +635,12 @@ export async function publishRun({
     county: "lake",
     generatedAt: runIdToIso(runId),
     rootCid: dag.rootCid,
-    // Content-addressed, not a filesystem path. The manifest used to record the
-    // CAR as a local `pipeline/data/.../cars/<run>.car`, which a third party working
-    // from the manifest alone cannot resolve — and the .car is build output that
-    // is deliberately not committed. The CAR's DAG root IS the run root, so this
-    // locator is retrievable from any gateway with `?format=car`.
-    rootCarPath: `ipfs://${dag.rootCid}?format=car`,
-    entries: dag.entries,
+    rootCarPath: `ipfs://${archiveFile.cid}`,
+    entries: [...dag.entries, archiveEntry],
+    directoryCars: directoryRoots.map((directoryCid) => ({
+      directoryCid,
+      carCid: archiveFile.cid,
+    })),
   });
   const manifestPath = path.join(runDir, "..", "..", "manifests", `${runId}.json`);
   await mkdir(path.dirname(manifestPath), { recursive: true });
@@ -630,6 +669,7 @@ export async function publishRun({
   });
   const rootCarBody = await readFile(car.path);
   const manifestCarBody = await readFile(manifestCar.path);
+  const archiveTransportBody = await readFile(archiveTransport.path);
   const primaryCars = {
     root: {
       key: `runs/${runId}/root.car`,
@@ -642,6 +682,12 @@ export async function publishRun({
       bytes: manifestCarBody.length,
       sha256: sha256Digest(manifestCarBody),
       cid: manifestCid,
+    },
+    archive: {
+      key: `runs/${runId}/archive.car`,
+      bytes: archiveTransportBody.length,
+      sha256: sha256Digest(archiveTransportBody),
+      cid: archiveFile.cid,
     },
   };
   log("manifest_written", { manifestCid, bytes: manifestWrite.bytes });
@@ -657,7 +703,10 @@ export async function publishRun({
     provenanceDigest,
     bucket: LAKE_BUCKET,
     primaryCars,
-    secondaryPin: pinataSecondaryPinTarget(runId),
+    secondaryPin: {
+      ...pinataSecondaryPinTarget(runId),
+      archivePinName: `${LAKE_IPNS_LABEL}/${runId}/archive`,
+    },
     ipnsLabel: LAKE_IPNS_LABEL,
     ipnsNetworkKey: LAKE_IPNS_NETWORK_KEY,
     ipnsPredecessor: {
@@ -704,7 +753,7 @@ export async function publishRun({
       candidateCommit,
       rootCid: dag.rootCid,
       manifestCid,
-      carCid: car.rootCid,
+      carCid: archiveFile.cid,
       dryRun: true,
       publicationState: "PREPARED_LOCAL",
       attemptId,
@@ -737,7 +786,7 @@ export async function publishRun({
     dryRun: gatedDryRun,
     rootCid: dag.rootCid,
     manifestCid,
-    carCid: car.rootCid,
+    carCid: archiveFile.cid,
   };
 
   if (!gatedDryRun) {
@@ -786,6 +835,17 @@ export async function publishRun({
         computedCid: dag.rootCid,
       });
       publishResult.filebaseReportedRootCid = rootReported;
+      assertPublicationAuthorizationActive(attempt);
+      const archiveUpload = await uploadImmutableCar({
+        client,
+        bucket: target.bucket,
+        key: target.primaryCars.archive.key,
+        body: archiveTransportBody,
+        expectedCid: archiveFile.cid,
+      });
+      if (archiveUpload.reportedCid !== null && archiveUpload.reportedCid !== archiveFile.cid) {
+        throw new Error("Filebase reported an archive CID different from the signed target");
+      }
       attempt = await advancePublicationAttempt(
         PUBLICATION_LEDGER_PATH,
         attemptId,
@@ -795,6 +855,11 @@ export async function publishRun({
           action: rootUpload.action,
           computedCid: dag.rootCid,
           reportedCid: rootReported,
+          archive: {
+            ...target.primaryCars.archive,
+            action: archiveUpload.action,
+            reportedCid: archiveUpload.reportedCid,
+          },
         },
       );
     }
@@ -841,11 +906,16 @@ export async function publishRun({
         cid: manifestCid,
         name: target.secondaryPin.manifestPinName,
       });
+      const archivePin = await ensureSecondaryPin({
+        ...pinOptions,
+        cid: archiveFile.cid,
+        name: target.secondaryPin.archivePinName,
+      });
       attempt = await advancePublicationAttempt(
         PUBLICATION_LEDGER_PATH,
         attemptId,
         "SECONDARY_PIN_RECORDED",
-        { root: rootPin, manifest: manifestPin },
+        { root: rootPin, manifest: manifestPin, archive: archivePin },
       );
     }
   }
@@ -855,6 +925,11 @@ export async function publishRun({
   let verification;
   if (attempt.state === "SECONDARY_PIN_RECORDED") {
     const files = await verifyManifestAcrossGateways({ manifest });
+    if (!files.verified || files.checkedArtifacts !== manifest.artifacts.length) {
+      throw new Error(
+        "Independent retrieval must cover every listed CID, including directories and CAR bytes",
+      );
+    }
     const manifestEntry = {
       cid: manifestCid,
       name: "manifest.json",
@@ -866,6 +941,11 @@ export async function publishRun({
       expectedSize: manifestEntry.size,
       expectedSha256: manifestEntry.sha256,
     });
+    if (!manifestVerification.verified) {
+      throw new Error(
+        "The manifest itself must match bytes through two independent public gateways",
+      );
+    }
     verification = {
       checkedArtifacts: files.checkedArtifacts + 1,
       verifiedArtifacts: files.verifiedArtifacts + (manifestVerification.verified ? 1 : 0),
@@ -943,7 +1023,7 @@ export async function publishRun({
     limitations: coverage.limitations,
     rootCid: dag.rootCid,
     manifestCid,
-    carCid: car.rootCid,
+    carCid: archiveFile.cid,
     ipnsName: LAKE_IPNS_NETWORK_KEY,
     resolvedCid: dag.rootCid,
     verifiedGateways,
@@ -1045,7 +1125,7 @@ export async function publishRun({
           candidateCommit,
           rootCid: dag.rootCid,
           manifestCid,
-          carCid: car.rootCid,
+          carCid: archiveFile.cid,
           ipnsName: LAKE_IPNS_NETWORK_KEY,
           resolvedCid: dag.rootCid,
           verifiedGateways,

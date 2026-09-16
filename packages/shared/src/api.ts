@@ -25,7 +25,7 @@ export const propertyFiltersSchema = z.object({
   zip: z.string().trim().min(1).max(12).optional(),
   propertyType: z.string().trim().min(1).max(60).optional(),
   roofAgeBasis: z
-    .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built"])
+    .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built", "built_year_proxy"])
     .optional(),
   minRoofAge: finiteNumber.min(0).max(500).optional(),
   maxRoofAge: finiteNumber.min(0).max(500).optional(),
@@ -89,6 +89,9 @@ export const radiusSchema = z.object({
 
 /** Provenance attached to every data-bearing response. */
 export interface ResponseProvenance {
+  localEvidencePreview?: boolean;
+  sourceObservationsOnly?: boolean;
+  decisionCaveat?: string;
   /** The exact SQL that produced the payload. */
   sql: string;
   /** Where the Parquet was read from. */

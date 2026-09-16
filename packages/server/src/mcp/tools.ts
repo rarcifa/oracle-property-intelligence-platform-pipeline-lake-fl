@@ -16,12 +16,14 @@ import {
   parcelIdSchema,
   QUERY_TABLE_COLUMN_COUNT,
   QUERY_TABLE_COLUMNS,
+  LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS,
   radiusSchema,
   readOnlySqlSchema,
   searchOptionsSchema,
   TENURE_CAVEAT,
   ALWAYS_NULL_COLUMNS,
   PARTIALLY_POPULATED_COLUMNS,
+  businessSearchSchema,
 } from "@oracle-lake/shared";
 import { z } from "zod";
 import type { AppContext } from "../context.js";
@@ -32,6 +34,7 @@ import {
   getPropertyPermits,
   runReadOnlySql,
   searchProperties,
+  searchBusinessAccounts,
 } from "../data/queries.js";
 import { readCoverage, readLatest } from "../data/run.js";
 
@@ -72,7 +75,7 @@ const FILTER_PROPERTIES: JsonSchema = {
   ),
   roofAgeBasis: {
     type: "string",
-    enum: ["roofing_permit_completed", "roofing_permit_issued", "year_built"],
+    enum: ["roofing_permit_completed", "roofing_permit_issued", "year_built", "built_year_proxy"],
     description: "How roof age was derived for the parcel.",
   },
   minRoofAge: numberProp("Minimum roof_age_years.", { minimum: 0 }),
@@ -103,6 +106,26 @@ const SORT_ENUM = QUERY_TABLE_COLUMNS.map((column) => column.name);
 
 /** The advertised tool list. */
 export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
+  {
+    name: "listOracleBusinessAccounts",
+    title: "List all-source business accounts",
+    description:
+      "Search the account-grain DOR TPP `businesses` table, including source accounts with no parcel match. Address associations are candidates, not legal company or permit-contractor identity. Availability is explicit for older releases.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        q: stringProp("Search business name, official account ID or situs address."),
+        city: stringProp("Exact situs city."),
+        naics: stringProp("Exact two-to-six digit source NAICS code."),
+        linked: boolProp(
+          "True for accounts with parcel candidates, false for valid unmatched accounts.",
+        ),
+        limit: numberProp("Maximum account rows.", { minimum: 1, maximum: 500 }),
+        offset: numberProp("Number of accounts to skip.", { minimum: 0, maximum: 1_000_000 }),
+      },
+      additionalProperties: false,
+    },
+  },
   {
     name: "getPropertyQuerySchema",
     title: "Get property query schema",
@@ -204,7 +227,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = Object.freeze([
         propertyType: stringProp("Restrict to one property type band."),
         roofAgeBasis: {
           type: "string",
-          enum: ["roofing_permit_completed", "roofing_permit_issued", "year_built"],
+          enum: [
+            "roofing_permit_completed",
+            "roofing_permit_issued",
+            "year_built",
+            "built_year_proxy",
+          ],
           description: "Restrict to one basis, e.g. only permit-derived roof ages.",
         },
         limit: numberProp("Rows to return.", { minimum: 1, maximum: 500 }),
@@ -291,7 +319,7 @@ const agedRoofsSchema = strictArgs(
     city: z.string().trim().min(1).max(80).optional(),
     propertyType: z.string().trim().min(1).max(60).optional(),
     roofAgeBasis: z
-      .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built"])
+      .enum(["roofing_permit_completed", "roofing_permit_issued", "year_built", "built_year_proxy"])
       .optional(),
     limit: z.coerce.number().int().min(1).max(500).default(50),
   }),
@@ -334,8 +362,52 @@ export async function callTool(
 ): Promise<McpToolResult> {
   const args = (rawArgs ?? {}) as Record<string, unknown>;
   const provenance = await context.provenance();
+  if (
+    (context.store.localEvidencePreview || context.store.sourceObservationsOnly) &&
+    (name === "findOpenRoofPermits" ||
+      args.hasOpenRoofingPermit !== undefined ||
+      args.minOpenPermitDays !== undefined ||
+      args.minOpenRoofingPermitDays !== undefined ||
+      (args.roofAgeBasis !== undefined && args.roofAgeBasis !== "built_year_proxy"))
+  ) {
+    return {
+      payload: {
+        error: context.store.localEvidencePreview
+          ? "unsupported_local_preview_decision"
+          : "unsupported_source_observation_decision",
+        detail:
+          "Current/open and completed-roof permit evidence is unaccepted; unknown is not a confirmed absence or empty result.",
+      },
+      isError: true,
+    };
+  }
+  const previewMetadata = context.store.localEvidencePreview
+    ? {
+        localEvidencePreview: true,
+        sourceProfileAccepted: false,
+        decisionPromotion: false,
+        productionEligible: false,
+        releaseReady: false,
+        countyComplete: false,
+        derivativeAsOfYear: context.store.localEvidenceAsOfYear,
+      }
+    : {};
 
   switch (name) {
+    case "listOracleBusinessAccounts": {
+      const parsed = businessSearchSchema.strict().safeParse(args);
+      if (!parsed.success) return invalid("Invalid business account filters");
+      if (!context.store.businessesAvailable)
+        return {
+          payload: {
+            error: "business_accounts_unavailable",
+            detail:
+              "The selected dataset has no account-grain business artifact; missing is not zero accounts",
+          },
+          isError: true,
+        };
+      return { payload: await searchBusinessAccounts(context.store, provenance, parsed.data) };
+    }
     case "getPropertyQuerySchema": {
       const parsed = noArgsSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
@@ -343,8 +415,13 @@ export async function callTool(
         payload: {
           county: COUNTY,
           view: "properties",
-          columnCount: QUERY_TABLE_COLUMNS.length,
-          columns: QUERY_TABLE_COLUMNS,
+          columnCount: (context.store.localEvidencePreview
+            ? LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS
+            : QUERY_TABLE_COLUMNS
+          ).length,
+          columns: context.store.localEvidencePreview
+            ? LOCAL_EVIDENCE_PROPERTY_SAFE_COLUMNS
+            : QUERY_TABLE_COLUMNS,
           alwaysNullColumns: ALWAYS_NULL_COLUMNS,
           // contractor_name lives here, not above: an agent told only that a
           // column is "always null" will stop asking for it, and it is not.
@@ -352,6 +429,7 @@ export async function callTool(
           tenureCaveat: TENURE_CAVEAT,
           runId: provenance.runId,
           rootCid: provenance.rootCid,
+          ...previewMetadata,
         },
       };
     }
@@ -368,6 +446,7 @@ export async function callTool(
         payload: {
           county: COUNTY,
           run: latest,
+          ...previewMetadata,
           runId: provenance.runId,
           dataSource: provenance.dataSource,
           dataSourceKind: provenance.dataSourceKind,
@@ -473,8 +552,9 @@ export async function callTool(
         payload: {
           ...result,
           thresholdYears: minRoofAge,
-          basisNote:
-            "roof_age_basis names the evidence behind each age: a completed roofing permit, an issued roofing permit, or the structure's year built when no roofing permit is published.",
+          basisNote: context.store.localEvidencePreview
+            ? "Low-confidence built-year proxy only, not measured roof age. Partial permit history may omit a later replacement; current status and permit-backed primary-roof completion remain unaccepted."
+            : "roof_age_basis names the evidence behind each age: a completed roofing permit, an issued roofing permit, or the structure's year built when no roofing permit is published.",
         },
       };
     }

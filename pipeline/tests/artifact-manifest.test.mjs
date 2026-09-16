@@ -10,11 +10,7 @@ import {
   validateArtifactManifest,
   writeArtifactManifest,
 } from "../src/core/artifact-manifest.mjs";
-import {
-  buildUnixfsDirectory,
-  computeUnixfsFileCid,
-  sha256Hex,
-} from "../src/core/cid.mjs";
+import { buildUnixfsDirectory, computeUnixfsFileCid, sha256Hex } from "../src/core/cid.mjs";
 
 const temporaryDirectories = [];
 
@@ -116,6 +112,46 @@ describe("buildArtifactManifest", () => {
     }
   });
 
+  it("binds every directory to actual, separately addressed CAR file bytes", () => {
+    const archive = computeUnixfsFileCid("CAR file bytes fixture");
+    const built = buildArtifactManifest({
+      runId: "20260916T180000Z",
+      county: "lake",
+      generatedAt: "2026-09-16T18:00:00Z",
+      rootCid: root.cid,
+      rootCarPath: `ipfs://${archive.cid}`,
+      entries: entries([
+        {
+          cid: archive.cid,
+          name: "snapshot.car",
+          size: 22,
+          codec: "file",
+          sha256: `sha256:${sha256Hex("CAR file bytes fixture")}`,
+        },
+      ]),
+      directoryCars: [{ directoryCid: root.cid, carCid: archive.cid }],
+    });
+    expect(built.directoryCars).toEqual([{ directoryCid: root.cid, carCid: archive.cid }]);
+    expect(() =>
+      validateArtifactManifest({
+        ...built,
+        directoryCars: [{ directoryCid: root.cid, carCid: root.cid }],
+      }),
+    ).toThrow(/file artifact/);
+    expect(() =>
+      validateArtifactManifest({
+        ...built,
+        root: { ...built.root, car: `ipfs://${root.cid}?format=car` },
+      }),
+    ).toThrow(/delivered file bytes/);
+    expect(() =>
+      validateArtifactManifest({
+        ...built,
+        directoryCars: [...built.directoryCars, ...built.directoryCars],
+      }),
+    ).toThrow(/duplicated/);
+  });
+
   it("still validates a manifest published with the retired origins field", () => {
     const legacy = manifest();
     legacy.artifacts[0].origins = ["https://ipfs.filebase.io"];
@@ -135,9 +171,7 @@ describe("buildArtifactManifest", () => {
 
   it("records size, codec and digest for every artifact", () => {
     const built = manifest();
-    const propertiesEntry = built.artifacts.find(
-      (artifact) => artifact.name === "properties.csv",
-    );
+    const propertiesEntry = built.artifacts.find((artifact) => artifact.name === "properties.csv");
     expect(propertiesEntry).toEqual({
       cid: properties.cid,
       name: "properties.csv",
@@ -152,39 +186,31 @@ describe("validateArtifactManifest", () => {
   it("rejects a missing sha256", () => {
     const broken = manifest();
     delete broken.artifacts[1].sha256;
-    expect(() => validateArtifactManifest(broken)).toThrow(
-      /artifacts\.1\.sha256/,
-    );
+    expect(() => validateArtifactManifest(broken)).toThrow(/artifacts\.1\.sha256/);
   });
 
   it("rejects a malformed sha256", () => {
     const broken = manifest();
     broken.artifacts[1].sha256 = sha256Hex(propertiesBody);
-    expect(() => validateArtifactManifest(broken)).toThrow(
-      /sha256:<64-hex> digest/,
-    );
+    expect(() => validateArtifactManifest(broken)).toThrow(/sha256:<64-hex> digest/);
   });
 
   it("rejects a bad codec value", () => {
     const broken = manifest();
     broken.artifacts[1].codec = "parquet";
-    expect(() => validateArtifactManifest(broken)).toThrow(
-      /artifacts\.1\.codec/,
-    );
+    expect(() => validateArtifactManifest(broken)).toThrow(/artifacts\.1\.codec/);
   });
 
   it("rejects a non-CIDv1 cid", () => {
     const broken = manifest();
     broken.artifacts[1].cid = "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco";
-    expect(() => validateArtifactManifest(broken)).toThrow(
-      /must be a CIDv1 base32 string/,
-    );
+    expect(() => validateArtifactManifest(broken)).toThrow(/must be a CIDv1 base32 string/);
   });
 
   it("rejects unknown fields, a wrong schema version and a missing root", () => {
-    expect(() =>
-      validateArtifactManifest({ ...manifest(), extra: true }),
-    ).toThrow(/Invalid artifact manifest/);
+    expect(() => validateArtifactManifest({ ...manifest(), extra: true })).toThrow(
+      /Invalid artifact manifest/,
+    );
     expect(() =>
       validateArtifactManifest({
         ...manifest(),
@@ -192,20 +218,14 @@ describe("validateArtifactManifest", () => {
       }),
     ).toThrow(/schemaVersion/);
     const orphaned = manifest();
-    orphaned.artifacts = orphaned.artifacts.filter(
-      (artifact) => artifact.codec === "file",
-    );
-    expect(() => validateArtifactManifest(orphaned)).toThrow(
-      /root cid is not listed in artifacts/,
-    );
+    orphaned.artifacts = orphaned.artifacts.filter((artifact) => artifact.codec === "file");
+    expect(() => validateArtifactManifest(orphaned)).toThrow(/root cid is not listed in artifacts/);
   });
 
   it("rejects duplicate artifact names", () => {
     const duplicated = manifest();
     duplicated.artifacts.push({ ...duplicated.artifacts[1] });
-    expect(() => validateArtifactManifest(duplicated)).toThrow(
-      /duplicate artifact name/,
-    );
+    expect(() => validateArtifactManifest(duplicated)).toThrow(/duplicate artifact name/);
   });
 });
 
@@ -221,9 +241,7 @@ describe("writeArtifactManifest", () => {
     expect(written.bytes).toBe(body.length);
     expect(written.sha256).toBe(`sha256:${sha256Hex(body)}`);
     expect(body.toString("utf8").endsWith("}\n")).toBe(true);
-    expect(validateArtifactManifest(JSON.parse(body.toString("utf8")))).toEqual(
-      built,
-    );
+    expect(validateArtifactManifest(JSON.parse(body.toString("utf8")))).toEqual(built);
   });
 
   it("refuses to write an invalid manifest", async () => {

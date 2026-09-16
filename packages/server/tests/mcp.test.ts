@@ -39,6 +39,7 @@ describe("tool definitions", () => {
         "getPropertyPermits",
         "getPropertyQuerySchema",
         "listOracleProperties",
+        "listOracleBusinessAccounts",
         "queryProperties",
       ].sort(),
     );

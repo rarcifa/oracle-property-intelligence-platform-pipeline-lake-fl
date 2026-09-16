@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "elephant.lake-permit-refresh-readback.v1",
+  "capturedAt": "2026-09-16T18:05:22.523Z",
+  "source": "https://utility.arcgis.com/usrsvcs/servers/365d9a169bc34110a3db2157c76f6c95/rest/services/Individual/CDPermitParcels/MapServer/0",
+  "where": "Permit_LastModDate > timestamp '2026-09-09 00:00:00'",
+  "sourceFeatures": 1118,
+  "distinctWindowPermits": 1066,
+  "deltas": {
+    "baseAssociations": 17671,
+    "windowAssociations": 1066,
+    "mergedAssociations": 17936,
+    "inserted": 265,
+    "updated": 801,
+    "unchangedInWindow": 0,
+    "removed": null,
+    "idempotent": true
+  },
+  "bindings": [
+    { "role": "immutable-base", "sizeBytes": 10192852, "sha256": "bc0e6c0d05337588eb6e3cd7ae9970a56e21ce8ed3836a8b8f265e9f251b56bd" },
+    { "role": "window", "sizeBytes": 636082, "sha256": "3e702b8845e8e39d098fa773d5cee68cfbbec98511465e6de5673ea1af4aec5e" },
+    { "role": "merged", "sizeBytes": 10345364, "sha256": "55d54c8e87d9ab28537e79e20753f86283d6ff34e37a0a77ddb31a17f7cf24b4" },
+    { "role": "source-observations", "sizeBytes": 1280526, "sha256": "ada2fed8f69c9f1138f774fd5b7e9b75994cfecbf7ee39d5af684a6bde25c981" }
+  ],
+  "limitations": [
+    "A window cannot prove source deletions; removed is unknown.",
+    "Only records in this fresh window have this observation time. Historical Clermont timestamps remain unknown.",
+    "Source classifications are not proof of primary-roof replacement or contractor legal identity.",
+    "This receipt does not establish IPFS publication or current status for every retained permit."
+  ]
+}

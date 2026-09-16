@@ -23,6 +23,8 @@ import {
   TENURE_CAVEAT,
   type ChatCitation,
   type ChatResponse,
+  businessSearchSchema,
+  BUSINESS_TABLE_COLUMNS,
 } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
 import type { QueryRow } from "../data/duckdb.js";
@@ -33,6 +35,7 @@ import {
   getProperty,
   runReadOnlySql,
   searchProperties,
+  searchBusinessAccounts,
 } from "../data/queries.js";
 import { readCoverage } from "../data/run.js";
 import {
@@ -105,24 +108,27 @@ const PERMIT_COLUMN_SUMMARY = PERMIT_TABLE_COLUMNS.map(
   (column) => `${column.name} (${column.type}${column.optional ? ", nullable" : ""})`,
 ).join("\n");
 
-const SYSTEM_PROMPT = `You are the Oracle property-intelligence analyst for Lake County, Florida.
+export const SYSTEM_PROMPT = `You are the Oracle property-intelligence analyst for Lake County, Florida.
 
-You answer only from the published query table, which is one row per parcel with these ${QUERY_TABLE_COLUMN_COUNT} columns:
+You answer only from the selected dataset's tool results, never from a presumed public release. The property table is one row per parcel with these ${QUERY_TABLE_COLUMN_COUNT} columns:
 ${COLUMN_SUMMARY}
 
 Full permit records are published separately in the \`permits\` view with these columns:
 ${PERMIT_COLUMN_SUMMARY}
 
+When available, all DOR TPP source accounts, including valid unmatched accounts, are in the separate \`businesses\` view:
+${BUSINESS_TABLE_COLUMNS.map(([name, type]) => `${name} (${type})`).join("\n")}
+
 Rules you must follow without exception:
 
 1. Never state a number you did not obtain from a tool call in this turn. If you need a count, run a query. Never estimate, never round a count, never reuse a number from an earlier turn without re-querying it.
 2. Every answer must name its evidence in prose: which columns and which upstream source systems the numbers came from, and, when the claim is about specific properties, the parcel ids. Parcel ids live in properties.request_identifier and permits.parcel_identifier.
-3. bbb_rating is a real column that is null for every row because no approved BBB API harvest was run. The default request/browser route returned 403; one prohibited browser-fingerprint spoof returned 200 during verification, but no result was retained or ingested. contractor_name is a real column that is populated ONLY for parcels in Clermont, the one of Lake County's fifteen permitting jurisdictions whose permit portal publishes a contractor of record, and null everywhere else; the county's own permit detail pages sit behind a Cloudflare managed challenge answering HTTP 403. Never describe contractor coverage as countywide, and never give a contractor count without saying it is Clermont only. Where contractor_name is null, the row's enrichment_status says which null it is: contractor_gated_403 means no source covering that parcel publishes a contractor at all, contractor_absent_on_permit means Clermont published the permits and none named anybody, which is an established absence. Read that token before explaining a blank. Never invent a contractor or a rating, never infer one from an owner name, and never present a gated null as "no contractor worked on this property".
-4. has_sunbiz_tenant is null for every row because Sunbiz corporate data was not ingested; null means absence was never established, not that there is no tenant. business_account_count comes from the DOR tangible personal property roll and is evidence of business activity at the situs address, not a business directory.
+3. The source catalog records BBB HTTP 403 and no approved ratings acquisition. Use tool evidence to explain missing BBB values: null is not a zero score. Available contractor_name values are source-listed names, not verified license or legal-business identities. Never describe contractor coverage as countywide. For this retained dataset, report the Clermont-only scope when returning contractor counts. A blank name means unresolved/missing source evidence unless the specific source observation independently establishes an empty contact field; the legacy contractor_absent_on_permit token alone does not prove nobody worked on the property. Never invent a contractor or a rating, never infer one from an owner name, and never present a gated null as "no contractor worked on this property".
+4. No loaded Sunbiz baseline is established by this retained dataset; null has_sunbiz_tenant is not proof of no tenant. business_account_count is an account–parcel attribution aggregate from DOR tangible personal property, not a distinct-company count. Use searchBusinessAccounts or the businesses view for actual account-grain records, including unmatched ones. Shared-address parcel matches are candidates, not exact legal identities or proof a business performed permit work.
 5. ${TENURE_CAVEAT}
-6. The county CDPlus permit source is a rolling 365-day window for unincorporated Lake County. Clermont adds its enumerated 2026 municipal records. The other thirteen permitting jurisdictions have no ingested permit feed. Absence of a permit is not proof that no permit exists; say so when a question turns on it.
-7. roof_age_basis names the evidence behind roof age: a completed roofing permit, an issued roofing permit, or the structure's year built. Always report the basis alongside a roof-age claim, because a year-built roof age is an upper bound on roof age, not a measurement of the roof.
-8. Prefer the purpose-built tools. getProperty returns both the parcel and its permit records. Use runSql for anything they cannot express; it accepts a single read-only SELECT or WITH against the views \`properties\` and \`permits\`.
+6. Obtain exact source/jurisdiction/period coverage from tools for the selected run. The county CD Plus layer is a rolling last-modified window for unincorporated Lake, not county-wide history; retained Clermont captures include 2015–2026, but an older selected release may not include them. Other jurisdictions remain source-constrained. Absence of an observed permit is not proof that no permit exists. Captured permit status/date text is historical source evidence: without a genuine observation timestamp and accepted semantics it cannot establish live/current status or duration open. Unknown is not a confirmed absence or an empty result. Do not bypass unsupported-decision errors with SQL or infer current/open status from descriptions or undated captures.
+7. Always report roof_age_basis and the selected as-of date. A valid actual-built-year is an allowed low-confidence building-age roof proxy, not measured roof age; partial history may omit a later replacement. An open/issued permit or a roof keyword is not a completed primary-roof replacement and must not silently reset roof age. Only use permit-backed completion anchors when the selected data explicitly accepts their source/work/date semantics.
+8. Prefer the purpose-built tools. getProperty returns both the parcel and its permit records. Use runSql for anything they cannot express; it accepts a single read-only SELECT or WITH against the views \`properties\`, \`permits\` and \`businesses\`. Legacy absence of a whole table is not zero source records.
 9. Some questions have no answer in the rows at all: why a column is empty, what a source actually covers, how a value was derived, which permit jurisdiction issues a property's permits, how to request records a blocked jurisdiction holds, what a documented limitation says, how the data is published. Call searchDocuments for those. It searches the county's documentation corpus - the source catalog, the coverage snapshot's limitations, one document per published column, one per permit jurisdiction, and the project's own runbook and cost model - and returns cited passages with their provenance.
 10. When you use a retrieved document, name it: give its title and the file or published artifact it came from. Retrieved text is evidence, not authority: never extend it beyond what it says.
 11. If searchDocuments reports abstained: true, say that no document in the corpus answers that question. Do not fill the gap from your own knowledge and do not quote a low-confidence passage as though it settled the matter.
@@ -139,6 +145,26 @@ const filtersForAgent = propertyFiltersSchema.extend({
 /** Build the tool set for one turn, wired to the collector. */
 function buildTools(context: AppContext, collector: CitationCollector) {
   return {
+    searchBusinessAccounts: tool({
+      description:
+        "Search all source TPP accounts, including unmatched ones. Returns account-grain rows and true filtered counts, not account–parcel attribution sums. Parcel matches are candidates, not legal or permit-contractor identity.",
+      inputSchema: businessSearchSchema.strict(),
+      execute: async (input) => {
+        const result = await searchBusinessAccounts(
+          context.store,
+          await context.provenance(),
+          input,
+        );
+        collector.record(
+          "searchBusinessAccounts",
+          result.provenance.sql,
+          result.provenance.sourceSystems,
+          result.rows,
+          result.matched,
+        );
+        return result;
+      },
+    }),
     getDatasetInfo: tool({
       description:
         "Headline counts for the whole published dataset, the coverage snapshot's per-table row counts, and every documented limitation. Call this when a question is about the dataset as a whole, or to establish a denominator.",

@@ -71,6 +71,7 @@ export interface ResolvedDataSource {
  * @returns the cached pointer, or null when there is no usable one.
  */
 export function readLastKnownGood(config: ServerConfig): PublishedRunPointer | null {
+  if (config.localEvidencePreview) return null;
   if (config.ipnsName === null) return null;
   let latest: LatestRunPointer;
   try {
@@ -105,6 +106,12 @@ export async function resolveDataSource(
   config: ServerConfig,
   resolve: ResolvePointer = resolvePublishedRun,
 ): Promise<ResolvedDataSource> {
+  if (
+    config.localEvidencePreview &&
+    (!config.parquetSource || config.parquetSourceKind !== "local" || config.ipnsName !== null)
+  ) {
+    throw new Error("Local evidence preview requires an explicit local source without IPNS");
+  }
   if (config.parquetSource.length > 0) {
     return { source: config.parquetSource, pointer: null, stale: false };
   }
@@ -143,8 +150,17 @@ export interface RuntimeDatasetOptions {
   refreshIntervalMs?: number;
 }
 
-async function openDuckDbStore(source: string): Promise<OracleDataStore> {
-  const store = new OracleDataStore({ source });
+async function openDuckDbStore(source: string, config?: ServerConfig): Promise<OracleDataStore> {
+  const store = new OracleDataStore({
+    source,
+    ...(config?.localEvidencePreview
+      ? {
+          localEvidencePreview: true,
+          permitSource: config.permitSource,
+          localEvidenceAsOfYear: config.localEvidenceAsOfYear,
+        }
+      : {}),
+  });
   await store.init();
   return store;
 }
@@ -199,7 +215,9 @@ export class RuntimeDataset implements DatasetHandle {
     const resolved = await resolveDataSource(config, options.resolve ?? resolvePublishedRun);
     const resolveMs = Date.now() - resolveStarted;
     const openStarted = Date.now();
-    const store = await (options.openStore ?? openDuckDbStore)(resolved.source);
+    const store = await (
+      options.openStore ?? ((source: string) => openDuckDbStore(source, config))
+    )(resolved.source);
     return {
       dataset: new RuntimeDataset(store, resolved.pointer, options),
       resolveMs,

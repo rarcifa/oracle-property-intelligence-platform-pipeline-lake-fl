@@ -34,6 +34,37 @@ describe("corpus contracts", () => {
       expect(chunk.provenance.sourceFile).not.toContain("/Users/");
     }
   });
+
+  it("limits the tenure conclusion to loaded and inspected DOR evidence", () => {
+    const text = index.raw.chunks
+      .filter((chunk) => chunk.docId === "source:sdf")
+      .map((chunk) => chunk.textForContext)
+      .join("\n");
+
+    expect(text).toContain(
+      "Ten-year ownership tenure provable from the loaded and inspected DOR evidence: NO.",
+    );
+    expect(text).toContain("remain unknown, not unavailable");
+    expect(text).not.toContain("Ten-year ownership tenure provable from published sources");
+    expect(text).not.toContain("cannot be proven from any published Lake source");
+  });
+
+  it("keeps Sunbiz mandatory without treating execution approval as a kit waiver", () => {
+    const text = index.raw.chunks
+      .filter((chunk) => chunk.docId === "source:sunbiz")
+      .map((chunk) => chunk.textForContext)
+      .join("\n");
+
+    expect(text).toContain("historically not ingested for this run");
+    expect(text).toContain("Sunbiz is mandatory and unresolved");
+    expect(text).toContain(
+      "Sunbiz first, then an adequate official DBPR snapshot, before future permit harvesting",
+    );
+    expect(text).toContain("DOR TPP is not a substitute for this identity baseline");
+    expect(text).toContain("owner execution approval alone is not a kit waiver");
+    expect(text).not.toContain("outside this assignment's acceptance criteria");
+    expect(text).not.toContain("Sunbiz is optional");
+  });
 });
 
 describe("served-run compatibility", () => {

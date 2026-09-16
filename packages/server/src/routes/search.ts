@@ -95,6 +95,17 @@ async function parcelHalf(
 
 /** Register the retrieval routes. */
 export function registerSearchRoutes(router: Router, context: AppContext): void {
+  if (context.store.localEvidencePreview) {
+    const unavailable = () =>
+      fail(
+        503,
+        "local_preview_retrieval_unavailable",
+        "The published RAG corpus does not describe this unaccepted local derivative; no public corpus or CID is borrowed.",
+      );
+    router.get("/api/search", unavailable);
+    router.post("/api/search", unavailable);
+    return;
+  }
   router.get("/api/search", async () => {
     try {
       const index = getRetrievalIndex();

@@ -26,6 +26,7 @@ import {
   rollBackUnapprovedPublicationAttempt,
   signPublishAuthorization,
   verifyPublishAuthorization,
+  validatePublicationTarget,
 } from "../src/core/publish-gate.mjs";
 
 const directories = [];
@@ -207,6 +208,46 @@ afterEach(async () => {
 });
 
 describe("exact-target Ed25519 authorization", () => {
+  it("binds delivered archive bytes and their independent pin to the same signed target", () => {
+    const exactTarget = target();
+    exactTarget.primaryCars.archive = {
+      ...exactTarget.primaryCars.manifest,
+      key: `runs/${exactTarget.runId}/archive.car`,
+    };
+    exactTarget.secondaryPin.archivePinName = `${exactTarget.ipnsLabel}/${exactTarget.runId}/archive`;
+    expect(validatePublicationTarget(exactTarget).primaryCars.archive).toEqual(
+      exactTarget.primaryCars.archive,
+    );
+    const keyPair = keys();
+    const signed = approval(exactTarget, keyPair);
+    expect(() =>
+      verifyPublishAuthorization(
+        signed,
+        keyPair.publicKey,
+        {
+          ...exactTarget,
+          primaryCars: {
+            ...exactTarget.primaryCars,
+            archive: { ...exactTarget.primaryCars.archive, bytes: 99 },
+          },
+        },
+        { now: NOW },
+      ),
+    ).toThrow();
+    expect(() =>
+      validatePublicationTarget({
+        ...exactTarget,
+        secondaryPin: { ...exactTarget.secondaryPin, archivePinName: undefined },
+      }),
+    ).toThrow(/bound together/);
+    expect(() =>
+      validatePublicationTarget({
+        ...exactTarget,
+        secondaryPin: { ...exactTarget.secondaryPin, archivePinName: "wrong/archive" },
+      }),
+    ).toThrow(/immutable run-specific/);
+  });
+
   it("does not let credentials override a schedule or explicit dry-run", () => {
     process.env.S3_ACCESS_KEY_ID = "present-but-not-authority";
     process.env.S3_SECRET_ACCESS_KEY = "present-but-not-authority";

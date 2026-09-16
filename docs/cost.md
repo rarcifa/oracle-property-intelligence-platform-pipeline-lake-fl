@@ -7,8 +7,10 @@ runtime is free forever.
 
 ## Default read path
 
-Published data is identified by immutable IPFS CIDs and can be imported from the committed
-CAR. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
+Published data is identified by immutable IPFS CIDs. The repaired publisher prepares a
+CID-addressed multi-root CAR containing every directory DAG, for delivery in the public
+release/demo packet; its actual delivery is still pending. No CAR is currently committed
+as proof of the full retained release. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
 agent, or MCP process can query it without an Oracle-operated database. A vendor gateway is
 a locator, never the identity.
 
@@ -43,7 +45,9 @@ The bulk county sources and DuckDB consolidation are inexpensive:
 Those timings do not include the slow source. Clermont eTRAKiT is a polite, bounded HTML
 harvest. The measured year-26 capture used 4,622 requests, about 0.6 hours, and roughly
 3.6 GB of raw HTML. The known permit-year 15–26 history is estimated at about 66,000
-requests, 8–9 hours, and 50 GB before retry headroom. The durable coordinator evaluates a
+requests, 8–9 hours, and 50 GB before retry headroom in the early estimate. Those are
+historical estimates, not current ETA: all twelve partitions are now locally captured,
+with 58,495 retained Clermont permits. The durable coordinator evaluates a
 conservative upper bound first and pauses for explicit approval when the job exceeds 48
 hours or the request's cost ceiling. Execution then persists a single hard deadline across
 resumes, rejects clocks behind that budget, and stops before another partition when the
@@ -65,6 +69,16 @@ and gives the branch-bound workflow role permission to notify that same topic af
 ingestion failure. It does not silently delete old certified evidence.
 
 ## Optional costs deliberately outside the default path
+
+The existing US$25 one-time and US$5/month recurring-storage ceilings are cumulative,
+not renewed on each repair. Approval-consumption records and unactivated cost-allocation
+tags do not establish actual spend. Before upload/deploy, reconcile retained current and
+noncurrent storage, remaining allowance and the signed estimate. Measured frozen baseline
+artifacts total 12,240,346,190 bytes: about US$0.34/month at the conservative US$0.03/GiB
+model for one copy, not a bill or proof of remote promotion. Pinata Free quota and existing
+usage must fit the dataset plus the delivered CAR before pinning; no paid upgrade is
+approved. The actual bounded CD Plus refresh took 2.883 seconds for 1,118 features,
+independent of the completed full Clermont harvest.
 
 - The hosted Lambda is a demo convenience, not the data source. Reserved concurrency caps
   the request and model-spend blast radius.

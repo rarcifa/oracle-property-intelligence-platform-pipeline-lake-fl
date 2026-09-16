@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.batch.json",
+  "compilerOptions": { "outDir": "dist/evidence" },
+  "include": [
+    "scripts/lake/build-retained-evidence-derivative.ts",
+    "src/counties/lake/retained-permit-evidence.ts",
+    "tests/lake-retained-permit-evidence.test.ts",
+    "tests/lake-retained-evidence-derivative.test.ts"
+  ]
+}

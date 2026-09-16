@@ -10,6 +10,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import { DataSourceProvider } from "./data/DataSourceProvider.js";
+import { AppErrorBoundary } from "./components/AppErrorBoundary.js";
 import "./styles.css";
 
 const container = document.getElementById("root");
@@ -18,7 +19,9 @@ if (!container) {
 }
 
 createRoot(container).render(
-  <DataSourceProvider>
-    <App />
-  </DataSourceProvider>,
+  <AppErrorBoundary>
+    <DataSourceProvider>
+      <App />
+    </DataSourceProvider>
+  </AppErrorBoundary>,
 );

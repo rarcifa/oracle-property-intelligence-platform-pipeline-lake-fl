@@ -110,7 +110,7 @@ export async function main(): Promise<void> {
         level: "info",
         msg: "listening",
         url: `http://localhost:${config.port}`,
-        dataSource: store.source,
+        dataSource: store.localEvidencePreview ? "local-unaccepted-evidence-preview" : store.source,
         dataSourceKind: store.sourceKind,
         ipnsName: dataset.pointer?.ipnsName ?? null,
         rootCid: dataset.pointer?.rootCid ?? null,

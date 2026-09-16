@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.batch.json",
+  "compilerOptions": { "outDir": "dist/source-only", "allowJs": true, "checkJs": false },
+  "include": ["scripts/lake/build-source-only-export.ts"]
+}

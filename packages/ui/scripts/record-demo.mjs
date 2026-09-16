@@ -10,12 +10,21 @@
  */
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { assertDemoContract } from "./demo-contract.mjs";
+import { validateArtifactManifest } from "../../../pipeline/src/core/artifact-manifest.mjs";
+import {
+  verifyArtifactAcrossGateways,
+  verifyManifestAcrossGateways,
+} from "../../../pipeline/src/core/gateway-verify.mjs";
 
 const BASE = process.env.DEMO_BASE_URL?.replace(/\/$/, "");
 const OUT = process.argv[2] ?? "demo-out";
 const RUN_ID = process.env.DEMO_RUN_ID;
 const ROOT_CID = process.env.DEMO_ROOT_CID;
+const MANIFEST_PATH = process.env.DEMO_MANIFEST_PATH;
+const PRIOR_MANIFEST_PATH = process.env.DEMO_PRIOR_MANIFEST_PATH;
 const W = 1600,
   H = 900;
 
@@ -51,6 +60,65 @@ const release = assertDemoContract({
   expectedRunId: RUN_ID,
   expectedRootCid: ROOT_CID,
 });
+
+// Recorded vendor URLs and older selective receipts are not fresh publication
+// proof. Verify the actual current inventory and a changed predecessor artifact.
+if (!MANIFEST_PATH || !PRIOR_MANIFEST_PATH) {
+  throw new Error("record-demo requires DEMO_MANIFEST_PATH and DEMO_PRIOR_MANIFEST_PATH");
+}
+const manifestBytes = await readFile(MANIFEST_PATH);
+const manifest = validateArtifactManifest(JSON.parse(manifestBytes.toString("utf8")));
+const priorManifest = validateArtifactManifest(
+  JSON.parse(await readFile(PRIOR_MANIFEST_PATH, "utf8")),
+);
+if (
+  manifest.runId !== RUN_ID ||
+  manifest.root.cid !== ROOT_CID ||
+  !manifest.directoryCars?.length
+) {
+  throw new Error("demo manifest must match this release and deliver CARs for every directory");
+}
+const currentRun = meta.runHistory?.runs?.find((run) => run.runId === RUN_ID);
+const priorRun = meta.runHistory?.runs?.find((run) => run.runId === priorManifest.runId);
+const queryArtifact = manifest.artifacts.find((entry) => entry.name === "query-table.parquet");
+const priorQueryArtifact = priorManifest.artifacts.find(
+  (entry) => entry.name === "query-table.parquet",
+);
+if (
+  currentRun?.mode !== "incremental" ||
+  currentRun?.status !== "succeeded" ||
+  priorRun?.status !== "succeeded" ||
+  priorRun.rootCid !== priorManifest.root.cid ||
+  priorManifest.runId >= RUN_ID ||
+  priorManifest.root.cid === ROOT_CID ||
+  !queryArtifact ||
+  !priorQueryArtifact ||
+  queryArtifact.sha256 === priorQueryArtifact.sha256
+) {
+  throw new Error(
+    "demo requires a successful incremental snapshot with changed data and an immutable predecessor in history",
+  );
+}
+const publicProof = await verifyManifestAcrossGateways({ manifest });
+if (!publicProof.verified || publicProof.checkedArtifacts !== manifest.artifacts.length) {
+  throw new Error(
+    "every listed CID must match size/digest through two independent public gateways",
+  );
+}
+const manifestProof = await verifyArtifactAcrossGateways({
+  cid: meta.run.manifestCid,
+  expectedSize: manifestBytes.length,
+  expectedSha256: `sha256:${createHash("sha256").update(manifestBytes).digest("hex")}`,
+});
+const priorProof = await verifyArtifactAcrossGateways({
+  cid: priorQueryArtifact.cid,
+  expectedSize: priorQueryArtifact.size,
+  expectedSha256: priorQueryArtifact.sha256,
+  codec: priorQueryArtifact.codec,
+});
+if (!manifestProof.verified || !priorProof.verified) {
+  throw new Error("manifest and prior immutable query bytes must remain publicly retrievable");
+}
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -146,6 +214,11 @@ const ctx = await b.newContext({
   recordVideo: { dir: OUT, size: { width: W, height: H } },
 });
 const page = await ctx.newPage();
+const browserFailures = [];
+page.on("pageerror", () => browserFailures.push("uncaught browser error"));
+page.on("console", (message) => {
+  if (message.type() === "error") browserFailures.push("browser console error");
+});
 
 let completed = false;
 try {
@@ -187,15 +260,21 @@ try {
   );
   const q = page.getByLabel("Search in plain English");
   await q.click();
-  await q.type("aged roofs with an open roofing permit in Clermont", { delay: 55 });
+  await q.type("aged roofs in Clermont", { delay: 55 });
   await caption(
     page,
     "2 · Interpreted into filters",
-    "The phrase is parsed into explicit filters — roof age, permit state, city — so the query stays inspectable rather than opaque.",
+    "Inspect the interpreted center, five-mile radius and age threshold. Year built is a low-confidence building-age proxy, not measured roof age.",
     2000,
   );
   await q.press("Enter");
   await wait(7000);
+  await page.getByLabel("Latitude", { exact: true }).fill("28.5494");
+  await page.getByLabel("Longitude", { exact: true }).fill("-81.7729");
+  await page.getByLabel("Radius (miles)", { exact: true }).fill("5");
+  // Ages are whole years. Strictly older than 15 is an at-least-16 filter.
+  await page.getByLabel("Exact", { exact: true }).fill("16");
+  await wait(1500);
   await reveal(page, 560);
   await caption(
     page,
@@ -205,6 +284,25 @@ try {
   );
   await reveal(page, 900);
   await wait(6500);
+
+  await q.fill("open roofing permits in Clermont");
+  await q.press("Enter");
+  await wait(1000);
+  await page.getByLabel("Latitude", { exact: true }).fill("28.5494");
+  await page.getByLabel("Longitude", { exact: true }).fill("-81.7729");
+  await page.getByLabel("Radius (miles)", { exact: true }).fill("5");
+  await page.getByLabel("Minimum roofing permit days open").fill("365");
+  await until(
+    page,
+    () => !/Loading|Searching/i.test(document.body.innerText),
+    "open roofing permit results",
+  );
+  await caption(
+    page,
+    "2 · Open roofing permits",
+    "Inspect permit status, lifecycle dates, duration/as-of basis and source-listed contractor; unavailable BBB ratings remain null.",
+    6500,
+  );
 
   // 3 — the honest gap
   await go(
@@ -229,7 +327,7 @@ try {
     page,
     "/#/business",
     "4 · Business view",
-    `${release.business.sourceAccounts.toLocaleString()} TPP accounts in this release's source roll; ${release.business.matchedToParcel.toLocaleString()} match a parcel by street and ZIP, because the roll carries no parcel key.`,
+    `${release.business.sourceAccounts.toLocaleString()} TPP source accounts are queryable, including ${release.business.unmatchedAccounts.toLocaleString()} valid unmatched accounts. ${release.business.matchedToParcel.toLocaleString()} match a parcel by normalized street and ZIP.`,
     5200,
   );
   await wait(5500);
@@ -289,7 +387,7 @@ try {
   const ask = page.locator("textarea").first();
   await ask.click();
   await ask.type(
-    "Within five miles of Clermont, which properties have roofs older than 15 years and an open roofing permit — and who is the contractor?",
+    "Which properties in Lake County within five miles of Clermont have roofs older than 15 years? Explain the roof-age proxy and cite the source records.",
     { delay: 34 },
   );
   await wait(1000);
@@ -308,10 +406,10 @@ try {
     page,
     () =>
       /SQL THIS CITATION RAN/i.test(document.body.innerText) &&
-      /contractor/i.test(document.body.innerText) &&
+      /roof/i.test(document.body.innerText) &&
       /Clermont/i.test(document.body.innerText) &&
       !/Thinking/i.test(document.body.innerText),
-    "the agent to finish with Clermont-bounded contractor semantics",
+    "the agent to finish with source-backed Lake County radius and roof-age evidence",
     170000,
   );
   await wait(3000);
@@ -319,11 +417,35 @@ try {
   await caption(
     page,
     "6 · Contractor identity stays inside its evidence boundary",
-    "It reports only source-backed Clermont contractor evidence, distinguishes an established absence from a gated null, and never turns one municipality into countywide coverage.",
+    "Read the actual source-backed answer and its assumptions; building age is not measured roof age, and partial permit history may omit replacements.",
     11000,
   );
   await reveal(page, 700);
   await wait(7000);
+
+  await ask.fill(
+    "Which properties within five miles of Clermont have open roofing permits that have been open for many years, and who is the listed contractor? Include status, open-duration basis and BBB rating where available; identify missing data.",
+  );
+  await page.getByRole("button", { name: "Send" }).click();
+  await until(
+    page,
+    () => {
+      const answers = document.querySelectorAll("article.message.assistant");
+      return (
+        answers.length >= 2 &&
+        /SQL THIS CITATION RAN/i.test(answers[answers.length - 1].innerText) &&
+        !/Thinking/i.test(document.body.innerText)
+      );
+    },
+    "the second source-backed roofing agent answer",
+    170000,
+  );
+  await caption(
+    page,
+    "6 · Long-open permits and listed contractors",
+    "Inspect the second actual answer, permit evidence, as-of/duration assumptions and conditional missing BBB data. A name is not verified legal identity.",
+    10000,
+  );
 
   // 7 — retrieval from a real public gateway
   const cov = `https://ipfs.filebase.io/ipfs/${ROOT_CID}/coverage.json`;
@@ -345,6 +467,44 @@ try {
   await wait(6000);
   await reveal(page, 900);
   await wait(6000);
+
+  // The preceding fresh readback hashed every object, including directory
+  // blocks and the delivered multi-root CAR. Show real manifest retrieval from
+  // the two successful independent gateways, then real immutable run history.
+  for (const gateway of manifestProof.matchedGateways.slice(0, 2)) {
+    const response = await page.goto(`${gateway}/ipfs/${meta.run.manifestCid}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 120000,
+    });
+    if (!response?.ok()) throw new Error("public manifest retrieval failed during the recording");
+    await caption(
+      page,
+      "8 · Public manifest by CID",
+      `Every one of this manifest's ${manifest.artifacts.length} listed objects passed live two-gateway size/digest checks before recording, including directories and the actual CAR file.`,
+      7000,
+    );
+  }
+  await go(
+    page,
+    "/api/meta/run",
+    "9 · Immutable incremental run history",
+    "The later incremental snapshot has changed query bytes and a new CID; its predecessor still retrieves publicly. Both snapshots remain in this actual run history.",
+    1000,
+  );
+  await wait(6000);
+  await go(
+    page,
+    "/#/tenant",
+    "10 · Oracle and builder responsibilities",
+    "Real Lake County collection, provenance, limitations, portable consumer-side DuckDB and public snapshots are shown together. Optional hosting, model usage and durable retention are funded explicitly, not silently charged to Oracle.",
+    1800,
+  );
+  if (browserFailures.length)
+    throw new Error(
+      `recording observed ${browserFailures.length} browser errors; do not submit this take`,
+    );
+  if (!(await page.locator("#root").innerText()).trim())
+    throw new Error("hosted application became blank");
   completed = true;
 } finally {
   await ctx.close();

@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildArtifactManifest } from "../src/core/artifact-manifest.mjs";
-import {
-  buildUnixfsDirectory,
-  computeUnixfsFileCid,
-  sha256Hex,
-} from "../src/core/cid.mjs";
+import { buildUnixfsDirectory, computeUnixfsFileCid, sha256Hex } from "../src/core/cid.mjs";
 import {
   DEFAULT_GATEWAYS,
   verifyArtifactAcrossGateways,
@@ -65,6 +61,47 @@ describe("DEFAULT_GATEWAYS", () => {
 });
 
 describe("verifyArtifactAcrossGateways", () => {
+  it("hashes a streamed artifact without buffering the entire CAR", async () => {
+    const report = await verifyArtifactAcrossGateways({
+      cid: file.cid,
+      expectedSize: body.length,
+      expectedSha256,
+      gateways: ["https://first.example", "https://second.example"],
+      delayMs: 0,
+      fetchImpl: async () => new Response(body),
+    });
+    expect(report.verified).toBe(true);
+    expect(report.results.every((result) => result.bytes === body.length)).toBe(true);
+  });
+
+  it("does not count two redirects to one server as independent gateways", async () => {
+    const report = await verifyArtifactAcrossGateways({
+      cid: file.cid,
+      expectedSize: body.length,
+      expectedSha256,
+      gateways: ["https://first.example", "https://second.example"],
+      delayMs: 0,
+      fetchImpl: async () => ({
+        status: 200,
+        url: `https://same.example/ipfs/${file.cid}`,
+        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+      }),
+    });
+    expect(report.verified).toBe(false);
+    expect(report.matchedGateways).toHaveLength(1);
+  });
+
+  it("rejects an unsupported response representation", async () => {
+    await expect(
+      verifyArtifactAcrossGateways({
+        cid: file.cid,
+        expectedSize: body.length,
+        expectedSha256,
+        codec: "html",
+      }),
+    ).rejects.toThrow(/codec/);
+  });
+
   it("passes when two independent gateways return matching bytes", async () => {
     const { fetchImpl, calls } = fakeFetch({
       "gateway.pinata.cloud": { body },
@@ -169,11 +206,7 @@ describe("verifyArtifactAcrossGateways", () => {
       cid: file.cid,
       expectedSize: body.length,
       expectedSha256,
-      gateways: [
-        "https://ipfs.io",
-        "https://gateway.pinata.cloud",
-        "https://gw.ipfs-lens.dev",
-      ],
+      gateways: ["https://ipfs.io", "https://gateway.pinata.cloud", "https://gw.ipfs-lens.dev"],
       fetchImpl,
       sleep: recordSleep,
     });
@@ -197,11 +230,7 @@ describe("verifyArtifactAcrossGateways", () => {
       cid: file.cid,
       expectedSize: body.length,
       expectedSha256,
-      gateways: [
-        "https://dweb.link",
-        "https://gateway.pinata.cloud",
-        "https://gw.ipfs-lens.dev",
-      ],
+      gateways: ["https://dweb.link", "https://gateway.pinata.cloud", "https://gw.ipfs-lens.dev"],
       fetchImpl,
       sleep: recordSleep,
     });
@@ -219,10 +248,7 @@ describe("verifyArtifactAcrossGateways", () => {
       cid: file.cid,
       expectedSize: body.length,
       expectedSha256,
-      gateways: [
-        "https://gateway.pinata.cloud",
-        "https://gateway.pinata.cloud/",
-      ],
+      gateways: ["https://gateway.pinata.cloud", "https://gateway.pinata.cloud/"],
       fetchImpl,
       sleep: recordSleep,
     });
@@ -298,7 +324,7 @@ describe("verifyManifestAcrossGateways", () => {
       {
         cid: root.cid,
         name: ".",
-        size: root.size,
+        size: root.bytes.length,
         codec: "directory",
         sha256: `sha256:${sha256Hex(root.bytes)}`,
       },
@@ -319,16 +345,18 @@ describe("verifyManifestAcrossGateways", () => {
     ],
   });
 
-  it("verifies every file entry and skips directory entries", async () => {
+  it("verifies every listed CID, including directory block bytes rather than HTML", async () => {
     const bodies = new Map([
       [file.cid, body],
       [coverage.cid, coverageBody],
+      [root.cid, root.bytes],
     ]);
     const calls = [];
     const fetchImpl = async (input) => {
       calls.push(input);
-      const cid = input.split("/ipfs/")[1];
-      const bytes = new TextEncoder().encode(bodies.get(cid) ?? "");
+      const cid = new URL(input).pathname.split("/ipfs/")[1];
+      const value = bodies.get(cid) ?? "";
+      const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
       return {
         status: 200,
         arrayBuffer: async () => bytes.buffer.slice(0, bytes.byteLength),
@@ -341,27 +369,32 @@ describe("verifyManifestAcrossGateways", () => {
       sleep: recordSleep,
     });
     expect(summary.verified).toBe(true);
-    expect(summary.checkedArtifacts).toBe(2);
-    expect(summary.verifiedArtifacts).toBe(2);
+    expect(summary.checkedArtifacts).toBe(3);
+    expect(summary.verifiedArtifacts).toBe(3);
     expect(summary.runId).toBe("2026-09-09T00-00-00Z");
     expect(summary.county).toBe("lake");
     expect(summary.artifacts.map((artifact) => artifact.name)).toEqual([
+      ".",
       "dataset-coverage.json",
       "properties.csv",
     ]);
-    expect(calls).toHaveLength(4);
-    expect(calls.some((url) => url.includes(root.cid))).toBe(false);
+    expect(calls).toHaveLength(6);
+    expect(calls.filter((url) => url.includes(root.cid))).toEqual([
+      `https://gateway.pinata.cloud/ipfs/${root.cid}?format=raw`,
+      `https://gw.ipfs-lens.dev/ipfs/${root.cid}?format=raw`,
+    ]);
   });
 
   it("fails the summary when one artifact cannot be proven twice", async () => {
     const fetchImpl = async (input) => {
-      const cid = input.split("/ipfs/")[1];
+      const cid = new URL(input).pathname.split("/ipfs/")[1];
       if (cid === coverage.cid && input.includes("ipfs-lens")) {
         return { status: 429 };
       }
-      const bytes = new TextEncoder().encode(
-        cid === file.cid ? body : coverageBody,
-      );
+      const bytes =
+        cid === root.cid
+          ? root.bytes
+          : new TextEncoder().encode(cid === file.cid ? body : coverageBody);
       return {
         status: 200,
         arrayBuffer: async () => bytes.buffer.slice(0, bytes.byteLength),
@@ -374,11 +407,9 @@ describe("verifyManifestAcrossGateways", () => {
       sleep: recordSleep,
     });
     expect(summary.verified).toBe(false);
-    expect(summary.verifiedArtifacts).toBe(1);
+    expect(summary.verifiedArtifacts).toBe(2);
     expect(
-      summary.artifacts.find(
-        (artifact) => artifact.name === "dataset-coverage.json",
-      ).verified,
+      summary.artifacts.find((artifact) => artifact.name === "dataset-coverage.json").verified,
     ).toBe(false);
   });
 

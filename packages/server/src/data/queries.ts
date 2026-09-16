@@ -32,12 +32,18 @@ import {
   type ResponseProvenance,
   type PermitRow,
   type SearchOptions,
+  buildBusinessSearchSql,
+  BUSINESS_ACCOUNT_COUNTS_SQL,
+  BUSINESS_ACCOUNT_NOTE,
+  type BusinessSearchOptions,
 } from "@oracle-lake/shared";
 import type { OracleDataStore, QueryRow } from "./duckdb.js";
 import type { RunIdentity } from "./run.js";
 
 /** Everything a response needs to explain where its numbers came from. */
 export interface ProvenanceContext extends RunIdentity {
+  localEvidencePreview?: boolean;
+  sourceObservationsOnly?: boolean;
   dataSource: string;
   dataSourceKind: "ipfs" | "local";
 }
@@ -88,6 +94,15 @@ function provenance(
     sourceSystems: deriveSourceSystems(rows),
     runId: context.runId,
     rootCid: context.rootCid,
+    ...(context.localEvidencePreview || context.sourceObservationsOnly
+      ? {
+          ...(context.localEvidencePreview
+            ? { localEvidencePreview: true }
+            : { sourceObservationsOnly: true }),
+          decisionCaveat:
+            "Unaccepted historical observations. Current/open status, primary-roof completion and legal-company/license identity remain unknown; built year is only a low-confidence proxy with incomplete permit history.",
+        }
+      : {}),
   };
 }
 
@@ -105,6 +120,17 @@ export async function searchProperties(
   context: ProvenanceContext,
   options: SearchOptions,
 ): Promise<SearchResult> {
+  if (
+    (store.localEvidencePreview || store.sourceObservationsOnly) &&
+    (options.hasOpenRoofingPermit !== undefined ||
+      options.minOpenPermitDays !== undefined ||
+      options.minOpenRoofingPermitDays !== undefined ||
+      (options.roofAgeBasis !== undefined && options.roofAgeBasis !== "built_year_proxy"))
+  ) {
+    throw new Error(
+      "This source-observation dataset cannot answer current/open or completed-roof permit filters; unknown evidence is not an empty result or confirmed absence",
+    );
+  }
   const sql = buildSearchSql(PROPERTIES_VIEW, options);
   const countSql = buildCountSql(PROPERTIES_VIEW, options);
   const [rows, countRow] = await Promise.all([store.query(sql), store.queryOne(countSql)]);
@@ -177,11 +203,22 @@ export async function getPropertyPermits(
     permitsAvailable: store.permitsAvailable,
     provenance: {
       sql,
-      dataSource: store.activePermitSource ?? context.dataSource,
+      dataSource: store.localEvidencePreview
+        ? "local-unaccepted-permit-preview"
+        : (store.activePermitSource ?? context.dataSource),
       dataSourceKind: context.dataSourceKind,
       sourceSystems,
       runId: context.runId,
       rootCid: context.rootCid,
+      ...(context.localEvidencePreview || context.sourceObservationsOnly
+        ? {
+            ...(context.localEvidencePreview
+              ? { localEvidencePreview: true }
+              : { sourceObservationsOnly: true }),
+            decisionCaveat:
+              "Source-listed contractor names are not verified legal identities; permit status is historical, not current.",
+          }
+        : {}),
     },
   };
 }
@@ -219,6 +256,18 @@ function toNumberRecord(row: QueryRow | null): Record<string, number> {
     // A numeric string still counts; a date string does not.
     if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
       out[key] = Number(value);
+    }
+  }
+  return out;
+}
+
+/** Never let unavailable accepted decisions become zero-valued dashboard counts. */
+function previewAggregate(store: OracleDataStore, row: QueryRow | null): QueryRow | null {
+  if ((!store.localEvidencePreview && !store.sourceObservationsOnly) || row === null) return row;
+  const out = { ...row };
+  for (const key of Object.keys(out)) {
+    if (key.includes("open") || key === "roofing_permit_records" || key === "sunbiz_tenants") {
+      delete out[key];
     }
   }
   return out;
@@ -274,7 +323,7 @@ export async function getDatasetStats(
     permitSql === null ? Promise.resolve(null) : store.queryOne(permitSql),
   ]);
   return {
-    stats: withPermitRecordCounts(statsRow, permitRow),
+    stats: withPermitRecordCounts(previewAggregate(store, statsRow), permitRow),
     roofAgeBands: bands,
     provenance: provenance(
       context,
@@ -338,6 +387,8 @@ export async function getBusinessView(
   byType: QueryRow[];
   provenance: ResponseProvenance;
   note: string;
+  businessesAvailable: boolean;
+  accounts: QueryRow[];
 }> {
   const totalsSql = `SELECT
   count(*) FILTER (WHERE coalesce(business_account_count, 0) > 0) AS properties_with_accounts,
@@ -348,17 +399,70 @@ export async function getBusinessView(
 FROM ${PROPERTIES_VIEW}`;
   const byCitySql = buildBusinessByCitySql(PROPERTIES_VIEW, 40);
   const byTypeSql = buildBusinessByTypeSql(PROPERTIES_VIEW);
-  const [totals, byCity, byType] = await Promise.all([
+  const accountSql = store.businessesAvailable ? buildBusinessSearchSql({ limit: 50 }) : null;
+  const [totals, byCity, byType, accountCounts, accounts] = await Promise.all([
     store.queryOne(totalsSql),
     store.query(byCitySql),
     store.query(byTypeSql),
+    store.businessesAvailable ? store.queryOne(BUSINESS_ACCOUNT_COUNTS_SQL) : Promise.resolve(null),
+    accountSql ? store.query(accountSql) : Promise.resolve([]),
   ]);
   return {
-    totals: toNumberRecord(totals),
+    totals: {
+      ...toNumberRecord(previewAggregate(store, totals)),
+      ...toNumberRecord(accountCounts),
+    },
     byCity,
     byType,
-    provenance: provenance(context, `${totalsSql};\n\n${byCitySql};\n\n${byTypeSql}`, []),
-    note: BUSINESS_VIEW_NOTE,
+    provenance: {
+      ...provenance(
+        context,
+        [
+          totalsSql,
+          byCitySql,
+          byTypeSql,
+          accountSql,
+          store.businessesAvailable ? BUSINESS_ACCOUNT_COUNTS_SQL : null,
+        ]
+          .filter(Boolean)
+          .join(";\n\n"),
+        [],
+      ),
+      sourceSystems: ["fl_dor_tpp_2026p"],
+    },
+    note: store.businessesAvailable
+      ? `${BUSINESS_VIEW_NOTE} ${BUSINESS_ACCOUNT_NOTE}`
+      : BUSINESS_VIEW_NOTE,
+    businessesAvailable: store.businessesAvailable,
+    accounts,
+  };
+}
+
+/** Account-grain access includes valid source businesses with no parcel candidate. */
+export async function searchBusinessAccounts(
+  store: OracleDataStore,
+  context: ProvenanceContext,
+  options: BusinessSearchOptions,
+): Promise<SearchResult & { businessesAvailable: true; note: string }> {
+  if (!store.businessesAvailable)
+    throw new Error(
+      "Account-grain business artifact is unavailable for this dataset; absence is not established",
+    );
+  const sql = buildBusinessSearchSql(options);
+  const countSql = buildBusinessSearchSql(options, true);
+  const [rows, countRow] = await Promise.all([store.query(sql), store.queryOne(countSql)]);
+  return {
+    rows,
+    matched: Number(countRow?.matched ?? 0),
+    limit: clampLimit(Number(options.limit ?? 50)),
+    offset: Math.max(0, Number(options.offset ?? 0)),
+    businessesAvailable: true,
+    note: BUSINESS_ACCOUNT_NOTE,
+    provenance: {
+      ...provenance(context, sql, rows),
+      sourceSystems: ["fl_dor_tpp_2026p"],
+      dataSource: store.activeBusinessSource ?? context.dataSource,
+    },
   };
 }
 
@@ -379,7 +483,7 @@ export async function getContractorView(
     permitSql === null ? Promise.resolve(null) : store.queryOne(permitSql),
   ]);
   return {
-    posture: withPermitRecordCounts(posture, permitRow),
+    posture: withPermitRecordCounts(previewAggregate(store, posture), permitRow),
     // A county-level view has no row to read an enrichment_status off, so it
     // asks for the notices of the majority case explicitly. bbb_rating is
     // gated on every row. contractor_name is gated on every parcel outside
@@ -387,9 +491,16 @@ export async function getContractorView(
     // contractor_absent_on_permit instead - which is why the tile beside these
     // notices states the jurisdiction boundary and counts the column live
     // rather than letting the notices imply a countywide zero.
-    gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
+    gating: gatedFieldNotices(
+      store.localEvidencePreview || store.sourceObservationsOnly
+        ? "current_permit_status_not_revalidated;primary_roof_completion_needs_review;contractor_absence_not_proven;sunbiz_temporal_dbpr_required;bbb_policy_api_gated"
+        : "permits_loaded;contractor_gated_403;bbb_gated_403",
+    ),
     provenance: provenance(context, [sql, permitSql].filter(Boolean).join(";\n\n"), []),
-    note: CONTRACTOR_VIEW_NOTE,
+    note:
+      store.localEvidencePreview || store.sourceObservationsOnly
+        ? "Historical source-observation view: names are source-listed only, not verified legal/license identities. Current/open counts and primary-roof completion are unknown."
+        : CONTRACTOR_VIEW_NOTE,
   };
 }
 

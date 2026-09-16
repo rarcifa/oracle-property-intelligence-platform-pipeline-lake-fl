@@ -102,6 +102,7 @@ const secondaryPinTargetSchema = z
     apiPath: z.literal(PINATA_SECONDARY_PIN_API_PATH),
     rootPinName: z.string().min(1),
     manifestPinName: z.string().min(1),
+    archivePinName: z.string().min(1).optional(),
   })
   .strict();
 
@@ -127,6 +128,7 @@ export const publicationTargetSchema = z
       .object({
         root: immutablePrimaryCarSchema,
         manifest: immutablePrimaryCarSchema,
+        archive: immutablePrimaryCarSchema.optional(),
       })
       .strict(),
     secondaryPin: secondaryPinTargetSchema,
@@ -166,6 +168,24 @@ export const publicationTargetSchema = z
         code: "custom",
         path: ["primaryCars", "root", "cid"],
         message: "root CAR CID must match the publication root",
+      });
+    }
+    if (Boolean(target.primaryCars.archive) !== Boolean(target.secondaryPin.archivePinName)) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "archive"],
+        message: "archive upload and independent archive pin must be bound together",
+      });
+    }
+    if (
+      target.primaryCars.archive &&
+      (target.primaryCars.archive.key !== `runs/${target.runId}/archive.car` ||
+        target.secondaryPin.archivePinName !== `${target.ipnsLabel}/${target.runId}/archive`)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["primaryCars", "archive"],
+        message: "archive target must use the immutable run-specific key and pin name",
       });
     }
     if (

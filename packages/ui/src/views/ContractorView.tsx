@@ -59,7 +59,8 @@ const DURATION_BUCKETS: readonly { key: string; label: string }[] = [
 ];
 
 export function ContractorView(): JSX.Element {
-  const { source } = useDataSource();
+  const { source, meta } = useDataSource();
+  const evidenceOnly = meta?.sourceObservationsOnly === true || meta?.localEvidencePreview === true;
   const view = useAsync(() => source.getContractorView(), [source]);
   const stats = useAsync(() => source.getStats(), [source]);
   const [offset, setOffset] = useState(0);
@@ -75,7 +76,17 @@ export function ContractorView(): JSX.Element {
     [offset],
   );
 
-  const results = useAsync(() => source.search(options), [source, JSON.stringify(options)]);
+  const results = useAsync(
+    () => (evidenceOnly ? Promise.resolve(null) : source.search(options)),
+    [source, evidenceOnly, JSON.stringify(options)],
+  );
+  const historicalSql = `SELECT permit_number, jurisdiction, permit_status, issued_date, permit_description,
+    contractor_name, parcel_identifier, linkage_status, source_url FROM permits
+    ORDER BY permit_id LIMIT 50 OFFSET ${offset}`;
+  const historical = useAsync(
+    () => (evidenceOnly ? source.runSql(historicalSql, 50) : Promise.resolve(null)),
+    [source, evidenceOnly, historicalSql],
+  );
 
   const totalParcels = stats.data?.stats.properties;
   const contractorNames = view.data?.posture.contractor_names_present;
@@ -209,8 +220,10 @@ export function ContractorView(): JSX.Element {
         ) : (
           <BarChart
             ariaLabel="Parcels by how long their longest open permit of any type has been open"
-            emptyText="No open permits in the published table."
-            data={DURATION_BUCKETS.map((bucket) => ({
+            emptyText="No usable open-duration observations; this is not proof that no open permits exist."
+            data={DURATION_BUCKETS.filter(
+              (bucket) => typeof view.data?.posture[bucket.key] === "number",
+            ).map((bucket) => ({
               label: bucket.label,
               value: view.data?.posture[bucket.key] ?? 0,
             }))}
@@ -229,31 +242,138 @@ export function ContractorView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Parcels with an open roofing permit"
-        subtitle="Ordered by the longest open roofing permit duration, descending."
+        title={
+          evidenceOnly
+            ? "Retained historical permit observations"
+            : "Parcels with an open roofing permit"
+        }
+        subtitle={
+          evidenceOnly
+            ? "All sources, including valid unlinked records. Status is retained source text, not current; names are source-listed, not verified legal identities."
+            : "Ordered by the longest open roofing permit duration, descending."
+        }
       >
-        {results.error ? <ErrorPanel error={results.error} onRetry={results.reload} /> : null}
-        <PropertyTable
-          rows={results.data?.rows ?? []}
-          loading={results.loading}
-          onOpen={(parcelId) => navigate(propertyPath(parcelId))}
-          emptyText="No parcel in the published table has an open roofing permit."
-        />
-        {results.data ? (
+        {evidenceOnly ? (
           <>
-            <Pager
-              offset={results.data.offset}
-              limit={results.data.limit}
-              matched={results.data.matched}
-              returned={results.data.rows.length}
-              onOffset={setOffset}
-              busy={results.loading}
-            />
-            <div style={{ marginTop: 12 }}>
-              <SqlBlock provenance={results.data.provenance} />
-            </div>
+            <p className="notice gated">
+              Current-open roofing status and duration are unknown in this selected dataset.
+              Historical source observations below are not proof of completion, current status, or a
+              verified license. Building-year roof proxies remain available in property search.
+            </p>
+            {historical.error ? (
+              <ErrorPanel error={historical.error} onRetry={historical.reload} />
+            ) : null}
+            {historical.loading && !historical.data ? <SkeletonRows rows={5} height={24} /> : null}
+            {historical.data ? (
+              <>
+                <div className="table-scroll">
+                  <table className="data" style={{ minWidth: 900 }}>
+                    <thead>
+                      <tr>
+                        <th>Permit / jurisdiction</th>
+                        <th>Historical status / source issue date</th>
+                        <th>Source work text</th>
+                        <th>Source-listed name</th>
+                        <th>Property link</th>
+                        <th>Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historical.data.rows.map((row, index) => (
+                        <tr key={`${String(row.permit_number)}:${index}`}>
+                          <td>
+                            {String(row.permit_number ?? "—")}
+                            <br />
+                            {String(row.jurisdiction ?? "—")}
+                          </td>
+                          <td>
+                            {String(row.permit_status ?? "unknown")}
+                            <br />
+                            {String(row.issued_date ?? "unknown")}
+                          </td>
+                          <td>{String(row.permit_description ?? "—")}</td>
+                          <td>{String(row.contractor_name ?? "not captured; absence unproven")}</td>
+                          <td>
+                            {row.parcel_identifier &&
+                            row.linkage_status === "linked_to_assessed_roll" ? (
+                              <button
+                                type="button"
+                                className="btn small"
+                                onClick={() =>
+                                  navigate(propertyPath(String(row.parcel_identifier)))
+                                }
+                              >
+                                {String(row.parcel_identifier)}
+                              </button>
+                            ) : (
+                              `valid unlinked${row.parcel_identifier ? `: ${String(row.parcel_identifier)}` : ""}`
+                            )}
+                          </td>
+                          <td>
+                            {typeof row.source_url === "string" &&
+                            row.source_url.startsWith("https://") ? (
+                              <a href={row.source_url} target="_blank" rel="noreferrer">
+                                Source
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {typeof stats.data?.stats.permit_records_total === "number" ? (
+                  <Pager
+                    offset={offset}
+                    limit={50}
+                    matched={stats.data.stats.permit_records_total}
+                    returned={historical.data.rows.length}
+                    onOffset={setOffset}
+                    busy={historical.loading}
+                    noun="permits"
+                  />
+                ) : (
+                  <p>
+                    Total retained permit count is still loading or unavailable; this does not
+                    establish zero.
+                  </p>
+                )}
+                <SqlBlock provenance={historical.data.provenance} />
+              </>
+            ) : null}
           </>
-        ) : null}
+        ) : (
+          <>
+            {results.error ? <ErrorPanel error={results.error} onRetry={results.reload} /> : null}
+            <PropertyTable
+              rows={results.data?.rows ?? []}
+              loading={results.loading}
+              onOpen={(parcelId) => navigate(propertyPath(parcelId))}
+              emptyText={
+                results.error
+                  ? "Current-open results are unavailable; this is not proof of no open permits."
+                  : "No parcel in the selected decision-enabled table matches this open-roofing query."
+              }
+            />
+            {results.data ? (
+              <>
+                <Pager
+                  offset={results.data.offset}
+                  limit={results.data.limit}
+                  matched={results.data.matched}
+                  returned={results.data.rows.length}
+                  onOffset={setOffset}
+                  busy={results.loading}
+                />
+                <div style={{ marginTop: 12 }}>
+                  <SqlBlock provenance={results.data.provenance} />
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
       </Panel>
     </div>
   );

@@ -12,6 +12,8 @@ function fixture() {
     meta: {
       run: { runId, rootCid },
       coverage: {
+        runId,
+        sourceObservationsOnly: false,
         tables: {
           contractors: {
             availability: "supported_partial",
@@ -29,6 +31,9 @@ function fixture() {
             attributedAcrossParcels: 4_451,
             propertiesWithAccount: 2_726,
             sharedAddressGroups: 90,
+            accountTableAvailable: true,
+            queryableSourceAccounts: 33_346,
+            queryableValidUnmatchedAccounts: 31_286,
           },
         },
       },
@@ -50,18 +55,24 @@ function fixture() {
       provenance: { runId, rootCid },
     },
     business: {
-      totals: { business_accounts: 4_451, properties_with_accounts: 2_726 },
+      totals: {
+        business_accounts: 4_451,
+        properties_with_accounts: 2_726,
+        source_business_accounts: 33_346,
+        unmatched_business_accounts: 31_286,
+      },
+      businessesAvailable: true,
       provenance: { runId, rootCid },
     },
   };
 }
 
 describe("recorded demo release contract", () => {
-  it("accepts one exact full-history release with nine tools and honest coverage", () => {
+  it("accepts one exact full-history release with ten tools and honest coverage", () => {
     expect(assertDemoContract(fixture())).toEqual({
       runId,
       rootCid,
-      toolCount: 9,
+      toolCount: 10,
       contractorNames: 2_359,
       contractorJurisdictions: "1/15",
       contractorPermitYears: [
@@ -86,18 +97,28 @@ describe("recorded demo release contract", () => {
         attributedAcrossParcels: 4_451,
         propertiesWithAccount: 2_726,
         sharedAddressGroups: 90,
+        unmatchedAccounts: 31_286,
       },
     });
   });
 
-  it("rejects stale identity and an eight-tool runtime", () => {
+  it("rejects stale identity and a nine-tool runtime", () => {
     const stale = fixture();
     stale.meta.run.rootCid = `bafybei${"a".repeat(52)}`;
     expect(() => assertDemoContract(stale)).toThrow(/api\/meta\/run/);
 
     const oldRuntime = fixture();
     oldRuntime.tools.result.tools.pop();
-    expect(() => assertDemoContract(oldRuntime)).toThrow(/exactly nine expected tools/);
+    expect(() => assertDemoContract(oldRuntime)).toThrow(/exactly ten expected tools/);
+  });
+
+  it("rejects mismatched coverage and unaccepted source-only status decisions", () => {
+    const stale = fixture();
+    stale.meta.coverage.runId = "20260910T000000Z";
+    expect(() => assertDemoContract(stale)).toThrow(/coverage snapshot describes a different run/);
+    const partial = fixture();
+    partial.meta.coverage.sourceObservationsOnly = true;
+    expect(() => assertDemoContract(partial)).toThrow(/source-only partial exports/);
   });
 
   it("rejects one-year or misleading countywide contractor evidence", () => {
@@ -126,5 +147,11 @@ describe("recorded demo release contract", () => {
     const impossible = fixture();
     impossible.meta.coverage.tables.businessAccounts.matchedToParcel = 40_000;
     expect(() => assertDemoContract(impossible)).toThrow(/internally inconsistent/);
+  });
+
+  it("rejects omitted unmatched business accounts", () => {
+    const incomplete = fixture();
+    incomplete.meta.coverage.tables.businessAccounts.queryableValidUnmatchedAccounts = 0;
+    expect(() => assertDemoContract(incomplete)).toThrow(/including valid unmatched accounts/);
   });
 });

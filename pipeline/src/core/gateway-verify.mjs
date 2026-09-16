@@ -96,16 +96,18 @@ async function fetchFromGateway({
   expectedSha256,
   fetchImpl,
   timeoutMs,
+  codec,
 }) {
   const { base } = normalizeGateway(gateway);
   try {
-    const response = await fetchImpl(`${base}/ipfs/${cid}`, {
+    // A directory listing is gateway-generated HTML, not the addressed block.
+    const suffix = codec === "directory" ? "?format=raw" : "";
+    const response = await fetchImpl(`${base}/ipfs/${cid}${suffix}`, {
       redirect: "follow",
-      headers: { Accept: "*/*" },
+      headers: { Accept: codec === "directory" ? "application/vnd.ipld.raw" : "*/*" },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const status =
-      typeof response?.status === "number" ? response.status : null;
+    const status = typeof response?.status === "number" ? response.status : null;
     if (status !== 200) {
       return {
         gateway: base,
@@ -116,20 +118,44 @@ async function fetchFromGateway({
         error: `HTTP ${String(status)}`,
       };
     }
-    const body = Buffer.from(await response.arrayBuffer());
-    const sha256 = `sha256:${createHash("sha256").update(body).digest("hex")}`;
-    const sizeMatches = body.length === expectedSize;
+    const hash = createHash("sha256");
+    let receivedBytes = 0;
+    if (typeof response.body?.getReader === "function") {
+      // Large CARs need not be retained in memory while proving retrieval.
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          receivedBytes += value.byteLength;
+          hash.update(value);
+          if (receivedBytes > expectedSize) {
+            await reader.cancel();
+            break;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } else {
+      const body = Buffer.from(await response.arrayBuffer());
+      receivedBytes = body.length;
+      hash.update(body);
+    }
+    const sha256 = `sha256:${hash.digest("hex")}`;
+    const sizeMatches = receivedBytes === expectedSize;
     const digestMatches = sha256 === expectedSha256;
     return {
       gateway: base,
       ok: sizeMatches && digestMatches,
       status,
-      bytes: body.length,
+      bytes: receivedBytes,
       sha256,
       error:
         sizeMatches && digestMatches
           ? null
-          : `expected ${expectedSize} bytes ${expectedSha256}, received ${body.length} bytes ${sha256}`,
+          : `expected ${expectedSize} bytes ${expectedSha256}, received ${receivedBytes} bytes ${sha256}`,
+      ...(response.url ? { responseUrl: response.url } : {}),
     };
   } catch (error) {
     return {
@@ -176,7 +202,11 @@ export async function verifyArtifactAcrossGateways({
   delayMs = DEFAULT_GATEWAY_DELAY_MS,
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   sleep = defaultSleep,
+  codec = "file",
 }) {
+  if (codec !== "file" && codec !== "directory") {
+    throw new TypeError("codec must be file or directory");
+  }
   if (typeof cid !== "string" || cid.length === 0) {
     throw new TypeError("cid is required");
   }
@@ -189,13 +219,8 @@ export async function verifyArtifactAcrossGateways({
   if (!Array.isArray(gateways) || gateways.length === 0) {
     throw new TypeError("gateways must be a non-empty array");
   }
-  if (
-    !Number.isSafeInteger(minimumIndependentGateways) ||
-    minimumIndependentGateways < 1
-  ) {
-    throw new TypeError(
-      "minimumIndependentGateways must be a positive integer",
-    );
+  if (!Number.isSafeInteger(minimumIndependentGateways) || minimumIndependentGateways < 1) {
+    throw new TypeError("minimumIndependentGateways must be a positive integer");
   }
   const results = [];
   const matchedHosts = new Set();
@@ -209,10 +234,14 @@ export async function verifyArtifactAcrossGateways({
       expectedSha256,
       fetchImpl,
       timeoutMs,
+      codec,
     });
     results.push(result);
     if (!result.ok) continue;
-    const { host } = normalizeGateway(result.gateway);
+    // Two aliases redirected to one server are not independent retrievals.
+    const host = result.responseUrl
+      ? new URL(result.responseUrl).host.toLowerCase()
+      : normalizeGateway(result.gateway).host;
     if (matchedHosts.has(host)) continue;
     matchedHosts.add(host);
     matchedGateways.push(result.gateway);
@@ -232,11 +261,7 @@ export async function verifyArtifactAcrossGateways({
 }
 
 /**
- * Verify every file entry of an artifact manifest across gateways.
- *
- * Directory entries are skipped because a directory CID does not address a
- * byte string that can be digested; the files inside it are what get checked,
- * and the CAR of the root is itself listed as a file entry.
+ * Verify every entry, including the raw DAG-PB bytes of every directory CID.
  *
  * @param {{
  *   manifest: unknown,
@@ -273,9 +298,7 @@ export async function verifyManifestAcrossGateways({
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
     throw new TypeError("concurrency must be a positive integer");
   }
-  const files = validated.artifacts.filter(
-    (artifact) => artifact.codec === "file",
-  );
+  const files = validated.artifacts;
   const artifacts = new Array(files.length);
   let next = 0;
   const worker = async () => {
@@ -294,6 +317,7 @@ export async function verifyManifestAcrossGateways({
         delayMs,
         timeoutMs,
         sleep,
+        codec: entry.codec,
       });
       artifacts[index] = {
         name: entry.name,
@@ -305,14 +329,9 @@ export async function verifyManifestAcrossGateways({
     }
   };
   await Promise.all(
-    Array.from(
-      { length: Math.min(concurrency, Math.max(files.length, 1)) },
-      () => worker(),
-    ),
+    Array.from({ length: Math.min(concurrency, Math.max(files.length, 1)) }, () => worker()),
   );
-  const verifiedArtifacts = artifacts.filter(
-    (artifact) => artifact.verified,
-  ).length;
+  const verifiedArtifacts = artifacts.filter((artifact) => artifact.verified).length;
   return {
     runId: validated.runId,
     county: validated.county,

@@ -182,14 +182,22 @@ The old committed boolean gate is retired and preserved only as historical evide
 outside this repository with an Ed25519 key; the signature binds county, run, root CID,
 manifest and provenance digests, publication mode, candidate workflow identity, bucket,
 existing IPNS name/key, exact predecessor CID/sequence, the strict Pinata destination and pin
-names, actions, expiry and nonce. The private key and signed approval must remain outside the
+names, the delivered archive CAR's exact upload bytes/CID/key and secondary pin name,
+actions, expiry and nonce. The private key and signed approval must remain outside the
 repository.
 
 A live invocation requires `SECONDARY_PIN_SERVICE_URL` to be exactly
 `https://api.pinata.cloud/psa` (no trailing slash or normalized variant) and a scoped Pinata JWT
 in `SECONDARY_PIN_SERVICE_TOKEN`. The exact provider, origin, path and deterministic root and
-manifest pin names are signed. Runtime configuration is compared before the token, capability
-file or network client is touched. Both pins must reach `pinned` before gateway verification.
+manifest/archive pin names are signed. Runtime configuration is compared before the token, capability
+file or network client is touched. All three pins must reach `pinned` before gateway verification.
+
+The repaired publisher checks all manifest entries, including directories, and the manifest
+itself against two independent public gateways. It validates the complete multi-root
+snapshot CAR offline and publishes its actual file bytes by a distinct file CID. The
+manifest maps every directory root to that delivered CAR; the workflow packet includes
+snapshot and transport CARs. Older immutable manifests/receipts remain historical and
+are not silently promoted to this stronger proof.
 
 ```bash
 REQUEST="$PWD/data/artifacts/publish/lake/manifests/$RUNID.publication-request.json"

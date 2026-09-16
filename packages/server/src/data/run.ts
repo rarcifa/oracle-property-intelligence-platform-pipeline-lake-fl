@@ -36,12 +36,14 @@ async function readJson<T>(path: string): Promise<T | null> {
 
 /** Read the published coverage snapshot for the configured run. */
 export async function readCoverage(config: ServerConfig): Promise<CoverageSnapshot | null> {
+  if (config.localEvidencePreview) return null;
   if (config.runDir === null) return null;
   return readJson<CoverageSnapshot>(resolve(config.runDir, "coverage.json"));
 }
 
 /** Read the published-run pointer, when the run has been published. */
 export async function readLatest(config: ServerConfig): Promise<LatestRunPointer | null> {
+  if (config.localEvidencePreview) return null;
   return readJson<LatestRunPointer>(config.latestPath);
 }
 
@@ -49,6 +51,7 @@ export async function readLatest(config: ServerConfig): Promise<LatestRunPointer
 export async function readPublishedSchema(
   config: ServerConfig,
 ): Promise<{ columnCount: number; columns: { name: string; type: string }[] } | null> {
+  if (config.localEvidencePreview) return null;
   if (config.runDir === null) return null;
   return readJson(resolve(config.runDir, "schema.json"));
 }
@@ -61,6 +64,7 @@ export interface RunIdentity {
 
 /** Best-effort run identity, preferring the published pointer. */
 export async function readRunIdentity(config: ServerConfig): Promise<RunIdentity> {
+  if (config.localEvidencePreview) return { runId: config.dataRunId, rootCid: null };
   if (config.dataRunId !== null) {
     return { runId: config.dataRunId, rootCid: config.dataRootCid };
   }
@@ -123,11 +127,13 @@ export async function readVerification(
   config: ServerConfig,
   runId: string | null,
 ): Promise<VerificationReport | null> {
+  if (config.localEvidencePreview) return null;
   if (runId === null) return null;
   return readJson<VerificationReport>(resolve(artifactsDir(config), `verification-${runId}.json`));
 }
 
 /** Read the publish history, when present. */
 export async function readRunHistory(config: ServerConfig): Promise<RunHistory | null> {
+  if (config.localEvidencePreview) return null;
   return readJson<RunHistory>(resolve(artifactsDir(config), "run-history.json"));
 }

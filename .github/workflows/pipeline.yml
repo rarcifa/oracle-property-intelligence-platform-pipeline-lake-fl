@@ -462,4 +462,6 @@ jobs:
             pipeline/data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-provenance.json
             pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}.car
             pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}-manifest.car
+            pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}-snapshot.car
+            pipeline/data/artifacts/publish/lake/cars/${{ steps.target.outputs.run_id }}-archive-transport.car
           retention-days: 30

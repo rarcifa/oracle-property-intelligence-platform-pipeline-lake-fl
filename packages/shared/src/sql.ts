@@ -418,7 +418,7 @@ export function buildRoofAgeBandsSql(source: string): string {
   count(*) AS properties,
   count(*) FILTER (WHERE roof_age_basis = 'roofing_permit_completed') AS from_completed_permit,
   count(*) FILTER (WHERE roof_age_basis = 'roofing_permit_issued') AS from_issued_permit,
-  count(*) FILTER (WHERE roof_age_basis = 'year_built') AS from_year_built
+  count(*) FILTER (WHERE roof_age_basis IN ('year_built', 'built_year_proxy')) AS from_year_built
 FROM ${tableRef(source)}
 GROUP BY 1
 ORDER BY min(coalesce(roof_age_years, 100000))`;

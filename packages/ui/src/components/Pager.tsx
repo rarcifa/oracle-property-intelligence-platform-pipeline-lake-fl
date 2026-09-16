@@ -15,6 +15,7 @@ export function Pager({
   returned,
   onOffset,
   busy,
+  noun = "parcels",
 }: {
   offset: number;
   limit: number;
@@ -22,6 +23,7 @@ export function Pager({
   returned: number;
   onOffset: (next: number) => void;
   busy: boolean;
+  noun?: "parcels" | "accounts" | "permits";
 }): JSX.Element {
   const first = matched === 0 ? 0 : offset + 1;
   const last = offset + returned;
@@ -33,7 +35,7 @@ export function Pager({
       <span>
         Showing <strong className="mono">{formatCount(first)}</strong>–
         <strong className="mono">{formatCount(last)}</strong> of{" "}
-        <strong className="mono">{formatCount(matched)}</strong> matching parcels
+        <strong className="mono">{formatCount(matched)}</strong> matching {noun}
       </span>
       <div className="row">
         <button

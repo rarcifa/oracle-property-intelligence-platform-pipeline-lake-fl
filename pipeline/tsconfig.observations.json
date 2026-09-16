@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.batch.json",
+  "compilerOptions": { "noEmit": true },
+  "include": [
+    "src/counties/lake/retained-permit-observations.ts",
+    "tests/lake-retained-permit-observations.test.ts",
+    "tests/lake-retained-permit-observations-fixtures.test.ts"
+  ]
+}
