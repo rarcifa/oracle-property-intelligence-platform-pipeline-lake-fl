@@ -146,9 +146,11 @@ The explicit `--secondary-provider lighthouse` branch uses Lighthouse's
 [same-CID pin API](https://docs.lighthouse.storage/how-to/pin-cid), not Pinata's PSA.
 Request acceptance, reconciled inventory/metadata and verified retention are
 separate states. Registration alone cannot advance gateway/history/IPNS promotion;
-no Lighthouse pin or upload has been executed. The existing $5/month ceiling
-still needs an explicit amendment/exemption for this $12/month account, and live
-publication needs its own exact-target approval. The subscription was established
+no Lighthouse pin or upload has been executed. On 2026-09-17 the owner approved
+the existing $12/month Lighthouse plan as a specific exception to the $5/month
+ceiling. The $25 cumulative one-time ceiling and all other constraints remain
+unchanged; this is not approval for a different paid tier or remote execution.
+Live publication still needs its own exact-target approval. The subscription was established
 by the owner; the pipeline did not purchase, renew, cancel or change it. Data
 retention depends on an active provider plan, not an infinite-storage guarantee.
 The Lighthouse adapter's local verification on 2026-09-17 passed all 980 pipeline

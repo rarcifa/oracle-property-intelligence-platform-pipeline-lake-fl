@@ -213,9 +213,12 @@ env-file loading. Never substitute a Pinata JWT or an ordinary CAR-file upload.
 
 The owner-created Lite subscription currently shows 500 GB at $12/month, next
 billing 2026-10-16. Read-only inventory/usage requests passed with zero files and
-zero usage. The key's displayed scope is `admin`, not pin/read-only. The previous
-$5/month ceiling requires an explicit owner amendment/exemption before live
-publication; do not make billing changes or cancel the owner's subscription.
+zero usage. The key's displayed scope is `admin`, not pin/read-only. On 2026-09-17
+the owner approved this existing $12/month plan as a specific exception to the
+$5/month ceiling, not a blanket budget increase. The cumulative $25 one-time
+ceiling and all other constraints remain unchanged. This budget exception does
+not authorize live pins, publication, upgrades or billing changes; do not cancel
+the owner's subscription.
 
 The narrow adapter records request intent before POST, acceptance separately,
 then reconciles the exact CID/name against authenticated paginated inventory and
@@ -232,9 +235,21 @@ Registration is **not** verified independent retention. This branch does not
 invent PSA `pinned` status, and both publisher and ledger reject promotion on
 registration-only evidence. No live Lighthouse pin has been tested. Real
 provider retention acknowledgement remains to be established under a separate
-exact-target signature and explicit budget approval; two gateways alone can
+exact-target signature; the plan-specific budget exception is recorded above.
+Two gateways alone can
 still retrieve blocks from Filebase. Do not demand sealed Filecoin deals or add
 a new certification workflow merely to replace the provider's acknowledgement.
+
+A bounded read-only review of the official Pin CID, List Files and File Info
+documentation and Go SDK did not establish a documented completed-retention
+response contract. The SDK's Pin method returns an HTTP-call error/result, while
+its optional inventory `status` string has no defined retained-state semantics
+in the reviewed [Pin implementation](https://github.com/lighthouse-web3/lighthouse-go-sdk/blob/main/lighthouse/files/files.go)
+and [inventory schema](https://github.com/lighthouse-web3/lighthouse-go-sdk/blob/main/lighthouse/schema/types.go).
+Disclose that uncertainty in the separate exact-target
+approval request. An approved live request may provide real acknowledgement
+evidence; do not claim that offline fixtures establish a retained copy or bypass
+the existing retention hold.
 
 Business accounting uses one export-grain rule in plausibility, new history and
 the recovered predecessor: a legacy property-associated export counts only

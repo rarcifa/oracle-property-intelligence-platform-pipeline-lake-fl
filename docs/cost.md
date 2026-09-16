@@ -76,9 +76,17 @@ tags do not establish actual spend. Before upload/deploy, reconcile retained cur
 noncurrent storage, remaining allowance and the signed estimate. Measured frozen baseline
 artifacts total 12,240,346,190 bytes: about US$0.34/month at the conservative US$0.03/GiB
 model for one copy, not a bill or proof of remote promotion. Pinata Free quota and existing
-usage must fit the dataset plus the delivered CAR before pinning; no paid upgrade is
-approved. The actual bounded CD Plus refresh took 2.883 seconds for 1,118 features,
+usage must fit the dataset plus the delivered CAR before pinning; no Pinata paid
+upgrade is approved. The actual bounded CD Plus refresh took 2.883 seconds for 1,118 features,
 independent of the completed full Clermont harvest.
+
+On 2026-09-17 the owner approved the already-established $12/month Lighthouse
+Lite subscription as a specific exception to the $5/month recurring-storage
+ceiling. This is owner-funded retention, not a free plan or a default cost to
+Oracle. The cumulative $25 one-time ceiling and every other approved constraint
+remain unchanged; no general paid-tier increase, upload, pin or billing mutation
+is implied. Lighthouse's current [retention contract](https://docs.lighthouse.storage/intro)
+depends on an active plan, so the demo must disclose who continues funding it.
 
 - The hosted Lambda is a demo convenience, not the data source. Reserved concurrency caps
   the request and model-spend blast radius.
