@@ -1,0 +1,346 @@
+{
+  "property": [
+    {
+      "column_name": "property_id",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "property_cid",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "request_identifier",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "parcel_identifier",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "alt_key",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "source_system",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "county_name",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "state_code",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "address_street",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "address_city",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "address_zip",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "latitude",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "longitude",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "lot_area_sqft",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "lot_size_acre",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "property_type",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "property_usage_type",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "dor_use_code",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "built_year",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "effective_built_year",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "livable_floor_area",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "building_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "residential_units",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "assessed_value",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "market_value",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "land_value",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "taxable_value",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "owner_name",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "owners_text",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "owner_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "owner_mailing_city",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "owner_mailing_state",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "owner_mailing_zip",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "owner_out_of_county",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "owner_out_of_state",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "last_sale_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "last_sale_price",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "prior_sale_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "prior_sale_price",
+      "column_type": "DOUBLE"
+    },
+    {
+      "column_name": "sale_records_in_window",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "no_recorded_sale_in_dor_window",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "roof_age_years",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "roof_age_basis",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "roof_last_permit_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "has_permits",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "permit_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "roofing_permit_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "open_permit_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "open_roofing_permit_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "longest_open_permit_days",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "longest_open_roofing_permit_days",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "latest_permit_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "contractor_name",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "bbb_rating",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "has_bbb_contractor",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "has_sunbiz_tenant",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "has_business_account",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "business_account_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "business_naics_codes",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "business_names",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "roofing_business_count",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "enrichment_status",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "source_systems",
+      "column_type": "VARCHAR"
+    }
+  ],
+  "permit": [
+    {
+      "column_name": "permit_id",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "permit_number",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "parcel_identifier",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "alt_key",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "jurisdiction",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "permit_type",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "permit_description",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "permit_status",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "applied_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "approved_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "issued_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "completed_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "last_modified_date",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "is_roofing",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "is_open",
+      "column_type": "BOOLEAN"
+    },
+    {
+      "column_name": "days_open",
+      "column_type": "INTEGER"
+    },
+    {
+      "column_name": "contractor_name",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "contractor_license",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "bbb_rating",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "source_url",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "source_system",
+      "column_type": "VARCHAR"
+    },
+    {
+      "column_name": "linkage_status",
+      "column_type": "VARCHAR"
+    }
+  ]
+}

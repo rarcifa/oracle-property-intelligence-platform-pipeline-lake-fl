@@ -34,10 +34,20 @@ const TILES: readonly {
   { key: "roof_age_known", label: "Roof age derived" },
   { key: "roof_age_15_plus", label: "Roof age 15+ years", tone: "warn" },
   { key: "with_permits", label: "Parcels with permits" },
-  { key: "permit_records", label: "Permit records joined" },
-  { key: "roofing_permit_records", label: "Roofing permit records" },
-  { key: "with_open_roofing_permit", label: "Open roofing permits", tone: "warn" },
-  { key: "open_over_five_years", label: "Open over five years", tone: "warn" },
+  { key: "permit_records", label: "Total permit records" },
+  { key: "permit_records_linked", label: "Permit records linked to parcels" },
+  {
+    key: "permit_records_valid_unlinked",
+    label: "Valid unlinked permit records",
+    note: "retained in the permit table, without a parcel link",
+  },
+  { key: "roofing_permit_records", label: "Linked roofing permit records" },
+  { key: "with_open_roofing_permit", label: "Parcels with open roofing permits", tone: "warn" },
+  {
+    key: "open_roofing_over_five_years",
+    label: "Parcels with roofing open over five years",
+    tone: "warn",
+  },
   { key: "owner_out_of_county", label: "Owner out of county" },
   { key: "owner_out_of_state", label: "Owner out of state" },
   { key: "no_recorded_sale", label: "No sale in DOR window" },
@@ -246,17 +256,27 @@ export function OverviewView(): JSX.Element {
         <div className="tile-grid">
           {TILES.map((tile) => {
             const value = stats.data?.stats[tile.key];
+            const fullPermitCounts = typeof stats.data?.stats.permit_records_total === "number";
+            const legacyPermits = tile.key === "permit_records" && !fullPermitCounts;
+            const permitRecordMetric = tile.key.includes("permit_records");
             const share =
-              total > 0 && typeof value === "number" && tile.key !== "properties"
+              !permitRecordMetric &&
+              total > 0 &&
+              typeof value === "number" &&
+              tile.key !== "properties"
                 ? `${formatPercent(value, total)} of parcels`
                 : undefined;
             return (
               <StatTile
                 key={tile.key}
-                label={tile.label}
+                label={legacyPermits ? "Linked permit records (legacy aggregate)" : tile.label}
                 loading={stats.loading && !stats.data}
                 value={typeof value === "number" ? formatCount(value) : "—"}
-                note={tile.note ?? share}
+                note={
+                  legacyPermits
+                    ? "property aggregate only; total and unlinked counts unavailable"
+                    : (tile.note ?? share)
+                }
                 tone={tile.tone ?? "neutral"}
               />
             );
@@ -271,7 +291,7 @@ export function OverviewView(): JSX.Element {
 
       <Panel
         title="Roof age by band and basis"
-        subtitle="Roof age comes from a completed roofing permit where one exists, then an issued permit, then year built. The basis is published per parcel so a reader can see which."
+        subtitle="Roof age is a proxy: valid completion dates from closed roofing permits, then valid issue dates from closed roofing permits, then year built. Open permits do not reset age. Work-class and historical coverage gaps remain; the basis is shown per parcel."
       >
         {stats.loading && !stats.data ? (
           <SkeletonRows rows={7} height={20} />

@@ -1,0 +1,11 @@
+permit_number,alternate_key,parcel_id,permit_type,permit_desc,permit_status,applied_date,approved_date,issued_date,co_date,last_modified,permit_url,is_roofing,is_open,days_open,contractor_name,contractor_license
+26-0001,A,parcel-A,ROOF,Residential re-roof,OPEN,2016-01-01,,2024-01-01,2025-02-01,2026-09-01,https://example.invalid/permits/A,true,true,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0002,B,parcel-B,ROOF,Residential re-roof,CLOSED,2016-01-01,,2017-01-01,2018-04-01,2026-09-01,https://example.invalid/permits/B,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0003,C,parcel-C,ROOF,Residential re-roof,UNKNOWN,2016-01-01,,2023-01-01,2024-05-01,2026-09-01,https://example.invalid/permits/C,true,unknown,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0004,D,parcel-D,ROOF,Residential re-roof,CLOSED,2016-01-01,,2018-01-01,2025-02-30,2026-09-01,https://example.invalid/permits/D,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0005,E,parcel-E,ROOF,Residential re-roof,CLOSED,2016-01-01,,2020-01-01,,2026-09-01,https://example.invalid/permits/E,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0006,F,parcel-F,ROOF,Residential re-roof,CLOSED,2016-01-01,,invalid-date,invalid-date,2026-09-01,https://example.invalid/permits/F,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0007,G,parcel-G,ROOF,Residential re-roof,CLOSED,2016-01-01,,2025-01-01,2027-01-01,2026-09-01,https://example.invalid/permits/G,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0008,H,parcel-H,ROOF,Residential re-roof,UNKNOWN,2016-01-01,,2025-01-01,2025-06-01,2026-09-01,https://example.invalid/permits/H,true,,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0009,I,parcel-I,ROOF,Residential re-roof,CLOSED,2016-01-01,,,,2026-09-01,https://example.invalid/permits/I,true,false,0,FIXTURE ROOFING,FIXTURE-LICENSE
+26-0010,B,parcel-B,ROOF,Residential re-roof,OPEN,2024-01-01,,2024-02-01,2025-06-01,2026-09-01,https://example.invalid/permits/B-open,true,true,0,FIXTURE ROOFING,FIXTURE-LICENSE

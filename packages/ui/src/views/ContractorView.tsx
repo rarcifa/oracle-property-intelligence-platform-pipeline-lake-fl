@@ -30,12 +30,23 @@ import { useAsync } from "../hooks/useAsync.js";
 import { navigate, propertyPath } from "../hooks/useHashRoute.js";
 import { formatCount, formatDays, humanizeKey } from "../lib/format.js";
 
-const POSTURE_TILES: readonly { key: string; label: string; tone?: "accent" | "warn" }[] = [
+const POSTURE_TILES: readonly {
+  key: string;
+  label: string;
+  note?: string;
+  tone?: "accent" | "warn";
+}[] = [
   { key: "properties_with_permits", label: "Parcels with permits", tone: "accent" },
-  { key: "permit_records", label: "Permit records" },
-  { key: "roofing_permit_records", label: "Roofing permit records" },
-  { key: "open_permit_records", label: "Open permit records" },
-  { key: "open_roofing_permit_records", label: "Open roofing permit records", tone: "warn" },
+  { key: "permit_records", label: "Total permit records" },
+  { key: "permit_records_linked", label: "Permit records linked to parcels" },
+  {
+    key: "permit_records_valid_unlinked",
+    label: "Valid unlinked permit records",
+    note: "retained in the permit table, without a parcel link",
+  },
+  { key: "roofing_permit_records", label: "Linked roofing permit records" },
+  { key: "open_permit_records", label: "Linked open permit records" },
+  { key: "open_roofing_permit_records", label: "Linked open roofing permit records", tone: "warn" },
   { key: "properties_with_open_permit", label: "Parcels with an open permit" },
   { key: "properties_with_open_roofing_permit", label: "Parcels with open roofing", tone: "warn" },
 ];
@@ -154,7 +165,18 @@ export function ContractorView(): JSX.Element {
           {POSTURE_TILES.map((tile) => (
             <StatTile
               key={tile.key}
-              label={tile.label}
+              label={
+                tile.key === "permit_records" &&
+                typeof view.data?.posture.permit_records_total !== "number"
+                  ? "Linked permit records (legacy aggregate)"
+                  : tile.label
+              }
+              note={
+                tile.key === "permit_records" &&
+                typeof view.data?.posture.permit_records_total !== "number"
+                  ? "property aggregate only; total and unlinked counts unavailable"
+                  : tile.note
+              }
               loading={view.loading && !view.data}
               value={
                 typeof view.data?.posture[tile.key] === "number"

@@ -68,9 +68,28 @@ function sha256Hex(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/**
+ * Plain-Node consumer adapter for src/batch/contracts.ts canonicalize().
+ * Baseline identity must retain its localeCompare key order, JSON semantics and
+ * trailing newline; the other publication comparisons use canonicalJson above.
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function canonicalizeClermontBaseline(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeClermontBaseline);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, canonicalizeClermontBaseline(nested)]),
+    );
+  }
+  return value;
+}
+
 /** @param {unknown} evidence @returns {string} */
 export function clermontBaselineSha256(evidence) {
-  return sha256Hex(canonicalJson(evidence));
+  return sha256Hex(`${JSON.stringify(canonicalizeClermontBaseline(evidence))}\n`);
 }
 
 /**
@@ -230,17 +249,71 @@ export function buildLimitations(linkage, business, clermont) {
   const accounts = Number(business.total_accounts);
   const clermontParcels = Number(clermont.linked_parcels);
   const rollParcels = Number(clermont.roll_parcels);
+  const rawYears = Array.isArray(clermont.permit_years)
+    ? clermont.permit_years
+    : String(clermont.permit_years ?? "")
+        .split(",")
+        .map((year) => year.trim());
+  const years = rawYears.map(String).filter((year) => /^\d{2}$/.test(year));
+  const fullWindow =
+    rawYears.length === years.length &&
+    canonicalJson(years) === canonicalJson(COMPLETE_CLERMONT_YEARS);
+  const captureWindow = fullWindow
+    ? "the verified permit capture window 2015–2026 (all twelve portal-year partitions)"
+    : years.length > 0
+      ? `only permit ${years.length === 1 ? "year" : "years"} ${years.map((year) => 2000 + Number(year)).join(", ")}; the remaining 2015–2026 portal-year partitions are not in this run`
+      : "no verified permit-year capture window; historical capture coverage is unknown";
+  const unlinked = Number.isInteger(clermont.valid_unlinked_permits)
+    ? `${Number(clermont.valid_unlinked_permits)} captured Clermont permits are valid-unlinked and retained without a property link.`
+    : "Clermont-specific valid-unlinked counts are unavailable in this legacy summary; they must not be inferred as zero.";
   return [
     "The county CD Plus permit layer publishes a rolling 365-day Permit_LastModDate window. Only 846 of 17,671 permits were issued before 2024-09-09, so this is a current-permit source, not a permit archive.",
     "The CD Plus layer covers unincorporated Lake County only. A spatial test places 45 of 17,915 features inside any of the 14 municipal boundaries, and those are county-owned facilities. Each municipality runs its own permit system; 13 of the 14 are blocked, unavailable or manual-only, and each has a named records request in docs/lake-sources.yaml.",
-    `Contractor of record is published for ONE jurisdiction of fifteen. Clermont's eTRAKiT portal names the contractor on its permit detail pages and is harvested: ${Number(clermont.permits)} permits over ${Number(clermont.parcels)} parcel keys, ${Number(clermont.permits_with_contractor)} of them naming a contractor and ${Number(clermont.distinct_contractors)} distinct businesses. Everywhere else contractor_name is null and stays null: the county CD Plus layer publishes no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, and the other thirteen municipalities are blocked, unavailable or manual-only. enrichment_status distinguishes the three cases - contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403 - because a bare null cannot.`,
-    `Clermont's permits cover ${clermontParcels} parcels, ${((clermontParcels / rollParcels) * 100).toFixed(1)}% of the ${rollParcels}-parcel roll, and only permit year ${String(clermont.permit_years)}. The portal holds permit years 15 through 26 and the rest are not in this run; ${Number(clermont.dead_permits)} enumerated permits are filed against no parcel key at all and are recorded as dead rather than dropped. A parcel with no Clermont permit is not a parcel with no permits - it is a parcel outside the one municipality whose permits can be read.`,
+    `Contractor of record is published for ONE jurisdiction of fifteen. Clermont's eTRAKiT portal names the contractor on its permit detail pages and is harvested: ${Number(clermont.permits)} permits over ${Number(clermont.parcels)} parcel keys, ${Number(clermont.permits_with_contractor)} of them naming a contractor and ${Number(clermont.distinct_contractors)} distinct captured contractor names, not reconciled legal businesses. Everywhere else contractor_name is null and stays null: the county CD Plus layer publishes no contractor field, county permit detail pages sit behind a Cloudflare managed challenge across the whole lakecountyfl.gov estate, and the other thirteen municipalities are blocked, unavailable or manual-only. enrichment_status distinguishes the three cases - contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403 - because a bare null cannot.`,
+    `Clermont's permits cover ${clermontParcels} parcels, ${((clermontParcels / rollParcels) * 100).toFixed(1)}% of the ${rollParcels}-parcel roll, and ${captureWindow}. ${Number(clermont.dead_permits)} enumerated permits are certified as proven-dead, separately from valid unmatched records; a missing or absent parcel key is not grounds for declaring a permit dead. ${unlinked} A parcel with no Clermont permit is not a parcel with no permits - it may be outside the one municipality whose permit details can be read or lack an observed match within this capture window. The full portal-year capture does not establish every predecessor/archive system or complete countywide permit history.`,
     "BBB ratings are not published. The default BBB request/browser route returned HTTP 403; one prohibited browser-fingerprint spoof returned 200 during verification, but no result was retained and no approved official-API harvest was run. bbb_rating is a real column that stays null.",
     "Ownership tenure beyond 2025-2026 cannot be proven. Only the current DOR roll is published, and the historical DOR map-data files carry parcel geometry only. no_recorded_sale_in_dor_window is a lower bound, not a tenure claim.",
-    "Coordinates come from the 2025 GIO centroid release against the 2026 roll, so parcels first assessed in 2026 publish with null coordinates rather than being dropped.",
-    `${Number(linkage.valid_unlinked_permits)} of ${Number(linkage.total_permits)} permits reference a parcel key absent from the assessed roll (${Number(linkage.unmatched_parcel_keys)} distinct keys). They are valid records, counted here and not discarded, but they attach to no published property row.`,
+    "Coordinates come from the 2025 GIO centroid release matched by ALT_KEY against the 2026 assessed roll. Properties without a matching valid complete latitude/longitude pair remain in the property table with null coordinates; the cause of each missing pair has not been established, and no coordinates are fabricated.",
+    `${Number(linkage.valid_unlinked_permits)} of ${Number(linkage.total_permits)} permits reference a parcel key absent from the assessed roll or have no usable parcel key (${Number(linkage.unmatched_parcel_keys)} distinct unmatched non-null keys). They are valid records, retained in the permit table and not discarded, but they attach to no published property row. Property permit-count aggregates therefore count linked records only, not every loaded permit.`,
     `Business coverage is a fraction of the TPP roll, and the published per-parcel total double counts. The roll carries no parcel key, so accounts are located by a normalized street+zip match against the roll's situs addresses: ${Number(business.accounts_with_situs)} of ${Number(business.total_accounts)} accounts carry a situs address and ${Number(business.matched_accounts)} match a parcel (${((matched / accounts) * 100).toFixed(1)}%), so the rest are not published. A matched address group is then attributed to every parcel sharing that address, so summing business_account_count across the ${Number(business.parcels_with_account)} parcels that carry one yields ${Number(business.attributed_accounts)} rather than ${Number(business.matched_accounts)}: ${Number(business.shared_address_groups)} address groups span more than one parcel. ${Number(business.matched_accounts)} is the distinct account match; ${Number(business.attributed_accounts)} counts account-parcel matches, not businesses.`,
+    "Roof age remains a proxy, not a verified primary-roof installation age. It uses valid nonfuture completion dates from closed roofing permits, then valid issue dates from closed roofing permits as an explicit fallback proxy, then year built. Open permits do not reset age. An explicit-text primary-roof replacement versus repair/accessory classifier has not been implemented; partial jurisdiction, predecessor and historical coverage can hide a later replacement.",
+    "Contractor names and license text are captured permit-source attribution only. No adequate official DBPR licensing/qualifier/qualified-business temporal snapshot or loaded/reconciled Sunbiz legal-entity baseline is present, so no verified legal-company/license edges are asserted. The current kit's identity-baseline-before-permit-harvest order was not fulfilled; this bounded existing-capture repair does not cure that conformance limitation. BBB reputation and address matches cannot substitute for official identity evidence.",
   ];
+}
+
+/**
+ * Reconcile total permit records with their source and linked property grain.
+ * This pure gate is also exercised without assembling or publishing artifacts.
+ * @param {Record<string, unknown>} totals - Property-grain aggregates.
+ * @param {Record<string, unknown>} permitGate - Counts from the permit Parquet.
+ * @param {Record<string, unknown>} linkage - Counts from the source CSVs.
+ * @returns {Record<string, unknown>} Explicit total, linked and valid-unlinked counts.
+ */
+export function buildPermitCountSummary(totals, permitGate, linkage) {
+  const total = Number(permitGate.rows);
+  const linked = Number(permitGate.linked);
+  const validUnlinked = Number(permitGate.valid_unlinked);
+  const propertyAggregate = Number(totals.permit_records);
+  if (
+    ![total, linked, validUnlinked, propertyAggregate].every(
+      (value) => Number.isInteger(value) && value >= 0,
+    ) ||
+    total !== linked + validUnlinked ||
+    propertyAggregate !== linked ||
+    total !== Number(linkage.total_permits) ||
+    linked !== Number(linkage.linked_permits) ||
+    validUnlinked !== Number(linkage.valid_unlinked_permits)
+  ) {
+    throw new Error("Permit Parquet, source linkage and property aggregates do not reconcile");
+  }
+  return {
+    ...totals,
+    permit_records: total,
+    permit_records_total: total,
+    permit_records_linked: linked,
+    permit_records_valid_unlinked: validUnlinked,
+    permit_records_property_aggregate: propertyAggregate,
+  };
 }
 
 /**
@@ -275,7 +348,9 @@ export async function buildPublishSet({
   const [permitGate] = await query(`
     SELECT count(*) AS rows,
            count(DISTINCT permit_id) AS distinct_permits,
-           count(*) FILTER (WHERE permit_id IS NULL OR permit_id = '') AS null_permit_ids
+           count(*) FILTER (WHERE permit_id IS NULL OR permit_id = '') AS null_permit_ids,
+           count(*) FILTER (WHERE linkage_status = 'linked_to_assessed_roll') AS linked,
+           count(*) FILTER (WHERE linkage_status = 'unlinked_to_assessed_roll') AS valid_unlinked
     FROM '${permitParquetPath}';`);
   if (
     Number(permitGate.rows) !== Number(permitGate.distinct_permits) ||
@@ -338,6 +413,7 @@ export async function buildPublishSet({
     FROM p
     LEFT JOIN read_csv_auto('${nalCsv}', header=true, all_varchar=true) n
       ON n.ALT_KEY = p.alternate_key;`);
+  const permitCounts = buildPermitCountSummary(totals, permitGate, linkage);
 
   // Clermont is reported on its own as well as inside the permit total, because
   // it is the only source of contractor identity in the county and a reader has
@@ -356,6 +432,8 @@ export async function buildPublishSet({
               WHERE contractor_license IS NOT NULL AND contractor_license <> '')  AS distinct_licenses,
            (SELECT count(DISTINCT c.alternate_key) FROM c
               JOIN n ON n.ALT_KEY = c.alternate_key)                              AS linked_parcels,
+           (SELECT count(*) FROM c LEFT JOIN n ON n.ALT_KEY = c.alternate_key
+              WHERE n.PARCEL_ID IS NULL)                                          AS valid_unlinked_permits,
            (SELECT count(*) FROM n)                                               AS roll_parcels;`);
 
   // The metadata sidecar alone is not enough publication evidence: an empty or
@@ -385,8 +463,7 @@ export async function buildPublishSet({
     throw new Error("Clermont export contains duplicate permit numbers");
   }
   await copyFile(clermontEvidencePath, path.join(runDir, "clermont-baseline-evidence.json"));
-  clermont.permit_years =
-    clermontMeta.permitYears.length > 0 ? clermontMeta.permitYears.join(", ") : "none";
+  clermont.permit_years = clermontMeta.permitYears;
   clermont.dead_permits = Number(clermontMeta.deadPermits);
   clermont.enumerated_permits = Number(clermontMeta.enumeratedPermits);
   clermont.achievable_permits = Number(clermontMeta.achievablePermits);
@@ -593,6 +670,7 @@ export async function buildPublishSet({
     countyFips: "12069",
     runId,
     exportedAt: new Date().toISOString(),
+    countyComplete: false,
     denominator: {
       basis: "source_roll_row_count",
       source: "Florida DOR 2026 preliminary NAL",
@@ -606,9 +684,9 @@ export async function buildPublishSet({
     tables: {
       properties: { rows: Number(totals.properties), source: "FL DOR NAL 2026P" },
       permits: {
-        rows: Number(linkage.total_permits),
-        linked: Number(linkage.linked_permits),
-        validUnlinked: Number(linkage.valid_unlinked_permits),
+        rows: Number(permitCounts.permit_records_total),
+        linked: Number(permitCounts.permit_records_linked),
+        validUnlinked: Number(permitCounts.permit_records_valid_unlinked),
         unmatchedParcelKeys: Number(linkage.unmatched_parcel_keys),
         linkedPermitRecordsOnProperties: Number(totals.permit_records),
         bySource: {
@@ -616,6 +694,13 @@ export async function buildPublishSet({
           lake_clermont_etrakit_permits: Number(linkage.municipal_permits),
         },
         source: "Lake County CD Plus permit layer and Clermont eTRAKiT 3",
+        clermontCaptureWindow: {
+          firstYear: clermontEvidence.requiredHistory.firstYear,
+          lastYear: clermontEvidence.requiredHistory.lastYear,
+          permitYears: clermontMeta.permitYears,
+          allRequiredYearPartitionsCaptured: true,
+          completeCountywideHistory: false,
+        },
       },
       // Availability is typed, per the use-oracle coverage publish contract.
       // One jurisdiction of fifteen is harvestable for contractor identity, so
@@ -661,12 +746,25 @@ export async function buildPublishSet({
       propertiesWithPermits: Number(totals.with_permits),
       roofingPermitRecords: Number(totals.roofing_permit_records),
       propertiesWithOpenRoofingPermit: Number(totals.with_open_roofing_permit),
-      permitsOpenOverFiveYears: Number(totals.open_permit_over_five_years),
+      propertiesWithAnyPermitOpenOverFiveYears: Number(totals.open_permit_over_five_years),
       outOfStateOwners: Number(totals.out_of_state_owners),
       outOfCountyOwners: Number(totals.out_of_county_owners),
       noRecordedSaleInDorWindow: Number(totals.no_sale_in_dor_window),
       distinctOwners: Number(totals.distinct_owners),
       propertiesWithBusinessAccount: Number(totals.with_business_account),
+    },
+    signalGrains: {
+      roofAgeKnown: "property_records_with_roof_age_proxy",
+      roofAgeFifteenPlus: "property_records_with_roof_age_proxy",
+      propertiesWithPermits: "property_records",
+      roofingPermitRecords: "linked_permit_records",
+      propertiesWithOpenRoofingPermit: "property_records",
+      propertiesWithAnyPermitOpenOverFiveYears: "property_records",
+      outOfStateOwners: "property_records",
+      outOfCountyOwners: "property_records",
+      noRecordedSaleInDorWindow: "property_records",
+      distinctOwners: "distinct_captured_owner_names",
+      propertiesWithBusinessAccount: "property_records",
     },
     limitations: buildLimitations(linkage, business, clermont),
   };
@@ -686,7 +784,7 @@ export async function buildPublishSet({
         county: "lake",
         source: "appraisal",
         ingestedCount: Number(totals.properties),
-        expectedCount: Number(totals.properties),
+        expectedCount: Number(sourceRoll.parcels),
         exportedAt: coverage.exportedAt,
         ipnsLabel: LAKE_IPNS_LABEL,
       }),
@@ -718,7 +816,7 @@ export async function buildPublishSet({
     artifacts: artifacts.length,
     properties: Number(totals.properties),
   });
-  return { runDir, artifacts, counts: { ...totals, shardCount }, sizes };
+  return { runDir, artifacts, counts: { ...permitCounts, shardCount }, sizes };
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {

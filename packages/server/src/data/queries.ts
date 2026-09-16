@@ -224,6 +224,42 @@ function toNumberRecord(row: QueryRow | null): Record<string, number> {
   return out;
 }
 
+/** Count permit records at their own grain, including valid unmatched records. */
+const PERMIT_RECORD_COUNTS_SQL = `SELECT
+  count(*) AS permit_records_total,
+  count(*) FILTER (WHERE linkage_status = 'linked_to_assessed_roll') AS permit_records_linked,
+  count(*) FILTER (WHERE linkage_status = 'unlinked_to_assessed_roll') AS permit_records_valid_unlinked
+FROM ${PERMITS_VIEW}`;
+
+function withPermitRecordCounts(
+  propertyRow: QueryRow | null,
+  permitRow: QueryRow | null,
+): Record<string, number> {
+  const counts = toNumberRecord(propertyRow);
+  // Keep this independently measurable figure: a property aggregate excludes
+  // valid permits that have no link to the assessed roll.
+  const propertyAggregate = counts.permit_records;
+  if (typeof propertyAggregate !== "number") {
+    throw new Error("Linked property permit aggregate is unavailable");
+  }
+  counts.permit_records_property_aggregate = propertyAggregate;
+  if (permitRow === null) return counts;
+  const permits = toNumberRecord(permitRow);
+  const total = permits.permit_records_total;
+  const linked = permits.permit_records_linked;
+  const validUnlinked = permits.permit_records_valid_unlinked;
+  if (
+    typeof total !== "number" ||
+    typeof linked !== "number" ||
+    typeof validUnlinked !== "number" ||
+    total !== linked + validUnlinked ||
+    linked !== propertyAggregate
+  ) {
+    throw new Error("Permit table counts do not reconcile to linked property aggregates");
+  }
+  return { ...counts, ...permits, permit_records: total };
+}
+
 /** Headline dataset counts plus the roof-age band histogram. */
 export async function getDatasetStats(
   store: OracleDataStore,
@@ -231,11 +267,20 @@ export async function getDatasetStats(
 ): Promise<DatasetStats> {
   const statsSql = buildDatasetStatsSql(PROPERTIES_VIEW);
   const bandsSql = buildRoofAgeBandsSql(PROPERTIES_VIEW);
-  const [statsRow, bands] = await Promise.all([store.queryOne(statsSql), store.query(bandsSql)]);
+  const permitSql = store.permitsAvailable ? PERMIT_RECORD_COUNTS_SQL : null;
+  const [statsRow, bands, permitRow] = await Promise.all([
+    store.queryOne(statsSql),
+    store.query(bandsSql),
+    permitSql === null ? Promise.resolve(null) : store.queryOne(permitSql),
+  ]);
   return {
-    stats: toNumberRecord(statsRow),
+    stats: withPermitRecordCounts(statsRow, permitRow),
     roofAgeBands: bands,
-    provenance: provenance(context, `${statsSql};\n\n${bandsSql}`, []),
+    provenance: provenance(
+      context,
+      [statsSql, bandsSql, permitSql].filter(Boolean).join(";\n\n"),
+      [],
+    ),
   };
 }
 
@@ -328,9 +373,13 @@ export async function getContractorView(
   note: string;
 }> {
   const sql = buildPermitPostureSql(PROPERTIES_VIEW);
-  const posture = await store.queryOne(sql);
+  const permitSql = store.permitsAvailable ? PERMIT_RECORD_COUNTS_SQL : null;
+  const [posture, permitRow] = await Promise.all([
+    store.queryOne(sql),
+    permitSql === null ? Promise.resolve(null) : store.queryOne(permitSql),
+  ]);
   return {
-    posture: toNumberRecord(posture),
+    posture: withPermitRecordCounts(posture, permitRow),
     // A county-level view has no row to read an enrichment_status off, so it
     // asks for the notices of the majority case explicitly. bbb_rating is
     // gated on every row. contractor_name is gated on every parcel outside
@@ -339,7 +388,7 @@ export async function getContractorView(
     // notices states the jurisdiction boundary and counts the column live
     // rather than letting the notices imply a countywide zero.
     gating: gatedFieldNotices("permits_loaded;contractor_gated_403;bbb_gated_403"),
-    provenance: provenance(context, sql, []),
+    provenance: provenance(context, [sql, permitSql].filter(Boolean).join(";\n\n"), []),
     note: CONTRACTOR_VIEW_NOTE,
   };
 }

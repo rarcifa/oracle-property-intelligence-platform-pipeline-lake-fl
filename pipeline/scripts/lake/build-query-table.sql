@@ -15,13 +15,24 @@ CREATE OR REPLACE VIEW nal AS
 -- The GIO release carries a small number of repeated ALT_KEY values (measured:
 -- 210,935 rows, 979 fewer distinct keys). A repeat would fan the parcel join out
 -- and break the rows == distinct-folio gate, so exactly one centroid per key is
--- kept, chosen deterministically by the lowest coordinate pair.
+-- kept, chosen deterministically from one actual, valid coordinate pair.
+-- Independent latitude/longitude minima can fabricate a pair that no source row
+-- contains, so both coordinates must come from the same ranked source record.
 CREATE OR REPLACE VIEW centroid AS
-  SELECT alt_key, min(lat) AS lat, min(lon) AS lon FROM (
-    SELECT alt_key, TRY_CAST(latitude AS DOUBLE) lat, TRY_CAST(longitude AS DOUBLE) lon
+  WITH parsed AS (
+    SELECT alt_key,
+           TRY_CAST(nullif(trim(latitude), '') AS DOUBLE) AS lat,
+           TRY_CAST(nullif(trim(longitude), '') AS DOUBLE) AS lon
     FROM read_csv_auto('$DOWNLOAD_DIR/centroids.csv', header=true, all_varchar=true)
-    WHERE latitude <> '' AND longitude <> ''
-  ) GROUP BY alt_key;
+  ),
+  ranked AS (
+    SELECT alt_key, lat, lon,
+           row_number() OVER (PARTITION BY alt_key ORDER BY lat, lon) AS coordinate_rank
+    FROM parsed
+    WHERE lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180
+      AND isfinite(lat) AND isfinite(lon)
+  )
+  SELECT alt_key, lat, lon FROM ranked WHERE coordinate_rank = 1;
 
 CREATE OR REPLACE VIEW permit_cdplus AS
   SELECT * FROM read_csv_auto('$DOWNLOAD_DIR/permits.csv', header=true, all_varchar=true);
@@ -99,20 +110,21 @@ SELECT
       END
       END)                                                                 AS longest_open_roofing_permit_days,
   max(coalesce(issued_date, applied_date))                                 AS latest_permit_date,
-  max(CASE WHEN lower(is_roofing)='true' THEN co_date END)                        AS roof_co_date,
-  -- Only a roofing permit that is no longer open is evidence of a roof.
-  --
-  -- An issued permit means the work was started or merely planned; it becomes
-  -- evidence of a re-roof when it closes. Counting an open one made the roof
-  -- read as NEW: a permit issued nine years ago and never closed published as
-  -- `roof_age_years: 9` on a house built in 1974, so the parcel with the
-  -- strongest possible lead signal — an old roof with roofing work stalled
-  -- open for years — was ranked as recently re-roofed and dropped out of every
-  -- aged-roof query. Where a roofing permit is still open the roof is the one
-  -- the building has always had, so the age falls back to `year_built`, which
-  -- `roof_age_basis` then reports honestly.
-  max(CASE WHEN lower(is_roofing)='true' AND lower(is_open)<>'true'
-      THEN issued_date END)                                                AS roof_issued_date
+  -- A completion anchor requires explicit closure and a valid, non-future
+  -- completion date. Open or unknown-status permits cannot reset roof age even
+  -- when their raw record carries a completion date. Preserve those raw dates
+  -- unchanged in the full permit table for source-backed inspection.
+  max(CASE WHEN lower(trim(is_roofing))='true' AND lower(trim(is_open))='false'
+                AND TRY_CAST(nullif(trim(co_date), '') AS DATE)
+                    BETWEEN DATE '1700-01-01' AND TRY_CAST('$AS_OF_DATE' AS DATE)
+      THEN CAST(TRY_CAST(nullif(trim(co_date), '') AS DATE) AS VARCHAR) END) AS roof_co_date,
+  -- Preserve the existing closed-issued-date proxy when completion cannot anchor.
+  -- This is not verified roof replacement evidence, and its separate basis
+  -- remains roofing_permit_issued. Open and unknown-status permits cannot anchor it.
+  max(CASE WHEN lower(trim(is_roofing))='true' AND lower(trim(is_open))='false'
+                AND TRY_CAST(nullif(trim(issued_date), '') AS DATE)
+                    BETWEEN DATE '1700-01-01' AND TRY_CAST('$AS_OF_DATE' AS DATE)
+      THEN CAST(TRY_CAST(nullif(trim(issued_date), '') AS DATE) AS VARCHAR) END) AS roof_issued_date
 FROM permit
 WHERE alternate_key IS NOT NULL AND alternate_key <> ''
 GROUP BY 1;
@@ -264,11 +276,11 @@ COPY (
     -- two owners, and gave any consumer a column that never varies. Empty
     -- segments are dropped, because the roll also carries truncated names like
     -- "FRANKLIN ELIZABETH &" where the second owner did not survive export.
-    CASE WHEN trim(coalesce(n.OWN_NAME,'')) = '' THEN 0
+    CAST(CASE WHEN trim(coalesce(n.OWN_NAME,'')) = '' THEN 0
          ELSE greatest(
            1,
            len(list_filter(str_split(trim(n.OWN_NAME), '&'), x -> trim(x) <> ''))
-         ) END                                                                  AS owner_count,
+         ) END AS INTEGER)                                                      AS owner_count,
     nullif(trim(n.OWN_CITY), '')                                            AS owner_mailing_city,
     nullif(trim(n.OWN_STATE), '')                                           AS owner_mailing_state,
     nullif(trim(n.OWN_ZIPCD), '')                                           AS owner_mailing_zip,

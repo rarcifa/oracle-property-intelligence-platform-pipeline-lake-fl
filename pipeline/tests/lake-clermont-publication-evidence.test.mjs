@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { canonicalJson, sha256Text } from "../src/batch/contracts.ts";
 
 import {
   assertCompleteClermontPublicationEvidence,
@@ -71,7 +72,7 @@ function options(overrides = {}) {
     csvRows: 120,
     csvSha256: "5".repeat(64),
     metadataSha256: "6".repeat(64),
-    requiredBaselineSha256: clermontBaselineSha256(certified),
+    requiredBaselineSha256: sha256Text(canonicalJson(certified)),
     ...overrides,
   };
 }
@@ -124,6 +125,16 @@ describe("Clermont publication evidence gate", () => {
         ...options(),
         requiredBaselineSha256: "9".repeat(64),
       }),
+    ).toThrow(/exact requested baseline digest/);
+  });
+
+  it("retains exact approval binding when otherwise valid certified evidence is tampered", () => {
+    const approved = options();
+    const changed = JSON.parse(JSON.stringify(approved.evidence));
+    changed.baselineId = "different-baseline";
+    expect(clermontBaselineSha256(approved.evidence)).toBe(approved.requiredBaselineSha256);
+    expect(() =>
+      assertCompleteClermontPublicationEvidence({ ...approved, evidence: changed }),
     ).toThrow(/exact requested baseline digest/);
   });
 });
