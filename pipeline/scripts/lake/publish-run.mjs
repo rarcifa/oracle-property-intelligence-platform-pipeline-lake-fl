@@ -48,6 +48,7 @@ import {
 } from "../../src/core/gateway-verify.mjs";
 import { assertPermitTableGate, assertQueryTableGate } from "../../src/counties/lake/adapter.mjs";
 import { appendRun, computeTableDeltas } from "../../src/core/run-history.mjs";
+import { loadRecoveryAnchor } from "../../src/core/predecessor-recovery.mjs";
 import {
   PINATA_SECONDARY_PIN_API_BASE,
   PINATA_SECONDARY_PIN_API_ORIGIN,
@@ -64,6 +65,7 @@ import {
   recordVerifiedIpnsReadback,
   sha256Digest,
   validatePublicationTarget,
+  verifyConsumedPublicationResume,
 } from "../../src/core/publish-gate.mjs";
 import {
   ensureSecondaryPin,
@@ -194,10 +196,27 @@ export async function loadLivePublicationCapabilities({
  * A target CID is accepted only at the IPNS stage, where it means the provider
  * applied the update before the process could persist its receipt.
  */
-export function assertPublicationPredecessor(previousRun, readback, target, attemptState) {
+export function assertPublicationPredecessor(
+  previousRun,
+  readback,
+  target,
+  attemptState,
+  recoveryAnchor = null,
+) {
   if (readback === null) throw new Error("The existing IPNS pointer could not be read back");
   if (previousRun?.rootCid !== target.ipnsPredecessor.cid) {
-    throw new Error("The signed IPNS predecessor does not match immutable local history");
+    if (
+      !recoveryAnchor ||
+      !target.predecessorRecoveryDigest ||
+      recoveryAnchor.receiptDigest !== target.predecessorRecoveryDigest ||
+      recoveryAnchor.rootCid !== target.ipnsPredecessor.cid ||
+      recoveryAnchor.pointer.networkKey !== target.ipnsNetworkKey ||
+      recoveryAnchor.pointer.sequence !== target.ipnsPredecessor.sequence
+    ) {
+      throw new Error(
+        "The signed IPNS predecessor does not match immutable local history or a verified recovery anchor",
+      );
+    }
   }
   if (readback.networkKey !== target.ipnsNetworkKey) {
     throw new Error("The existing IPNS network key does not match the exact publication target");
@@ -205,7 +224,7 @@ export function assertPublicationPredecessor(previousRun, readback, target, atte
   if (
     readback.cid === target.rootCid &&
     readback.sequence === target.ipnsPredecessor.sequence + 1 &&
-    attemptState === "HISTORY_RECORDED"
+    ["HISTORY_RECORDED", "APPROVAL_CONSUMED", "FINALIZED"].includes(attemptState)
   ) {
     return "target-already-applied";
   }
@@ -532,6 +551,8 @@ export async function publishRun({
   provenanceDigest,
   expectedIpnsPredecessorCid,
   expectedIpnsPredecessorSequence,
+  predecessorRecoveryPath = null,
+  recoveryPublicKeyPath = null,
 }) {
   if (mode !== "full" && mode !== "incremental") {
     throw new Error("Publication mode must be full or incremental");
@@ -566,12 +587,64 @@ export async function publishRun({
   const coverage = JSON.parse(await readFile(path.join(runDir, "coverage.json"), "utf8"));
   const historyPath = path.join(ARTIFACTS_DIR, "run-history.json");
   const previousRun = await readPreviousRun(historyPath);
-  if (previousRun?.rootCid !== expectedIpnsPredecessorCid) {
-    throw new Error(
-      `Expected IPNS predecessor ${expectedIpnsPredecessorCid} does not match immutable local history ${previousRun?.rootCid ?? "none"}`,
+  const startingLedger = await readPublicationLedger(PUBLICATION_LEDGER_PATH);
+  const terminalCandidates = Object.values(startingLedger.attempts).filter(
+    (entry) =>
+      ["APPROVAL_CONSUMED", "FINALIZED"].includes(entry.state) &&
+      entry.target.runId === runId &&
+      entry.target.candidateCommit === candidateCommit &&
+      entry.target.provenanceDigest === provenanceDigest &&
+      entry.target.mode === mode &&
+      entry.target.candidateWorkflowRunId === candidateWorkflowRunId &&
+      entry.target.ipnsPredecessor?.cid === expectedIpnsPredecessorCid &&
+      entry.target.ipnsPredecessor?.sequence === expectedIpnsPredecessorSequence,
+  );
+  if (terminalCandidates.length > 1) throw new Error("Ambiguous terminal publication recovery");
+  const terminalCandidate = terminalCandidates[0] ?? null;
+  let allowedHistoryAppend = null;
+  if (terminalCandidate && !dryRun && approvalPath && approvalPublicKeyPath) {
+    verifyConsumedPublicationResume(
+      startingLedger,
+      terminalCandidate.attemptId,
+      JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8")),
+      await readFile(approvalPublicKeyPath),
     );
+    allowedHistoryAppend =
+      terminalCandidate.transitions.find((transition) => transition.stage === "HISTORY_RECORDED")
+        ?.receipt?.runRecord ?? null;
+    if (
+      !allowedHistoryAppend ||
+      allowedHistoryAppend.runId !== runId ||
+      allowedHistoryAppend.rootCid !== terminalCandidate.target.rootCid
+    ) {
+      throw new Error("Terminal publication has no exact durable history receipt");
+    }
   }
-  assertTablesPlausible(coverageTableRows(coverage), previousRun);
+  let recoveryAnchor = null;
+  if (predecessorRecoveryPath) {
+    if (!recoveryPublicKeyPath) throw new Error("A trusted recovery public key is required");
+    recoveryAnchor = await loadRecoveryAnchor({
+      receiptPath: assertExternalApprovalPath(predecessorRecoveryPath),
+      publicKey: await readFile(recoveryPublicKeyPath),
+      historyPath,
+      allowedHistoryAppend,
+    });
+    if (
+      recoveryAnchor.rootCid !== expectedIpnsPredecessorCid ||
+      recoveryAnchor.pointer.sequence !== expectedIpnsPredecessorSequence ||
+      recoveryAnchor.pointer.networkKey !== LAKE_IPNS_NETWORK_KEY
+    ) {
+      throw new Error("Recovery anchor does not match the exact expected predecessor");
+    }
+  }
+  if (previousRun?.rootCid !== expectedIpnsPredecessorCid) {
+    if (!recoveryAnchor)
+      throw new Error(
+        `Expected IPNS predecessor ${expectedIpnsPredecessorCid} does not match immutable local history ${previousRun?.rootCid ?? "none"}`,
+      );
+  }
+  const accountingPredecessor = recoveryAnchor ?? previousRun;
+  assertTablesPlausible(coverageTableRows(coverage), accountingPredecessor);
 
   // The kit's one-row-per-property invariant: no null folio, and exactly as many
   // rows as distinct folios. It was written, exported, and never called — a gate
@@ -713,6 +786,7 @@ export async function publishRun({
       cid: expectedIpnsPredecessorCid,
       sequence: expectedIpnsPredecessorSequence,
     },
+    ...(recoveryAnchor ? { predecessorRecoveryDigest: recoveryAnchor.receiptDigest } : {}),
     actions: [...REQUIRED_PUBLISH_ACTIONS],
   };
   const attemptId = publicationAttemptId(target);
@@ -770,12 +844,10 @@ export async function publishRun({
   );
   const approval = JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8"));
   const publicKey = await readFile(approvalPublicKeyPath);
-  let attempt = await authorizePublicationAttempt(
-    PUBLICATION_LEDGER_PATH,
-    attemptId,
-    approval,
-    publicKey,
-  );
+  const builtLedger = await readPublicationLedger(PUBLICATION_LEDGER_PATH);
+  let attempt = ["APPROVAL_CONSUMED", "FINALIZED"].includes(builtLedger.attempts[attemptId].state)
+    ? verifyConsumedPublicationResume(builtLedger, attemptId, approval, publicKey)
+    : await authorizePublicationAttempt(PUBLICATION_LEDGER_PATH, attemptId, approval, publicKey);
   const gatedDryRun = false;
   let predecessorState = null;
   /** @type {Awaited<ReturnType<typeof loadLivePublicationCapabilities>> | null} */
@@ -804,10 +876,23 @@ export async function publishRun({
         "SECONDARY_PIN_RECORDED",
         "VERIFIED",
         "HISTORY_RECORDED",
+        "APPROVAL_CONSUMED",
+        "FINALIZED",
       ].includes(attempt.state)
     ) {
       const pointer = await readIpnsPointer(capabilities.filebaseApiToken);
-      predecessorState = assertPublicationPredecessor(previousRun, pointer, target, attempt.state);
+      predecessorState = assertPublicationPredecessor(
+        previousRun,
+        pointer,
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
+      if (
+        ["APPROVAL_CONSUMED", "FINALIZED"].includes(attempt.state) &&
+        predecessorState !== "target-already-applied"
+      )
+        throw new Error("Terminal publication pointer no longer matches its verified target");
     }
     const client = new S3Client({
       endpoint: FILEBASE_ENDPOINT,
@@ -816,6 +901,14 @@ export async function publishRun({
       credentials: capabilities.filebaseCredentials,
     });
     if (attempt.state === "AUTHORIZED") {
+      assertPublicationAuthorizationActive(attempt);
+      assertPublicationPredecessor(
+        previousRun,
+        await readIpnsPointer(capabilities.filebaseApiToken),
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
       assertPublicationAuthorizationActive(attempt);
       const rootUpload = await uploadImmutableCar({
         client,
@@ -835,6 +928,14 @@ export async function publishRun({
         computedCid: dag.rootCid,
       });
       publishResult.filebaseReportedRootCid = rootReported;
+      assertPublicationAuthorizationActive(attempt);
+      assertPublicationPredecessor(
+        previousRun,
+        await readIpnsPointer(capabilities.filebaseApiToken),
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
       assertPublicationAuthorizationActive(attempt);
       const archiveUpload = await uploadImmutableCar({
         client,
@@ -865,6 +966,14 @@ export async function publishRun({
     }
     if (attempt.state === "ROOT_UPLOAD_RECORDED") {
       assertPublicationAuthorizationActive(attempt);
+      assertPublicationPredecessor(
+        previousRun,
+        await readIpnsPointer(capabilities.filebaseApiToken),
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
+      assertPublicationAuthorizationActive(attempt);
       const manifestUpload = await uploadImmutableCar({
         client,
         bucket: target.bucket,
@@ -894,7 +1003,17 @@ export async function publishRun({
       const pinOptions = {
         endpoint: target.secondaryPin.apiBase,
         token: capabilities.secondaryPinToken,
-        beforeCreate: () => assertPublicationAuthorizationActive(attempt),
+        beforeCreate: async () => {
+          assertPublicationAuthorizationActive(attempt);
+          assertPublicationPredecessor(
+            previousRun,
+            await readIpnsPointer(capabilities.filebaseApiToken),
+            target,
+            attempt.state,
+            recoveryAnchor,
+          );
+          assertPublicationAuthorizationActive(attempt);
+        },
       };
       const rootPin = await ensureSecondaryPin({
         ...pinOptions,
@@ -981,10 +1100,14 @@ export async function publishRun({
     ),
   ];
 
-  const previousHashes = await readPreviousRowHashes(historyPath, previousRun);
+  // A recovered root is a different baseline. The old mutable hash cache
+  // belongs to recorded history, never to this newly verified handoff.
+  const previousHashes = recoveryAnchor
+    ? await readCurrentRowHashes(recoveryAnchor.queryPath)
+    : await readPreviousRowHashes(historyPath, previousRun);
   const currentHashes = await readCurrentRowHashes(path.join(runDir, "query-table.parquet"));
   const deltas = computeTableDeltas(previousHashes, currentHashes);
-  const tableAccounting = buildTableAccounting(coverage, deltas, previousRun);
+  const tableAccounting = buildTableAccounting(coverage, deltas, accountingPredecessor);
 
   const runRecord = {
     runId,
@@ -1077,6 +1200,18 @@ export async function publishRun({
         },
       );
     } else {
+      assertPublicationAuthorizationActive(attempt);
+      // Gateway verification can take minutes. Recheck immediately before
+      // promotion rather than relying on the pointer seen before uploads.
+      const freshState = assertPublicationPredecessor(
+        previousRun,
+        await readIpnsPointer(capabilities.filebaseApiToken),
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
+      if (freshState !== "recorded-predecessor")
+        throw new Error("IPNS changed before promotion; retry to reconcile its receipt");
       assertPublicationAuthorizationActive(attempt);
       const name = await updateExistingFilebaseName(
         capabilities.filebaseApiToken,
@@ -1428,6 +1563,10 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
     envFile: typeof flags["env-file"] === "string" ? flags["env-file"] : null,
     provenanceDigest: String(flags["provenance-digest"] ?? ""),
     expectedIpnsPredecessorCid: String(flags["expected-ipns-predecessor-cid"] ?? ""),
+    predecessorRecoveryPath:
+      typeof flags["predecessor-recovery"] === "string" ? flags["predecessor-recovery"] : null,
+    recoveryPublicKeyPath:
+      typeof flags["recovery-public-key"] === "string" ? flags["recovery-public-key"] : null,
     expectedIpnsPredecessorSequence:
       typeof predecessorSequenceFlag === "string" &&
       /^(?:0|[1-9][0-9]*)$/.test(predecessorSequenceFlag)

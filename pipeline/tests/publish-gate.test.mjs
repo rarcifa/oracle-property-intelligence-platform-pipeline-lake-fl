@@ -27,6 +27,7 @@ import {
   signPublishAuthorization,
   verifyPublishAuthorization,
   validatePublicationTarget,
+  verifyConsumedPublicationResume,
 } from "../src/core/publish-gate.mjs";
 
 const directories = [];
@@ -208,6 +209,23 @@ afterEach(async () => {
 });
 
 describe("exact-target Ed25519 authorization", () => {
+  it("binds the separately signed recovery receipt digest into the new publication authorization", () => {
+    const exactTarget = { ...target(), predecessorRecoveryDigest: `sha256:${"a".repeat(64)}` };
+    const keyPair = keys();
+    const signed = approval(exactTarget, keyPair);
+    expect(
+      verifyPublishAuthorization(signed, keyPair.publicKey, exactTarget, { now: NOW }),
+    ).toEqual(signed);
+    const changed = { ...exactTarget, predecessorRecoveryDigest: `sha256:${"b".repeat(64)}` };
+    expect(() =>
+      verifyPublishAuthorization(signed, keyPair.publicKey, changed, { now: NOW }),
+    ).toThrow(/exact target/);
+    const omitted = { ...exactTarget };
+    delete omitted.predecessorRecoveryDigest;
+    expect(() =>
+      verifyPublishAuthorization(signed, keyPair.publicKey, omitted, { now: NOW }),
+    ).toThrow(/exact target/);
+  });
   it("binds delivered archive bytes and their independent pin to the same signed target", () => {
     const exactTarget = target();
     exactTarget.primaryCars.archive = {
@@ -553,6 +571,58 @@ describe("exact-target Ed25519 authorization", () => {
 });
 
 describe("transactional publication ledger", () => {
+  it("verifies same consumed-attempt local finalization retries without reauthorizing or rewriting authority", async () => {
+    const ledgerPath = await scratchLedger();
+    const exactTarget = target();
+    const keyPair = keys();
+    const signed = approval(exactTarget, keyPair);
+    const attemptId = await prepare(ledgerPath, exactTarget);
+    await authorizePublicationAttempt(ledgerPath, attemptId, signed, keyPair.publicKey, {
+      now: NOW,
+      at: NOW,
+    });
+    await driveAfterAuthorization(ledgerPath, attemptId, exactTarget);
+    await consumePublicationAuthorization(ledgerPath, attemptId, { at: NOW });
+    for (const state of ["APPROVAL_CONSUMED", "FINALIZED"]) {
+      if (state === "FINALIZED")
+        await advancePublicationAttempt(
+          ledgerPath,
+          attemptId,
+          "FINALIZED",
+          { complete: true },
+          { at: NOW },
+        );
+      const before = await readFile(ledgerPath);
+      const ledger = await readPublicationLedger(ledgerPath);
+      expect(
+        verifyConsumedPublicationResume(ledger, attemptId, signed, keyPair.publicKey, { now: NOW })
+          .state,
+      ).toBe(state);
+      await expect(
+        authorizePublicationAttempt(ledgerPath, attemptId, signed, keyPair.publicKey, { now: NOW }),
+      ).rejects.toThrow(/already consumed/);
+      expect(await readFile(ledgerPath)).toEqual(before);
+      const different = approval(exactTarget, keyPair, { nonce: "different_fixture_nonce_002" });
+      expect(() =>
+        verifyConsumedPublicationResume(ledger, attemptId, different, keyPair.publicKey, {
+          now: NOW,
+        }),
+      ).toThrow(/original authorization/);
+      expect(() =>
+        verifyConsumedPublicationResume(ledger, attemptId, signed, keys().publicKey, { now: NOW }),
+      ).toThrow(/trusted public key/);
+      expect(
+        verifyConsumedPublicationResume(ledger, attemptId, signed, keyPair.publicKey, {
+          now: LATER,
+        }).state,
+      ).toBe(state);
+      expect(() =>
+        verifyConsumedPublicationResume(ledger, attemptId, signed, keyPair.publicKey, {
+          now: EXPIRED,
+        }),
+      ).toThrow(/reconciliation time/);
+    }
+  });
   it("can retire a superseded local candidate but never an authorized attempt", async () => {
     const ledgerPath = await scratchLedger();
     const exactTarget = target();

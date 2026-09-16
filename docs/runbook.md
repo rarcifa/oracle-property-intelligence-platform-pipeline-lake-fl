@@ -232,7 +232,87 @@ uploads, reconciles both independent pins, verifies every manifest artifact thro
 independent gateways, records history, repoints the pre-existing IPNS name last, reads the
 exact key/CID back, consumes the nonce and then finalizes. Before any mutation, the live
 IPNS value must equal the newest immutable local history predecessor. Null or mismatched
-readback, an unknown predecessor, expiry, target drift and replay all fail closed.
+readback, an unknown predecessor without a separately verified signed recovery anchor,
+expiry, target drift and replay all fail closed. The pointer is checked again immediately
+before each upload, new independent pin and promotion. Filebase exposes no atomic
+compare-and-swap in this adapter; a fresh comparison narrows the race window, it does not
+claim an atomic provider operation. Post-write sequence readback remains mandatory.
+
+## External predecessor recovery
+
+Arceus selected `use-oracle/reference/continuous-ingestion.md`'s
+**Cross-environment handoffs** and the trusted human-signature pattern from
+`coverage-only-publication.md`. This is not that skill's coverage publisher and
+must not create another IPNS name or change the existing open-data pointer.
+The owner approved recovering only the externally observed sequence-13 anchor.
+No original approval/success/readback receipt is fabricated, and
+`artifacts/run-history.json` remains unchanged during recovery.
+
+From the repository root, calculate the publication provenance digest for the
+exact committed candidate, then prepare an external private packet:
+
+```bash
+node pipeline/scripts/lake/publication-provenance.mjs --candidate-commit <exact-40-character-SHA>
+node pipeline/scripts/lake/recover-predecessor.mjs --prepare \
+  --input-dir <new-external-private-directory> \
+  --candidate-commit <same-exact-SHA> --provenance-digest <reported-sha256-digest> \
+  --expected-ipns-name k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un \
+  --expected-root bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y \
+  --expected-sequence 13 \
+  --manifest-cid bafkreihujmyavnl3esbsvcfezl35a67lmmfxf3orxhppwjb7ylszidnlpq
+```
+
+This bounded read-only preparation verifies original manifest/root/coverage/query
+bytes by CID from Filebase and IPFS Lens. It checks the actual redirected hosts,
+the producer root's links, file CIDs, content digests and the immutable last-known
+successful history. Actual query row/unique-folio/null counts are reconciled with
+that producer coverage and bound into the evidence before human signing. This
+does not require the legacy predecessor to acquire a newer column schema.
+A final authenticated name/root/sequence comparison rejects
+drift. Existing files are never overwritten. Its coverage may predate the producer
+manifest; preserve those timestamps rather than implying a reconciled historical run.
+
+Only the **human approver** runs the following, using their independently trusted
+external Ed25519 key (the kit documents human key generation if none exists).
+The agent must not create a keypair and then authorize itself as the owner.
+
+```bash
+node pipeline/scripts/lake/recover-predecessor.mjs --sign \
+  --input-dir <prepared-private-directory> \
+  --private-key <existing-external-Ed25519-private-key.pem> \
+  --output <external-recovery-approval.json> \
+  --approver rarcifa --expires-at <short-lived-ISO-8601-UTC-time>
+
+node pipeline/scripts/lake/recover-predecessor.mjs --accept \
+  --input-dir <prepared-private-directory> \
+  --approval <external-recovery-approval.json> \
+  --approval-public-key <independently-trusted-external-public-key.pem>
+```
+
+Acceptance verifies every frozen byte and the current pointer again, then records
+only `recovery-receipt.json`, status `externally_observed_recovered`, beside the
+private packet. Same-authorization retries are idempotent; replacement approvals
+cannot overwrite that receipt. All original historical receipts remain unknown.
+Recovery creates no pins, uploads, IPNS changes, deployments, accounts or charges.
+The original history bytes are frozen inside the private handoff. A finalization
+retry can preserve that anchor after the real new run is recorded: only the exact
+durable succeeded run receipt may be added ahead of the unchanged original entries.
+Unrelated growth or modification of older history is rejected. A consumed approval
+can verify the same attempt's local finalization; it is never reauthorized for
+another attempt or another remote mutation.
+
+A later publisher invocation may use
+`--predecessor-recovery <external-recovery-receipt.json>` and
+`--recovery-public-key <trusted-public-key.pem>`. It re-verifies the signature and
+packet and binds the receipt digest into the new exact publication target.
+The recovered immutable query table, not the old mutable row-hash cache, is the
+delta baseline. The recovery approval must still be active before new remote effects, and the later
+publication still requires its own exact-byte signature, secondary-provider
+credentials and all existing verification gates. Nothing in recovery waives
+dataset eligibility, source limitations, cumulative budgets or the final demo.
+Only the identical already-consumed attempt may finish local receipt reconciliation
+after expiry, using its original valid authorization window and current target-pointer
+readback. This does not reauthorize uploads, pin creation or IPNS writes.
 
 ## Two-phase GitHub Actions release
 

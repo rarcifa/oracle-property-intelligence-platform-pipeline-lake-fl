@@ -63,10 +63,7 @@ export async function findSecondaryPin({ endpoint, token, cid, name, fetchImpl =
   query.searchParams.set("cid", cid);
   query.searchParams.set("name", name);
   query.searchParams.set("status", "queued,pinning,pinned,failed");
-  const payload = await responseJson(
-    await fetchImpl(query, { headers: headers(token) }),
-    "list",
-  );
+  const payload = await responseJson(await fetchImpl(query, { headers: headers(token) }), "list");
   const results = Array.isArray(payload?.results) ? payload.results : [];
   const exact = results.find((entry) => entry?.pin?.cid === cid && entry?.pin?.name === name);
   return exact ? validateStatus(exact, cid, name) : null;
@@ -121,7 +118,7 @@ export async function ensureSecondaryPin({
 }) {
   let status = await findSecondaryPin({ endpoint, token, cid, name, fetchImpl });
   if (status === null) {
-    beforeCreate();
+    await beforeCreate();
     status = validateStatus(
       await responseJson(
         await fetchImpl(`${serviceBase(endpoint)}/pins`, {

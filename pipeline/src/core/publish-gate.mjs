@@ -135,6 +135,7 @@ export const publicationTargetSchema = z
     ipnsLabel: z.string().trim().min(1),
     ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
     ipnsPredecessor: ipnsPredecessorSchema,
+    predecessorRecoveryDigest: digest.optional(),
     actions: z.array(z.enum(REQUIRED_PUBLISH_ACTIONS)).length(REQUIRED_PUBLISH_ACTIONS.length),
   })
   .strict()
@@ -660,6 +661,11 @@ function publicKeyId(key) {
 /** @param {unknown} payload @param {string | Buffer} privateKeyPem */
 export function signPublishAuthorization(payload, privateKeyPem) {
   const validated = publishAuthorizationPayloadSchema.parse(payload);
+  return signAuthorizationPayload(validated, privateKeyPem);
+}
+
+/** Shared canonical Ed25519 primitive; callers must validate their own payload schema. */
+export function signAuthorizationPayload(validated, privateKeyPem) {
   const privateKey = createPrivateKey(privateKeyPem);
   if (privateKey.asymmetricKeyType !== "ed25519") {
     throw new Error("publication authorization private key must be Ed25519");
@@ -702,6 +708,12 @@ export function verifyPublishAuthorization(
   if (nowMs >= Date.parse(validated.payload.expiresAt)) {
     throw new Error("publication authorization has expired");
   }
+  verifyAuthorizationSignature(validated, publicKeyPem);
+  return validated;
+}
+
+/** Verify only the signature; callers must separately enforce scope, schema and expiry. */
+export function verifyAuthorizationSignature(validated, publicKeyPem) {
   const publicKey = createPublicKey(publicKeyPem);
   if (publicKey.asymmetricKeyType !== "ed25519") {
     throw new Error("publication authorization public key must be Ed25519");
@@ -977,6 +989,54 @@ export async function authorizePublicationAttempt(
     attempts: { ...ledger.attempts, [attemptId]: next },
   });
   return next;
+}
+
+/**
+ * Verify an already consumed SAME attempt for local finalization only. This
+ * never reauthorizes a nonce, changes the ledger or permits remote replay.
+ */
+export function verifyConsumedPublicationResume(
+  ledger,
+  attemptId,
+  authorization,
+  publicKeyPem,
+  options = {},
+) {
+  const validatedLedger = validatePublicationLedger(ledger);
+  const attempt = validatedLedger.attempts[attemptId];
+  if (!attempt || !["APPROVAL_CONSUMED", "FINALIZED"].includes(attempt.state)) {
+    throw new Error("Consumed-approval resume requires the same terminal publication attempt");
+  }
+  const authorizedAt = attempt.transitions.find(
+    (transition) => transition.stage === "AUTHORIZED",
+  )?.at;
+  const now = options.now ?? new Date().toISOString();
+  if (
+    !authorizedAt ||
+    !Number.isFinite(Date.parse(now)) ||
+    Date.parse(now) < Date.parse(authorizedAt)
+  ) {
+    throw new Error("Consumed-approval reconciliation time is invalid");
+  }
+  // Already-consumed effects may finish local receipts after expiry. This
+  // verifies the original valid window, never a fresh remote authorization.
+  const verified = verifyPublishAuthorization(authorization, publicKeyPem, attempt.target, {
+    now: authorizedAt,
+  });
+  const consumed = validatedLedger.consumedApprovals.find(
+    (entry) => entry.nonce === verified.payload.nonce,
+  );
+  if (
+    !consumed ||
+    consumed.attemptId !== attemptId ||
+    Date.parse(consumed.consumedAt) > Date.parse(now) ||
+    attempt.authorization?.nonce !== verified.payload.nonce ||
+    attempt.authorization.approvalDigest !== digestJson(verified) ||
+    attempt.authorization.keyId !== verified.signature.keyId
+  ) {
+    throw new Error("Consumed-approval resume does not match the original authorization receipt");
+  }
+  return attempt;
 }
 
 /**

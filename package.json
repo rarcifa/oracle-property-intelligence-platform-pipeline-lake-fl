@@ -22,7 +22,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:county": "eslint --no-ignore --no-warn-ignored pipeline/bin pipeline/infra pipeline/scripts/lake pipeline/src/batch pipeline/src/counties/lake pipeline/src/core/car.mjs pipeline/src/core/cid.mjs pipeline/src/core/artifact-manifest.mjs pipeline/src/core/gateway-verify.mjs pipeline/src/core/run-history.mjs pipeline/src/core/publish-gate.mjs pipeline/src/core/secondary-pin.mjs"
+    "lint:county": "eslint --no-ignore --no-warn-ignored pipeline/bin pipeline/infra pipeline/scripts/lake pipeline/src/batch pipeline/src/counties/lake pipeline/src/core/car.mjs pipeline/src/core/cid.mjs pipeline/src/core/artifact-manifest.mjs pipeline/src/core/gateway-verify.mjs pipeline/src/core/run-history.mjs pipeline/src/core/publish-gate.mjs pipeline/src/core/predecessor-recovery.mjs pipeline/src/core/secondary-pin.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

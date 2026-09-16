@@ -117,7 +117,7 @@ and no permit-backed primary-roof completion anchor is currently accepted.
    from published data and the deployed release. Final Slowking evaluation
    awaits the actual matching hosted release and demo, not a local-only score.
 
-Local checks on 2026-09-16 passed: 484 application tests, 892 pipeline tests,
+Local checks on 2026-09-16 passed: 484 application tests, 926 pipeline tests,
 four retained transform tests and 100 responsive UI checks. The layout lane
 used the previously approved isolated Chrome 152.0.7977.84 fallback; pinned
 Chromium remained unavailable. Build, strict type checks, lint and formatting
@@ -143,6 +143,21 @@ or every artifact's historical verification. Hosted agent chat
 also needs the OpenAI credential configured in its cloud secret; the currently
 deployed Lambda has no configured OpenAI secret. No new accounts, paid upgrades,
 full harvest restarts, pruning, or new submission PRs are implied.
+
+The owner approved scoped sequence-13 recovery on 2026-09-16. Its local
+implementation uses Oracle's cross-environment handoff contract and the kit's
+existing Ed25519 human-signature primitive. It preserves the genuine manifest,
+root block, coverage and query-table bytes with two independent current
+readbacks, and binds their evidence, destination and last-known history to a
+separate `externally_observed_recovered` receipt. Original approval, historical
+gateway readback and successful-publication receipt remain explicitly unknown;
+no historical run is marked successful. Preparation is not acceptance: the
+human approver must sign the exact request using an external trusted key.
+Only that verified receipt can anchor a later separately authorized publication;
+the new publication signature also binds the recovery receipt's digest.
+Live name/root/sequence drift is rejected before upload, pin creation or
+promotion. Recovery itself has no pin, IPNS write, deploy or harvest action.
+See the [operator recovery procedure](docs/runbook.md#external-predecessor-recovery).
 
 ## Every acceptance criterion: evidence and remaining proof
 

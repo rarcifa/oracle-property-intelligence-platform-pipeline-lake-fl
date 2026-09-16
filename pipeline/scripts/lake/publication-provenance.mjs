@@ -35,6 +35,7 @@ export const PUBLICATION_PROVENANCE_ROOTS = Object.freeze([
   "pipeline/scripts/lake/build-publish-set.mjs",
   "pipeline/scripts/lake/publish-approve.mjs",
   "pipeline/scripts/lake/publish-run.mjs",
+  "pipeline/scripts/lake/recover-predecessor.mjs",
   "pipeline/scripts/lake/publication-provenance.mjs",
   "pipeline/src/core/artifact-manifest.mjs",
   "pipeline/src/core/car.mjs",

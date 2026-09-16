@@ -42,7 +42,7 @@ describe("runbook publication command contract", () => {
     const runbook = await readFile(path.join(REPO_ROOT, "docs/runbook.md"), "utf8");
     const publication = runbook.slice(
       runbook.indexOf("# 5. Prepare locally"),
-      runbook.indexOf("## Two-phase GitHub Actions release"),
+      runbook.indexOf("## External predecessor recovery"),
     );
     expect(publication).not.toContain("SCOPE=(");
     expect(publication).toContain('COMMIT="$(git -C .. rev-parse HEAD)"');
@@ -56,6 +56,31 @@ describe("runbook publication command contract", () => {
     expect(publication).toContain(
       '.network_key == "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un"',
     );
+  });
+
+  it("separates recovery preparation, human signing and local acceptance from publication", async () => {
+    const runbook = await readFile(path.join(REPO_ROOT, "docs/runbook.md"), "utf8");
+    const recovery = runbook.slice(
+      runbook.indexOf("## External predecessor recovery"),
+      runbook.indexOf("## Two-phase GitHub Actions release"),
+    );
+    for (const flag of [
+      "--prepare",
+      "--sign",
+      "--accept",
+      "--private-key",
+      "--approval-public-key",
+      "--expected-ipns-name",
+      "--expected-root",
+      "--expected-sequence",
+      "--manifest-cid",
+      "--predecessor-recovery",
+      "--recovery-public-key",
+    ])
+      expect(recovery).toContain(flag);
+    expect(recovery).toContain("Only the **human approver**");
+    expect(recovery).toContain("All original historical receipts remain unknown");
+    expect(recovery).toContain("Recovery creates no pins");
   });
 
   it("executes the documented COMMIT-to-provenance JSON command in a clean checkout", async () => {
