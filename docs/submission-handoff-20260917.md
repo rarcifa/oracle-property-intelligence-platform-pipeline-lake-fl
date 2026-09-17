@@ -7,13 +7,14 @@ addresses every clause while preserving the assignment brief verbatim.
 ## Evaluate the actual release
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
-  Consumer repairs are pushed at `7d4e26ae621cd751862b87ece22c8bfb53bd1b4d`;
-  final evidence and current-head CI remain pending.
+  Consumer repairs and synchronized indexed documentation are pushed at
+  `86044dad2241bd35f6bb13dc3b4b305045bbe690`; its actual CI completed successfully.
+  Later evidence-only commits and the final review remain separately identified.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
   [Repaired live readback](../artifacts/hosted-runtime-readback-20260917.json) was observed
-  at `2026-09-17T19:17:33.767Z`. App source is
-  `7d4e26ae621cd751862b87ece22c8bfb53bd1b4d`; the CDK code asset is
-  `5514c8643a5be7d35138bedd2b17b38f97cc502b5f50989441114a27073026aa`.
+  at `2026-09-17T19:26:31.001Z`. App source is
+  `86044dad2241bd35f6bb13dc3b4b305045bbe690`; the CDK code asset is
+  `71b14abca7e76cdd3d9a90be825a792e29a5cd134a1371c32b967f3609467a43`.
   The [16:02 receipt](../artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
   is preserved separately and is not proof of the repaired app.
 - Finalized dataset baseline: `20260916T181000Z`,
@@ -52,6 +53,25 @@ addresses every clause while preserving the assignment brief verbatim.
   Root independently matched the raw video size/digest and inspected the actual
   first-row and agent screenshots. Whole-video black detection found only the
   initial pre-ready loading interval, not a later all-background frame.
+- [Later hosted take, failed SQL-transition paint check](demo-score-repair-failed-sql-paint-20260917/walkthrough.webm)
+  and [its immutable report](demo-score-repair-failed-sql-paint-20260917/failed-preview-demo.json),
+  recorded `2026-09-17T19:26:20.995Z`–`19:27:43.787Z` against source
+  `86044dad2241bd35f6bb13dc3b4b305045bbe690`, failed on a 40 ms
+  all-background frame during Ask → SQL. The [exact sampled PNG](demo-score-repair-failed-sql-paint-20260917/failed-paint-sample-1.png)
+  is retained: SHA-256 `bd798d6f76be0fada83d45076a7384b240aa955efbb2c355fa215d917fbac301`.
+  All 25 canonical rows, all five fields of 50 historical rows, the ordinary
+  safe HTTP-200 follow-up and both public manifest fetches still verified;
+  there were no console/API/gateway errors. Video bytes: 6,573,159; SHA-256:
+  `e6999dcd246f0ddf5142cbfa1b117e4184253f777486d935d4c27dcb4d345998`.
+  `recordingCompleted:false`, `fullAssignmentDemoPassed:false`. Independent
+  synthetic long/short-view diagnostics reproduced the same PNG and 40 ms
+  video gap without reload, MapLibre or model calls. This narrows the symptom,
+  but does not establish screenshot-induced versus genuine compositor failure.
+  A paired synthetic diagnostic observed one post-ready gap in 40 transitions
+  with original screenshot polling and none in 40 video-only transitions.
+  One versus zero rare events is insufficient causal proof; no production
+  monitor/threshold was changed and no verified fix was proposed.
+  No underlying blackout repair is claimed and no failed packet is removed.
 
 Publication, selected dataset, deployment and recording are separate identities.
 The baseline is now published normally; that does not retroactively make the
@@ -216,6 +236,9 @@ retention/all-object verification and normal publisher completion.
    field. Arbitrary model aliases/prose are not accepted as canonical records.
    The completed exact-prompt take verified all 25 rows with no sampled paint failure;
    this is not a full-assignment demo pass or proof that all blackouts are eliminated.
+   The later source-860 take failed a SQL-transition paint sample despite passing
+   the same query/publication beats; the completed earlier take is not substituted
+   for that later failure.
 5. **Incremental public completion is pending**, although actual changed records,
    primary imports and partial public-byte proof exist. Baseline independent
    retention is now established and must not be described as still unproved.
@@ -281,7 +304,10 @@ is **completed/success**: build, selected public-byte download, both no-skip
 query-suite guards, format, lint, types, all app/browser/pipeline/transform tests
 and the county-readiness validator passed. Validator PASS confirms its catalog
 and destination checks, not county-complete ingestion or a full-demo pass.
-Later evidence-only/indexed-documentation commits still require their own CI.
+Actual
+[CI for synchronized source 86044da](https://github.com/rarcifa/oracle-property-intelligence-platform-pipeline-lake-fl/actions/runs/35264570499)
+also completed **success**, with every workflow step passing. Later evidence-only
+commits still require their own exact-head CI.
 The current
 normal CLI index rebuild records **312 chunks / 141 documents / 50 source inputs**,
 snapshot `sha256:19161f1faf2024e4064ed0941f8fa79bc7e0508cfcc3a0119b665c189c0a2f43`.
@@ -290,9 +316,9 @@ visibly names both coverage and catalog authority. The unchanged benchmark still
 has all 24 positives hit in the top three and all five negative controls abstain;
 no ranking weights, thresholds or expected labels were edited.
 Historical 554-app/1,094-pipeline/four-transform reports remain historical.
-None of these local results establishes a current-head CI pass or final new
-Slowking score. Those evidence links remain pending; the completed partial
-recording above is separate actual hosted evidence. Assignment speed is not inferred.
+Local results are not substituted for the actual CI links above or a final new
+Slowking score. The final review remains pending; completed and failed partial
+recordings above are separate actual hosted evidence. Assignment speed is not inferred.
 
 Before presenting the repaired delivery as final, add only actual evidence:
 
