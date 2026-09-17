@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,11 +8,14 @@ import { CID } from "multiformats/cid";
 import { computeRawCid, computeUnixfsFileCid } from "../src/core/cid.mjs";
 import {
   assertSecondaryRetention,
+  createLighthouseGatewayFetch,
   ensureLighthouseRegistration,
   findLighthouseRegistration,
   publicLighthouseReceipt,
+  verifyLighthouseRetentionEvidence,
   writeLighthouseCheckpoint,
 } from "../src/core/secondary-pin.mjs";
+import { writeCarFile } from "../src/core/car.mjs";
 
 const ENDPOINT = "https://api.lighthouse.storage";
 const OBJECT = computeRawCid("object");
@@ -38,6 +42,9 @@ const reply = (body, status = 200) =>
     status,
     headers: { "content-type": "application/json" },
   });
+const bytesReply = (bytes, status = 200) => new globalThis.Response(bytes, { status });
+const digest = (bytes) =>
+  `sha256:${createHash("sha256").update(Buffer.from(bytes)).digest("hex")}`;
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -556,6 +563,251 @@ describe("Lighthouse same-CID registration (not retention proof)", () => {
         "unknown",
       ),
     ).toThrow();
+  });
+});
+
+describe("Lighthouse retention evidence verification", () => {
+  const accepted = (cid = OBJECT, name = NAME, size = 6, overrides = {}) => ({
+    serviceHost: "api.lighthouse.storage",
+    provider: "lighthouse",
+    cid,
+    name,
+    status: "registration-reconciled",
+    retentionVerified: false,
+    requestAccepted: {
+      state: "request-accepted",
+      httpStatus: 200,
+      responseDigest: `sha256:${"a".repeat(64)}`,
+      requestId: "lh-request-1",
+    },
+    registration: {
+      id: "file-1",
+      cid,
+      fileName: name,
+      fileSizeInBytes: size,
+      encryption: false,
+    },
+    metadata: { cid, fileSizeInBytes: size, encryption: false },
+    ...overrides,
+  });
+
+  async function car(roots, blocks) {
+    const directory = await mkdtemp(path.join(tmpdir(), "oracle-lighthouse-car-"));
+    try {
+      const outputPath = path.join(directory, "snapshot.car");
+      await writeCarFile({ roots, blocks, outputPath });
+      return await readFile(outputPath);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("turns actual ack, exact inventory, public bytes and complete CAR proof into retained receipts", async () => {
+    const payload = Buffer.from("object");
+    const rootCid = computeRawCid(payload);
+    const snapshot = await car([rootCid], [{ cid: rootCid, bytes: payload }]);
+    const archive = computeUnixfsFileCid(snapshot);
+    const archiveDagBytes = [
+      ...new Map(archive.blocks.map((block) => [block.cid, block.bytes])).values(),
+    ].reduce((sum, block) => sum + block.byteLength, 0);
+    const registrationFetch = vi
+      .fn()
+      .mockResolvedValueOnce(reply(inventory()))
+      .mockResolvedValueOnce(reply({ requestID: "lh-request-1" }, 200))
+      .mockResolvedValueOnce(reply(inventory([entry({ cid: rootCid })])))
+      .mockResolvedValueOnce(reply(info({ cid: rootCid })));
+    const reconciled = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      cid: rootCid,
+      fetchImpl: registrationFetch,
+      expectedDagBytes: payload.length,
+    });
+    expect(reconciled.requestAccepted.requestId).toBe("lh-request-1");
+    const manifestVerified = await verifyLighthouseRetentionEvidence({
+      receipt: reconciled,
+      expectedDagBytes: payload.length,
+      expectedBytes: payload,
+      expectedSha256: digest(payload),
+      gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+    });
+    const archiveVerified = await verifyLighthouseRetentionEvidence({
+      receipt: accepted(archive.cid, `${NAME}-archive`, archiveDagBytes),
+      expectedDagBytes: archiveDagBytes,
+      expectedBytes: snapshot,
+      expectedSha256: digest(snapshot),
+      expectedCarRoots: [rootCid],
+      gatewayFetchImpl: vi.fn(async () => bytesReply(snapshot)),
+    });
+    const rootVerified = await verifyLighthouseRetentionEvidence({
+      receipt: accepted(rootCid, `${NAME}-root`, payload.length),
+      expectedDagBytes: payload.length,
+      coveredByCar: { archiveReceipt: archiveVerified },
+    });
+    expect(manifestVerified).toMatchObject({
+      status: "retention-evidence-verified",
+      retentionVerified: true,
+      publicGateway: { host: "gateway.lighthouse.storage", bytes: payload.length },
+    });
+    expect(archiveVerified.publicGateway.car).toMatchObject({
+      roots: [rootCid],
+      verifiedBlocks: 1,
+    });
+    expect(rootVerified.retentionEvidence).toMatchObject({
+      coveredBy: "lighthouse-snapshot-car",
+      archiveCid: archive.cid,
+    });
+    expect(() =>
+      assertSecondaryRetention([rootVerified, manifestVerified, archiveVerified], "lighthouse"),
+    ).not.toThrow();
+    expect(() =>
+      assertSecondaryRetention(
+        [
+          rootVerified,
+          { ...manifestVerified, publicGateway: undefined },
+          archiveVerified,
+        ],
+        "lighthouse",
+      ),
+    ).toThrow(/not verified IPFS retention/);
+    expect(() =>
+      assertSecondaryRetention(
+        [
+          {
+            ...rootVerified,
+            retentionEvidence: {
+              ...rootVerified.retentionEvidence,
+              archiveCid: computeRawCid("forged-archive"),
+            },
+          },
+          manifestVerified,
+          archiveVerified,
+        ],
+        "lighthouse",
+      ),
+    ).toThrow(/not verified IPFS retention/);
+  });
+
+  it("normalizes old private accepted checkpoints with requestID without repeating POST", async () => {
+    const previousEvidence = {
+      serviceHost: "api.lighthouse.storage",
+      provider: "lighthouse",
+      cid: OBJECT,
+      name: NAME,
+      requestAccepted: {
+        state: "request-accepted",
+        httpStatus: 200,
+        responseDigest: `sha256:${"b".repeat(64)}`,
+        responseBody: JSON.stringify({ requestID: "old-private-request" }),
+      },
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(reply(inventory([entry()])))
+      .mockResolvedValueOnce(reply(info()));
+    const receipt = await ensureLighthouseRegistration({ ...OPTIONS, previousEvidence, fetchImpl });
+    expect(receipt.requestAccepted.requestId).toBe("old-private-request");
+    expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+    expect(publicLighthouseReceipt(receipt).requestAccepted).toMatchObject({
+      requestId: "old-private-request",
+      responseDigest: `sha256:${"b".repeat(64)}`,
+    });
+  });
+
+  it("honors Node lookup all:true when a Lighthouse DNS override is used", async () => {
+    const originalResolver = await import("node:dns/promises");
+    expect(originalResolver).toBeTruthy();
+    const fetchImpl = createLighthouseGatewayFetch({ dnsServers: ["1.1.1.1"] });
+    expect(fetchImpl).toBeTypeOf("function");
+  });
+
+  it("rejects missing accepted request IDs, pending registrations and wrong CIDs", async () => {
+    const payload = Buffer.from("object");
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length, {
+          requestAccepted: {
+            state: "request-accepted",
+            httpStatus: 200,
+            responseDigest: `sha256:${"a".repeat(64)}`,
+          },
+        }),
+        expectedDagBytes: payload.length,
+        expectedBytes: payload,
+        gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+      }),
+    ).rejects.toThrow(/incomplete/);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: { ...accepted(OBJECT, NAME, payload.length), status: "request-accepted" },
+        expectedDagBytes: payload.length,
+        expectedBytes: payload,
+        gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+      }),
+    ).rejects.toThrow(/incomplete/);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length, {
+          metadata: {
+            cid: computeRawCid("wrong"),
+            fileSizeInBytes: payload.length,
+            encryption: false,
+          },
+        }),
+        expectedDagBytes: payload.length,
+        expectedBytes: payload,
+        gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+      }),
+    ).rejects.toThrow(/incomplete|invalid CID/);
+  });
+
+  it("rejects wrong hosts, corrupt public bytes, wrong CAR roots and provider size drift", async () => {
+    const payload = Buffer.from("object");
+    const other = Buffer.from("other");
+    const otherCid = computeRawCid(other);
+    const wrongRootCar = await car([otherCid], [{ cid: otherCid, bytes: other }]);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length),
+        expectedDagBytes: payload.length,
+        expectedBytes: payload,
+        gatewayBase: "https://evil.example/ipfs",
+        gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+      }),
+    ).rejects.toThrow(/gateway.lighthouse.storage/);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length),
+        expectedDagBytes: payload.length,
+        expectedBytes: payload,
+        gatewayFetchImpl: vi.fn(async () => bytesReply(Buffer.from("corrupt"))),
+      }),
+    ).rejects.toThrow(/bytes differ/);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length),
+        expectedDagBytes: 7,
+        expectedBytes: payload,
+        gatewayFetchImpl: vi.fn(async () => bytesReply(payload)),
+      }),
+    ).rejects.toThrow(/DAG size/);
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length),
+        expectedDagBytes: payload.length,
+        expectedBytes: Buffer.from("not a car"),
+        expectedCarRoots: [OBJECT],
+        gatewayFetchImpl: vi.fn(async () => bytesReply(Buffer.from("not a car"))),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      verifyLighthouseRetentionEvidence({
+        receipt: accepted(OBJECT, NAME, payload.length),
+        expectedDagBytes: payload.length,
+        expectedBytes: wrongRootCar,
+        expectedCarRoots: [OBJECT],
+        gatewayFetchImpl: vi.fn(async () => bytesReply(wrongRootCar)),
+      }),
+    ).rejects.toThrow(/roots/);
   });
 });
 

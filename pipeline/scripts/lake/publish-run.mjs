@@ -97,6 +97,8 @@ import {
   ensureSecondaryPin,
   ensureLighthouseRegistration,
   publicLighthouseReceipt,
+  verifyLighthouseRetentionEvidence,
+  createLighthouseGatewayFetch,
   assertSecondaryRetention,
   writeLighthouseCheckpoint,
   validateSecondaryPinServiceEndpoint,
@@ -1359,13 +1361,52 @@ export async function publishRun({
         );
         return replicationResult(attempt);
       }
-      assertSecondaryRetention([rootPin, manifestPin, archivePin], target.secondaryPin.provider);
-      attempt = await advancePublicationAttempt(
-        PUBLICATION_LEDGER_PATH,
-        attemptId,
-        "SECONDARY_PIN_RECORDED",
-        { root: rootPin, manifest: manifestPin, archive: archivePin },
-      );
+      if (target.secondaryPin.provider === "lighthouse") {
+        const gatewayFetchImpl = createLighthouseGatewayFetch();
+        const archiveVerified = await verifyLighthouseRetentionEvidence({
+          receipt: archivePin,
+          expectedDagBytes: lighthouseDagBytes.archive,
+          expectedBytes: snapshotBody,
+          expectedSha256: sha256Digest(snapshotBody),
+          expectedCarRoots: directoryRoots,
+          timeoutMs: 600_000,
+          gatewayFetchImpl,
+        });
+        const manifestVerified = await verifyLighthouseRetentionEvidence({
+          receipt: manifestPin,
+          expectedDagBytes: lighthouseDagBytes.manifest,
+          expectedBytes: manifestBytes,
+          expectedSha256: sha256Digest(manifestBytes),
+          timeoutMs: 20_000,
+          gatewayFetchImpl,
+        });
+        const rootVerified = await verifyLighthouseRetentionEvidence({
+          receipt: rootPin,
+          expectedDagBytes: lighthouseDagBytes.root,
+          coveredByCar: {
+            archiveReceipt: archiveVerified,
+          },
+          gatewayFetchImpl,
+        });
+        assertSecondaryRetention(
+          [rootVerified, manifestVerified, archiveVerified],
+          target.secondaryPin.provider,
+        );
+        attempt = await advancePublicationAttempt(
+          PUBLICATION_LEDGER_PATH,
+          attemptId,
+          "SECONDARY_PIN_RECORDED",
+          { root: rootVerified, manifest: manifestVerified, archive: archiveVerified },
+        );
+      } else {
+        assertSecondaryRetention([rootPin, manifestPin, archivePin], target.secondaryPin.provider);
+        attempt = await advancePublicationAttempt(
+          PUBLICATION_LEDGER_PATH,
+          attemptId,
+          "SECONDARY_PIN_RECORDED",
+          { root: rootPin, manifest: manifestPin, archive: archivePin },
+        );
+      }
     }
   }
 

@@ -32,14 +32,16 @@ import { validateArtifactManifest } from "./artifact-manifest.mjs";
  * order matters because verification stops as soon as enough independent
  * gateways agree: putting a slow gateway first makes every artifact wait on
  * it. Measured on a 20 MB Parquet: filebase 2.6 s, ipfs-lens 6.0 s, and
- * pinata truncated the response at 494 KB after 29.8 s. `ipfs.io` and
+ * pinata truncated the response at 494 KB after 29.8 s. The September 17
+ * full-object readbacks now verify Filebase and Pinata, so those measured
+ * working routes precede the historical ipfs-lens route. `ipfs.io` and
  * `dweb.link` are kept last because they return HTTP 429 to datacenter and
  * VPN egress; they are never required for a pass.
  */
 export const DEFAULT_GATEWAYS = Object.freeze([
   "https://ipfs.filebase.io",
-  "https://gw.ipfs-lens.dev",
   "https://gateway.pinata.cloud",
+  "https://gw.ipfs-lens.dev",
   "https://ipfs.io",
   "https://dweb.link",
 ]);

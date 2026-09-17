@@ -49,8 +49,8 @@ describe("DEFAULT_GATEWAYS", () => {
   it("puts the fastest, most reliable gateways first and the rate-limiting ones last", () => {
     expect(DEFAULT_GATEWAYS).toEqual([
       "https://ipfs.filebase.io",
-      "https://gw.ipfs-lens.dev",
       "https://gateway.pinata.cloud",
+      "https://gw.ipfs-lens.dev",
       "https://ipfs.io",
       "https://dweb.link",
     ]);

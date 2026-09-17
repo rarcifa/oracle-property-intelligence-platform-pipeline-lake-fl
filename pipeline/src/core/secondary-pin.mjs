@@ -4,17 +4,23 @@
  * The primary Filebase CAR upload is not enough for the repository's survival
  * claim. This adapter reconciles an existing deterministic pin before it asks
  * for a new one. Pinata PSA can acknowledge `pinned`; Lighthouse registration
- * cannot yet satisfy the retention gate. Receipts never contain credentials.
+ * only satisfies the retention gate after the accepted request, authenticated
+ * inventory, public gateway bytes, and local CAR proof all agree. Receipts
+ * never contain credentials.
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { Resolver } from "node:dns/promises";
 import { rename, unlink, writeFile } from "node:fs/promises";
+import https from "node:https";
 import { CID } from "multiformats/cid";
+import { validateCarArchive } from "./car.mjs";
 
 const LIGHTHOUSE_BASE = "https://api.lighthouse.storage";
 const LIGHTHOUSE_PAGE_SIZE = 2000;
 const TERMINAL_FAILURES = new Set(["failed"]);
 const IN_PROGRESS = new Set(["queued", "pinning"]);
+const LIGHTHOUSE_GATEWAY_BASE = "https://gateway.lighthouse.storage/ipfs";
 
 function serviceBase(endpoint) {
   const url = new URL(endpoint);
@@ -184,6 +190,102 @@ function lighthouseSize(value) {
   return value;
 }
 
+function sha256Digest(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function extractLighthouseRequestId(value) {
+  const visit = (node, depth = 0) => {
+    if (depth > 2 || node === null || typeof node !== "object") return null;
+    for (const key of ["requestID", "requestId", "request_id"]) {
+      if (typeof node[key] === "string" && node[key].trim()) return node[key].trim();
+    }
+    for (const child of Object.values(node)) {
+      const found = visit(child, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  if (typeof value !== "string") return visit(value);
+  try {
+    return visit(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export function lighthouseDnsServersFromEnv(environment = process.env) {
+  const raw = environment.LIGHTHOUSE_DNS_SERVERS;
+  if (typeof raw !== "string" || raw.trim().length === 0) return [];
+  return raw
+    .split(/[,\s]+/u)
+    .map((server) => server.trim())
+    .filter(Boolean);
+}
+
+export function createLighthouseGatewayFetch({ dnsServers = lighthouseDnsServersFromEnv() } = {}) {
+  const servers = [...dnsServers];
+  return async function lighthouseGatewayFetch(url, options = {}) {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "gateway.lighthouse.storage") {
+      throw new Error("Lighthouse public proof must use https://gateway.lighthouse.storage");
+    }
+    const resolver = servers.length > 0 ? new Resolver() : null;
+    if (resolver) resolver.setServers(servers);
+    const lookup = resolver
+      ? async (hostname, lookupOptions, callback) => {
+          if (typeof lookupOptions === "function") {
+            callback = lookupOptions;
+            lookupOptions = {};
+          }
+          try {
+            const ipv4 = await resolver.resolve4(hostname).catch(() => []);
+            const ipv6 = await resolver.resolve6(hostname).catch(() => []);
+            const addresses = [
+              ...ipv4.map((address) => ({ address, family: 4 })),
+              ...ipv6.map((address) => ({ address, family: 6 })),
+            ];
+            if (addresses.length === 0) {
+              throw new Error(`Lighthouse DNS override resolved no addresses for ${hostname}`);
+            }
+            if (lookupOptions?.all === true) {
+              callback(null, addresses);
+            } else {
+              callback(null, addresses[0].address, addresses[0].family);
+            }
+          } catch (error) {
+            callback(error);
+          }
+        }
+      : undefined;
+    return new Promise((resolve, reject) => {
+      const request = https.request(
+        parsed,
+        {
+          method: options.method ?? "GET",
+          headers: options.headers,
+          signal: options.signal,
+          lookup,
+        },
+        (response) => {
+          const chunks = [];
+          response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+          response.on("end", () =>
+            resolve(
+              new globalThis.Response(Buffer.concat(chunks), {
+                status: response.statusCode,
+                headers: response.headers,
+              }),
+            ),
+          );
+        },
+      );
+      request.on("error", reject);
+      request.end();
+    });
+  };
+}
+
 /**
  * Reconcile through the documented authenticated, paginated inventory.
  * Inventory registration is not a provider-local retention acknowledgement.
@@ -313,8 +415,23 @@ export async function ensureLighthouseRegistration({
         previousEvidence.requestIntent?.state !== "request-submitting"))
   )
     throw new Error("Lighthouse accepted-request checkpoint does not match this target");
+  const normalizedPreviousAccepted =
+    previousEvidence?.requestAccepted &&
+    !previousEvidence.requestAccepted.requestId &&
+    previousEvidence.requestAccepted.responseBody
+      ? {
+          ...previousEvidence.requestAccepted,
+          ...(extractLighthouseRequestId(previousEvidence.requestAccepted.responseBody)
+            ? {
+                requestId: extractLighthouseRequestId(
+                  previousEvidence.requestAccepted.responseBody,
+                ),
+              }
+            : {}),
+        }
+      : previousEvidence?.requestAccepted;
   let registration = await findLighthouseRegistration({ endpoint, token, cid, name, fetchImpl });
-  let requestAccepted = previousEvidence?.requestAccepted ?? null;
+  let requestAccepted = normalizedPreviousAccepted ?? null;
   let requestIntent = previousEvidence?.requestIntent ?? null;
   if (registration === null && requestAccepted === null && requestIntent === null) {
     // Persist intent before POST: an interrupted request is not safe to repeat
@@ -346,6 +463,9 @@ export async function ensureLighthouseRegistration({
       state: "request-accepted",
       httpStatus: response.status,
       responseDigest: `sha256:${createHash("sha256").update(body).digest("hex")}`,
+      ...(extractLighthouseRequestId(body)
+        ? { requestId: extractLighthouseRequestId(body) }
+        : {}),
       // Private checkpoint only. Keep actual acknowledgement text for review,
       // but never retain an echoed credential in a receipt or public ledger.
       responseBody: body.replaceAll(token, "[REDACTED]"),
@@ -425,13 +545,16 @@ export function publicLighthouseReceipt(receipt) {
     cid: receipt.cid,
     name: receipt.name,
     status: receipt.status,
-    retentionVerified: false,
+    retentionVerified: receipt.status === "retention-evidence-verified",
     requestIntent: receipt.requestIntent,
     requestAccepted: receipt.requestAccepted
       ? {
           state: receipt.requestAccepted.state,
           httpStatus: receipt.requestAccepted.httpStatus,
           responseDigest: receipt.requestAccepted.responseDigest,
+          ...(receipt.requestAccepted.requestId
+            ? { requestId: receipt.requestAccepted.requestId }
+            : {}),
         }
       : null,
     ...(receipt.registration
@@ -446,21 +569,263 @@ export function publicLighthouseReceipt(receipt) {
           metadata: receipt.metadata,
         }
       : {}),
+    ...(receipt.publicGateway ? { publicGateway: receipt.publicGateway } : {}),
+    ...(receipt.retentionEvidence ? { retentionEvidence: receipt.retentionEvidence } : {}),
   };
+}
+
+function assertLighthouseVerifiedReceipt(receipt) {
+  if (
+    receipt?.provider !== "lighthouse" ||
+    receipt?.serviceHost !== "api.lighthouse.storage" ||
+    receipt?.status !== "retention-evidence-verified" ||
+    receipt?.retentionVerified !== true ||
+    receipt?.requestAccepted?.state !== "request-accepted" ||
+    !Number.isInteger(receipt.requestAccepted.httpStatus) ||
+    receipt.requestAccepted.httpStatus < 200 ||
+    receipt.requestAccepted.httpStatus > 299 ||
+    typeof receipt.requestAccepted.requestId !== "string" ||
+    receipt.requestAccepted.requestId.length === 0 ||
+    !/^sha256:[a-f0-9]{64}$/.test(receipt.requestAccepted.responseDigest) ||
+    receipt?.registration?.encryption !== false ||
+    receipt?.registration?.fileName !== receipt?.name ||
+    canonicalCid(receipt?.registration?.cid) !== canonicalCid(receipt?.cid) ||
+    receipt?.metadata?.encryption !== false ||
+    canonicalCid(receipt?.metadata?.cid) !== canonicalCid(receipt?.cid) ||
+    receipt?.metadata?.fileSizeInBytes !== receipt?.registration?.fileSizeInBytes
+  ) {
+    throw new Error(
+      "Lighthouse retention evidence is incomplete; publication promotion remains held",
+    );
+  }
+}
+
+function assertLighthouseGatewayBytesEvidence(receipt) {
+  assertLighthouseVerifiedReceipt(receipt);
+  if (
+    receipt?.publicGateway?.host !== "gateway.lighthouse.storage" ||
+    canonicalCid(receipt.publicGateway.cid) !== canonicalCid(receipt.cid) ||
+    !Number.isSafeInteger(receipt.publicGateway.bytes) ||
+    receipt.publicGateway.bytes < 0 ||
+    !/^sha256:[a-f0-9]{64}$/.test(receipt.publicGateway.sha256)
+  ) {
+    throw new Error(
+      "Lighthouse gateway byte evidence is incomplete; publication promotion remains held",
+    );
+  }
+}
+
+function assertLighthouseArchiveReceipt(receipt) {
+  assertLighthouseGatewayBytesEvidence(receipt);
+  if (
+    !Array.isArray(receipt.publicGateway.car?.roots) ||
+    receipt.publicGateway.car.roots.length === 0 ||
+    !Number.isSafeInteger(receipt.publicGateway.car.verifiedBlocks) ||
+    receipt.publicGateway.car.verifiedBlocks < 1
+  ) {
+    throw new Error(
+      "Lighthouse archive CAR evidence is incomplete; publication promotion remains held",
+    );
+  }
+}
+
+function assertLighthouseRootCoveredByArchive(rootReceipt, archiveReceipt) {
+  assertLighthouseVerifiedReceipt(rootReceipt);
+  assertLighthouseArchiveReceipt(archiveReceipt);
+  const archiveRoots = archiveReceipt.publicGateway.car.roots.map((root) => canonicalCid(root));
+  if (
+    rootReceipt.retentionEvidence?.coveredBy !== "lighthouse-snapshot-car" ||
+    canonicalCid(rootReceipt.retentionEvidence?.archiveCid) !== canonicalCid(archiveReceipt.cid) ||
+    JSON.stringify(rootReceipt.retentionEvidence?.expectedRoots?.map((root) => canonicalCid(root))) !==
+      JSON.stringify(archiveRoots) ||
+    !archiveRoots.includes(canonicalCid(rootReceipt.cid))
+  ) {
+    throw new Error(
+      "Lighthouse root coverage is not bound to the verified archive receipt; publication promotion remains held",
+    );
+  }
+}
+
+function assertLighthouseRegistrationProof(receipt) {
+  if (
+    receipt?.provider !== "lighthouse" ||
+    receipt?.serviceHost !== "api.lighthouse.storage" ||
+    receipt?.status !== "registration-reconciled" ||
+    receipt?.retentionVerified !== false ||
+    receipt?.requestAccepted?.state !== "request-accepted" ||
+    !Number.isInteger(receipt.requestAccepted.httpStatus) ||
+    receipt.requestAccepted.httpStatus < 200 ||
+    receipt.requestAccepted.httpStatus > 299 ||
+    typeof receipt.requestAccepted.requestId !== "string" ||
+    receipt.requestAccepted.requestId.length === 0 ||
+    !/^sha256:[a-f0-9]{64}$/.test(receipt.requestAccepted.responseDigest) ||
+    receipt?.registration?.encryption !== false ||
+    receipt?.registration?.fileName !== receipt?.name ||
+    canonicalCid(receipt?.registration?.cid) !== canonicalCid(receipt?.cid) ||
+    receipt?.metadata?.encryption !== false ||
+    canonicalCid(receipt?.metadata?.cid) !== canonicalCid(receipt?.cid) ||
+    receipt?.metadata?.fileSizeInBytes !== receipt?.registration?.fileSizeInBytes
+  ) {
+    throw new Error(
+      "Lighthouse retention evidence is incomplete; publication promotion remains held",
+    );
+  }
+}
+
+function expectedGatewayUrl(cid, gatewayBase = LIGHTHOUSE_GATEWAY_BASE) {
+  const base = new URL(gatewayBase);
+  if (base.protocol !== "https:" || base.hostname !== "gateway.lighthouse.storage") {
+    throw new Error("Lighthouse public proof must use https://gateway.lighthouse.storage");
+  }
+  const normalized = base.toString().replace(/\/$/, "");
+  return `${normalized}/${canonicalCid(cid)}`;
+}
+
+async function fetchLighthouseGatewayBytes({
+  cid,
+  gatewayBase,
+  gatewayFetchImpl,
+  timeoutMs = 20_000,
+}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) {
+    throw new Error("Lighthouse public proof timeout must be between 1ms and 600000ms");
+  }
+  const url = expectedGatewayUrl(cid, gatewayBase);
+  const response = await gatewayFetchImpl(url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Lighthouse public gateway proof failed: HTTP ${response.status}`);
+  }
+  return { url, bytes: Buffer.from(await response.arrayBuffer()) };
+}
+
+function assertExactBytes(bytes, expectedBytes, expectedSha256, label) {
+  if (!(expectedBytes instanceof Uint8Array)) {
+    throw new Error(`${label} expected bytes are required for Lighthouse proof`);
+  }
+  if (bytes.byteLength !== expectedBytes.byteLength) {
+    throw new Error(`${label} Lighthouse gateway bytes differ from the expected length`);
+  }
+  const actualDigest = sha256Digest(bytes);
+  const expectedDigest = expectedSha256 ?? sha256Digest(expectedBytes);
+  if (actualDigest !== expectedDigest || !Buffer.from(bytes).equals(Buffer.from(expectedBytes))) {
+    throw new Error(`${label} Lighthouse gateway bytes differ from the expected digest`);
+  }
+  return actualDigest;
+}
+
+/**
+ * Promote one reconciled Lighthouse registration only after independent public
+ * evidence is complete. For raw/file payloads this compares exact public
+ * gateway bytes. For CAR payloads it additionally validates the CAR header,
+ * every reachable block, and the exact expected roots.
+ */
+export async function verifyLighthouseRetentionEvidence({
+  receipt,
+  expectedDagBytes,
+  expectedBytes = null,
+  expectedSha256 = null,
+  expectedCarRoots = null,
+  coveredByCar = null,
+  timeoutMs = 20_000,
+  gatewayBase = LIGHTHOUSE_GATEWAY_BASE,
+  gatewayFetchImpl = createLighthouseGatewayFetch(),
+}) {
+  assertLighthouseRegistrationProof(receipt);
+  lighthouseSize(expectedDagBytes);
+  if (receipt.registration.fileSizeInBytes !== expectedDagBytes) {
+    throw new Error("Lighthouse inventory DAG size does not match the verified local evidence");
+  }
+  let publicGateway = null;
+  let retentionEvidence = null;
+  if (expectedBytes !== null) {
+    const { url, bytes } = await fetchLighthouseGatewayBytes({
+      cid: receipt.cid,
+      gatewayBase,
+      gatewayFetchImpl,
+      timeoutMs,
+    });
+    const digest = assertExactBytes(bytes, expectedBytes, expectedSha256, receipt.name);
+    publicGateway = {
+      host: new URL(url).host,
+      cid: receipt.cid,
+      bytes: bytes.byteLength,
+      sha256: digest,
+    };
+    if (expectedCarRoots !== null) {
+      const car = validateCarArchive(bytes);
+      const expectedRoots = expectedCarRoots.map((root) => canonicalCid(root));
+      if (JSON.stringify(car.roots) !== JSON.stringify(expectedRoots)) {
+        throw new Error("Lighthouse public CAR roots do not match the expected snapshot roots");
+      }
+      publicGateway.car = {
+        roots: car.roots,
+        verifiedBlocks: car.blocks.length,
+      };
+    }
+  } else if (coveredByCar !== null) {
+    assertLighthouseArchiveReceipt(coveredByCar.archiveReceipt);
+    const expectedRoots = coveredByCar.archiveReceipt.publicGateway.car.roots.map((root) =>
+      canonicalCid(root),
+    );
+    if (!expectedRoots.includes(canonicalCid(receipt.cid))) {
+      throw new Error("Lighthouse root CID is not covered by the verified snapshot CAR");
+    }
+    retentionEvidence = {
+      coveredBy: "lighthouse-snapshot-car",
+      archiveCid: canonicalCid(coveredByCar.archiveReceipt.cid),
+      expectedRoots,
+    };
+  } else {
+    throw new Error("Lighthouse public gateway bytes are required for retention proof");
+  }
+  return publicLighthouseReceipt({
+    ...receipt,
+    status: "retention-evidence-verified",
+    retentionVerified: true,
+    ...(publicGateway ? { publicGateway } : {}),
+    ...(retentionEvidence ? { retentionEvidence } : {}),
+  });
 }
 
 /** A registered/requested copy must never silently advance the retained-pin gate. */
 export function assertSecondaryRetention(receipts, provider = "pinata") {
-  if (
-    provider !== "pinata" ||
-    !Array.isArray(receipts) ||
-    receipts.length !== 3 ||
-    receipts.some((receipt) => receipt?.status !== "pinned" || receipt?.retentionVerified === false)
-  ) {
+  if (!Array.isArray(receipts) || receipts.length !== 3) {
     throw new Error(
       "Secondary registration is not verified IPFS retention; gateway/history/IPNS promotion remains held",
     );
   }
+  if (provider === "pinata") {
+    if (
+      receipts.some(
+        (receipt) => receipt?.status !== "pinned" || receipt?.retentionVerified === false,
+      )
+    ) {
+      throw new Error(
+        "Secondary registration is not verified IPFS retention; gateway/history/IPNS promotion remains held",
+      );
+    }
+    return;
+  }
+  if (provider === "lighthouse") {
+    try {
+      for (const receipt of receipts) assertLighthouseVerifiedReceipt(receipt);
+      const [root, manifest, archive] = receipts;
+      assertLighthouseRootCoveredByArchive(root, archive);
+      assertLighthouseGatewayBytesEvidence(manifest);
+      assertLighthouseArchiveReceipt(archive);
+    } catch {
+      throw new Error(
+        "Secondary registration is not verified IPFS retention; gateway/history/IPNS promotion remains held",
+      );
+    }
+    return;
+  }
+  throw new Error(
+    "Secondary registration is not verified IPFS retention; gateway/history/IPNS promotion remains held",
+  );
 }
 
 /** Replace a private checkpoint only after its complete write succeeds. */
