@@ -171,6 +171,21 @@ Omitted scope keeps old full-publication signatures unchanged. This local repair
 does not execute uploads or pins and does not satisfy public publication by
 itself; see [the scoped handoff](docs/runbook.md#signed-replication-only-scope).
 
+The signed `b3d92c6` live attempt on 2026-09-17 stopped twice on a TLS abort
+before complete primary CAR readback. The root object's size/CID metadata was
+present, but its bytes were not verified; archive/manifest objects were absent
+and no Lighthouse pins were requested. Authenticated S3 CAR Range probes
+returned HTTP 200 with the full object length, not partial responses. IPNS,
+successful history and dataset selection remain unchanged. The local repair
+now verifies an existing object by full streamed byte/size/SHA-256 comparison
+before any PUT, permits creation only on definite absence, rechecks the signed
+authorization/predecessor immediately before creation, and disables SDK PUT
+retries. Ten-minute request/body deadlines produce sanitized byte-count errors;
+there is no Range or sampled-byte fallback. Offline regression checks establish
+that safety contract, not repaired live transport or publication. The old signed
+checkout/object remain preserved; a changed candidate needs a matching human
+go/signature before live execution.
+
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root
 `bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,

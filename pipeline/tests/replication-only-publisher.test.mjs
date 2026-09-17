@@ -14,6 +14,8 @@ const fixture = vi.hoisted(() => ({
   env: vi.fn(),
   provenance: vi.fn(),
   registered: true,
+  getHook: null,
+  predecessor: null,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -62,6 +64,10 @@ vi.mock("@aws-sdk/client-s3", async (importOriginal) => {
   return {
     ...actual,
     S3Client: class {
+      constructor(config) {
+        expect(config.maxAttempts).toBe(1);
+        this.config = { maxAttempts: async () => config.maxAttempts };
+      }
       async send(command) {
         const { Bucket, Key, Body } = command.input;
         const identity = `${Bucket}/${Key}`;
@@ -72,9 +78,14 @@ vi.mock("@aws-sdk/client-s3", async (importOriginal) => {
           fixture.objects.set(identity, Buffer.from(Body));
           return {};
         }
+        if (fixture.getHook) await fixture.getHook(command.input);
         const bytes = fixture.objects.get(identity);
-        if (!bytes) throw new Error("missing offline S3 object");
-        return { Body: { transformToByteArray: async () => bytes }, ContentLength: bytes.length };
+        if (!bytes)
+          throw Object.assign(new Error("missing offline S3 object"), {
+            name: "NoSuchKey",
+            $metadata: { httpStatusCode: 404 },
+          });
+        return { Body: bytes, ContentLength: bytes.length };
       }
     },
   };
@@ -136,7 +147,7 @@ const OPTIONS = {
 const APPROVAL = "/offline-owner/approval.json";
 const PUBLIC_KEY = "/offline-owner/public.pem";
 const setJson = (name, value) => fixture.files.set(name, Buffer.from(JSON.stringify(value)));
-const reply = (value, status = 200) => new Response(JSON.stringify(value), { status });
+const reply = (value, status = 200) => new globalThis.Response(JSON.stringify(value), { status });
 const protectedPaths = [
   "artifacts/run-history.json",
   "artifacts/latest.json",
@@ -145,6 +156,8 @@ const protectedPaths = [
 ].map((name) => path.join(REPO, name));
 
 beforeEach(() => {
+  fixture.getHook = null;
+  fixture.predecessor = null;
   fixture.files.clear();
   fixture.objects.clear();
   fixture.registrations.length = 0;
@@ -204,7 +217,7 @@ beforeEach(() => {
           {
             label: "oracle-open-data-lake",
             network_key: LAKE_IPNS_NETWORK_KEY,
-            cid: PREDECESSOR,
+            cid: fixture.predecessor ?? PREDECESSOR,
             sequence: 1,
           },
         ]);
@@ -258,7 +271,7 @@ afterEach(() => {
 async function signedFixture(scope = "replication-only") {
   const prepared = await publishRun(OPTIONS);
   const request = JSON.parse(fixture.files.get(prepared.approvalRequestPath).toString());
-  const target = structuredClone(request.target);
+  const target = globalThis.structuredClone(request.target);
   if (scope !== "replication-only") {
     delete target.executionScope;
     target.actions.push("verify-all-artifacts-two-gateways", "append-history", "repoint-ipns");
@@ -286,6 +299,52 @@ async function signedFixture(scope = "replication-only") {
 }
 
 describe("real publisher replication-only control flow (offline)", () => {
+  it.each([true, false])(
+    "reconciles an existing root only when its bytes match (%s)",
+    async (matches) => {
+      const { live, prepared } = await signedFixture();
+      const request = JSON.parse(fixture.files.get(prepared.approvalRequestPath).toString());
+      const root = request.target.primaryCars.root;
+      const bytes = Buffer.from(fixture.files.get(path.join(PUBLISH, "cars", `${RUN}.car`)));
+      if (!matches) bytes[0] ^= 255;
+      fixture.objects.set(`${request.target.bucket}/${root.key}`, bytes);
+      if (matches) {
+        const result = await publishRun(live);
+        expect(result.publicationState).toBe("REPLICATION_REQUESTS_RECORDED");
+        expect(fixture.puts).toHaveBeenCalledTimes(2);
+        expect(fixture.puts.mock.calls.every(([input]) => input.Key !== root.key)).toBe(true);
+      } else {
+        await expect(publishRun(live)).rejects.toThrow(/different bytes/);
+        expect(fixture.puts).not.toHaveBeenCalled();
+        expect(fixture.registrations).toHaveLength(0);
+        expect((await readPublicationLedger(LEDGER)).attempts[request.attemptId].state).toBe(
+          "AUTHORIZED",
+        );
+      }
+      expect(fixture.objects.get(`${request.target.bucket}/${root.key}`)).toEqual(bytes);
+      expect(fixture.gateway).not.toHaveBeenCalled();
+      expect((await readPublicationLedger(LEDGER)).consumedApprovals).toEqual([]);
+    },
+  );
+
+  it.each(["expiry", "pointer"])(
+    "rechecks the actual %s guard after asynchronous absent-object GET",
+    async (kind) => {
+      const { live } = await signedFixture();
+      fixture.getHook = async () => {
+        if (kind === "expiry") vi.setSystemTime(new Date("2026-09-16T23:00:00.000Z"));
+        else fixture.predecessor = computeRawCid("changed offline predecessor");
+      };
+      await expect(publishRun(live)).rejects.toThrow(kind === "expiry" ? /expir/i : /predecessor/i);
+      expect(fixture.puts).not.toHaveBeenCalled();
+      expect(fixture.registrations).toHaveLength(0);
+      expect(fixture.gateway).not.toHaveBeenCalled();
+      const ledger = await readPublicationLedger(LEDGER);
+      expect(Object.values(ledger.attempts).at(-1).state).toBe("AUTHORIZED");
+      expect(ledger.consumedApprovals).toEqual([]);
+    },
+  );
+
   it.each([true, false, "cidv0"])(
     "records three %s registrations/accepted requests and stops before every promotion effect",
     async (registered) => {
@@ -376,7 +435,7 @@ describe("real publisher replication-only control flow (offline)", () => {
     expect(fixture.registrations).toHaveLength(2);
     expect(fixture.puts).toHaveBeenCalledTimes(3);
     const rootPosts = globalThis.fetch.mock.calls.filter(
-      ([_url, options]) =>
+      ([, options]) =>
         options?.method === "POST" && JSON.parse(options.body).fileName.endsWith("/root"),
     );
     expect(rootPosts).toHaveLength(1);

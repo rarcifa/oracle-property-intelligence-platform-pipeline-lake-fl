@@ -277,6 +277,46 @@ assignment's completed public-publication proof. Provider retention evidence
 and a separate exact full-publication go/signature are still required for
 promotion; never widen the limited signature to make that happen.
 
+### Primary CAR readback repair
+
+The 2026-09-17 signed `b3d92c6` attempt and one unchanged resume both ended
+with a TLS abort before the first complete CAR readback. Its ledger remains
+`AUTHORIZED`: no upload receipt, Lighthouse request, gateway proof, successful
+history or IPNS promotion was recorded. Root CAR HEAD metadata reported
+341,012,575 bytes and the expected CID; manifest/archive returned 404. Root
+LastModified advanced on resume despite the SDK serializing `If-None-Match: *`.
+This does not establish provider atomic conditional-write protection. Separate
+authenticated S3 CAR Range probes returned HTTP 200 with the full object length;
+the bodies were destroyed without full download. They are neither partial-byte
+verification nor proof of complete content. The TLS failure's cause remains
+undetermined.
+
+The local repair retains the existing publisher and exact byte-bound receipts:
+
+- GET first; fully compare streamed bytes, total size and SHA-256 against the
+  frozen CAR. Only definite `NoSuchKey`/404 permits creation. Existing-object
+  mismatch, truncation, 403, timeout or ambiguous failure causes zero PUTs.
+- A fresh authorization/predecessor guard runs after asynchronous absent-object
+  preflight and immediately before PUT. `IfNoneMatch` remains defense-in-depth;
+  it is not a vendor-atomicity guarantee. The publisher uses SDK `maxAttempts=1`,
+  and the helper refuses creation with retries enabled. A lost acknowledgement
+  exits uncertain; a later authorized invocation must reconcile by GET first.
+- Each request, including GET headers and its complete body, has a ten-minute
+  deadline. Verification retains no second whole-object buffer; incomplete or
+  oversized streams are destroyed. Diagnostics expose expected/received byte
+  counts and whitelisted error codes, not vendor bodies, messages or secrets.
+- No Range reconstruction, sampled-byte receipt, metadata-only acceptance,
+  hand-edited ledger advancement or signature reuse against changed runtime.
+
+Real-SDK offline fixtures test serialization, interrupted/oversized/truncated
+streams, lost acknowledgements, conflicting existing objects, guarded creation
+and zero PUTs on unknown errors. Publisher fixtures additionally expire approval
+or change the predecessor during asynchronous GET and prove no creation or pins.
+These checks do not prove that the live transport will succeed. Preserve the
+blocked signed checkout, approval, ledger and actual remote object. A tested
+changed candidate needs its own provenance and matching human go/signature;
+do not run it under the `b3d92c6` signature. Dataset capture is not restarted.
+
 A bounded read-only review of the official Pin CID, List Files and File Info
 documentation and Go SDK did not establish a documented completed-retention
 response contract. The SDK's Pin method returns an HTTP-call error/result, while

@@ -30,6 +30,7 @@
 
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { z } from "zod";
@@ -108,6 +109,7 @@ const PUBLISH_ROOT = path.join(RUNTIME_ROOT, "data", "artifacts", "publish", "la
 const ARTIFACTS_DIR = path.join(REPO_ROOT, "artifacts");
 const FILEBASE_ENDPOINT = "https://s3.filebase.com";
 const PUBLICATION_LEDGER_PATH = path.join(ARTIFACTS_DIR, "publication-attempts.json");
+const IMMUTABLE_CAR_DEADLINE_MS = 10 * 60 * 1000;
 /** The county this publisher releases. Also the publish gate's key. */
 const COUNTY = "lake";
 
@@ -443,32 +445,62 @@ export async function buildRunDag(runDir) {
 }
 
 /**
- * Read an S3 streaming body without trusting its optional declared length.
+ * Verify a complete S3 body without allocating another whole-object buffer.
  *
  * @param {unknown} body - AWS SDK GetObject Body.
- * @returns {Promise<Buffer>} Exact object bytes.
+ * @param {Buffer} expected - Locally frozen bytes.
+ * @param {AbortSignal} signal - Header-and-body deadline.
+ * @returns {Promise<void>}
  */
-async function readS3Body(body) {
-  if (body instanceof Uint8Array) return Buffer.from(body);
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "transformToByteArray" in body &&
-    typeof body.transformToByteArray === "function"
-  ) {
-    return Buffer.from(await body.transformToByteArray());
+async function verifyS3Body(body, expected, signal) {
+  let received = 0;
+  const hash = createHash("sha256");
+  const destroy = () => {
+    if (typeof body?.destroy === "function") body.destroy();
+  };
+  const consume = (chunk) => {
+    signal.throwIfAborted();
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const offset = received;
+    received += bytes.length;
+    if (received > expected.length || !bytes.equals(expected.subarray(offset, received)))
+      throw Object.assign(new Error("different bytes"), { code: "CAR_BYTES_MISMATCH" });
+    hash.update(bytes);
+  };
+  signal.addEventListener("abort", destroy, { once: true });
+  try {
+    signal.throwIfAborted();
+    if (body instanceof Uint8Array) consume(body);
+    else if (
+      typeof body?.[Symbol.asyncIterator] === "function" &&
+      typeof body.destroy === "function"
+    ) {
+      for await (const chunk of body) consume(chunk);
+    } else throw Object.assign(new Error("unreadable body"), { code: "CAR_BODY_UNREADABLE" });
+    signal.throwIfAborted();
+    if (received !== expected.length || hash.digest("hex") !== sha256Hex(expected))
+      throw Object.assign(new Error("different bytes"), { code: "CAR_BYTES_MISMATCH" });
+  } catch (error) {
+    destroy();
+    // Never include vendor messages, response bodies, credentials or PII.
+    const rawCode = signal.aborted ? "CAR_READ_TIMEOUT" : (error?.code ?? error?.name);
+    const code = [
+      "CAR_READ_TIMEOUT",
+      "CAR_BYTES_MISMATCH",
+      "CAR_BODY_UNREADABLE",
+      "ECONNRESET",
+      "ECONNABORTED",
+      "ETIMEDOUT",
+      "ERR_STREAM_PREMATURE_CLOSE",
+    ].includes(rawCode)
+      ? rawCode
+      : "CAR_STREAM_INTERRUPTED";
+    throw new Error(
+      `Immutable CAR readback incomplete or different bytes: expected=${expected.length} received=${received} code=${code}`,
+    );
+  } finally {
+    signal.removeEventListener("abort", destroy);
   }
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    Symbol.asyncIterator in body &&
-    typeof body[Symbol.asyncIterator] === "function"
-  ) {
-    const chunks = [];
-    for await (const chunk of body) chunks.push(Buffer.from(chunk));
-    return Buffer.concat(chunks);
-  }
-  throw new Error("Immutable CAR GET returned no readable body");
 }
 
 const immutableCarGetSchema = z
@@ -487,12 +519,20 @@ function isPreconditionFailure(error) {
   );
 }
 
+function isMissingObject(error) {
+  const status = error?.$metadata?.httpStatusCode;
+  return (
+    status === 404 ||
+    (status === undefined && (error?.name === "NoSuchKey" || error?.Code === "NoSuchKey"))
+  );
+}
+
 /**
- * Create one non-overwritable CAR and reconcile the exact stored bytes.
+ * Reconcile first; create only after definite absence and a fresh write guard.
  *
- * A retry still sends the conditional request: S3 rejects the mutation with
- * 412, then GET proves whether the already-created object is byte-identical.
- * A colliding key can therefore never silently replace the first CAR.
+ * IfNoneMatch is defense-in-depth, not a claim of vendor atomicity. The actual
+ * publisher configures SDK maxAttempts=1, so an uncertain PUT is not replayed.
+ * A later invocation must GET and verify first, including after lost PUT acks.
  *
  * @param {object} options - Options.
  * @param {S3Client} options.client - Configured S3 client.
@@ -500,12 +540,84 @@ function isPreconditionFailure(error) {
  * @param {string} options.key - Authorization-bound immutable object key.
  * @param {Buffer} options.body - Exact CAR bytes.
  * @param {string} [options.expectedCid] - Locally computed CAR root CID.
+ * @param {() => Promise<void>} options.beforeCreate - Fresh authorization and predecessor guard.
+ * @param {number} [options.deadlineMs] - Bounded per-request deadline (offline fixtures may shorten it).
  * @returns {Promise<{action: "created" | "reconciled-existing", key: string, bytes: number, sha256: string, reportedCid: string | null}>}
  */
-export async function uploadImmutableCar({ client, bucket, key, body, expectedCid }) {
+export async function uploadImmutableCar({
+  client,
+  bucket,
+  key,
+  body,
+  expectedCid,
+  beforeCreate,
+  deadlineMs = IMMUTABLE_CAR_DEADLINE_MS,
+}) {
   if (!Buffer.isBuffer(body) || body.length === 0) {
     throw new Error("Immutable CAR upload requires non-empty Buffer bytes");
   }
+  if (
+    !Number.isSafeInteger(deadlineMs) ||
+    deadlineMs <= 0 ||
+    deadlineMs > IMMUTABLE_CAR_DEADLINE_MS
+  )
+    throw new Error("Immutable CAR deadline must be positive and at most ten minutes");
+  const expectedSha256 = sha256Digest(body);
+  const readback = async () => {
+    const readbackCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+    let headerCid = null;
+    readbackCommand.middlewareStack.add(
+      (next) => async (args) => {
+        const result = await next(args);
+        const header = result.response?.headers?.["x-amz-meta-cid"];
+        if (typeof header === "string") headerCid = header.trim();
+        return result;
+      },
+      { step: "deserialize", name: "captureReadbackCid", priority: "low" },
+    );
+    const signal = AbortSignal.timeout(deadlineMs);
+    let response;
+    try {
+      response = await client.send(readbackCommand, { abortSignal: signal });
+    } catch (error) {
+      if (!signal.aborted && isMissingObject(error)) return null;
+      const status = error?.$metadata?.httpStatusCode;
+      throw new Error(
+        `Immutable CAR GET failed before body: expected=${body.length} received=0 status=${Number.isInteger(status) ? status : "unknown"} code=${signal.aborted ? "CAR_READ_TIMEOUT" : "CAR_GET_FAILED"}`,
+      );
+    }
+    let object;
+    try {
+      object = immutableCarGetSchema.parse(response);
+      if (object.ContentLength !== undefined && object.ContentLength !== body.length)
+        throw new Error(
+          `Immutable CAR declared different bytes: expected=${body.length} received=0 declared=${object.ContentLength}`,
+        );
+      await verifyS3Body(object.Body, body, signal);
+      const cids = [headerCid, object.Metadata?.cid?.trim()].filter((cid) => cid != null);
+      if (expectedCid !== undefined && cids.some((cid) => cid !== expectedCid))
+        throw new Error("Filebase reported CAR root different from the frozen target");
+      return { reportedCid: cids[0] ?? null };
+    } catch (error) {
+      if (typeof response?.Body?.destroy === "function") response.Body.destroy();
+      throw error;
+    }
+  };
+  const receipt = (action, reportedCid) => ({
+    action,
+    key,
+    bytes: body.length,
+    sha256: expectedSha256,
+    reportedCid,
+  });
+  const existing = await readback();
+  if (existing !== null) return receipt("reconciled-existing", existing.reportedCid);
+  if (typeof beforeCreate !== "function")
+    throw new Error("Immutable CAR creation requires a fresh authorization/predecessor guard");
+  if (typeof client.config?.maxAttempts !== "function" || (await client.config.maxAttempts()) !== 1)
+    throw new Error(
+      "Immutable CAR creation requires SDK maxAttempts=1; blind PUT retries are forbidden",
+    );
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,
@@ -526,51 +638,22 @@ export async function uploadImmutableCar({ client, bucket, key, body, expectedCi
     { step: "deserialize", name: `captureCid-${key.replace(/[^a-z0-9]/gi, "-")}`, priority: "low" },
   );
   let action = "created";
+  await beforeCreate();
   try {
-    await client.send(command);
+    await client.send(command, { abortSignal: AbortSignal.timeout(deadlineMs) });
   } catch (error) {
-    if (!isPreconditionFailure(error)) throw error;
+    if (!isPreconditionFailure(error))
+      throw new Error(
+        "Immutable CAR create outcome uncertain; reconcile by GET on the next authorized invocation",
+      );
     action = "reconciled-existing";
   }
-
-  const readbackCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
-  let readbackCid = null;
-  readbackCommand.middlewareStack.add(
-    (next) => async (args) => {
-      const result = await next(args);
-      const header = result.response?.headers?.["x-amz-meta-cid"];
-      if (typeof header === "string") readbackCid = header.trim();
-      return result;
-    },
-    {
-      step: "deserialize",
-      name: `captureReadbackCid-${key.replace(/[^a-z0-9]/gi, "-")}`,
-      priority: "low",
-    },
-  );
-  const readback = immutableCarGetSchema.parse(await client.send(readbackCommand));
-  const readbackBody = await readS3Body(readback.Body);
-  const expectedSha256 = sha256Digest(body);
-  const readbackSha256 = sha256Digest(readbackBody);
-  if (
-    (readback.ContentLength !== undefined && readback.ContentLength !== readbackBody.length) ||
-    readbackBody.length !== body.length ||
-    readbackSha256 !== expectedSha256 ||
-    !readbackBody.equals(body)
-  ) {
-    throw new Error(`Immutable CAR ${key} already exists with different bytes`);
-  }
-  const exactReportedCid = reportedCid ?? readbackCid ?? readback.Metadata?.cid?.trim() ?? null;
-  if (expectedCid !== undefined && exactReportedCid !== null && exactReportedCid !== expectedCid) {
-    throw new Error(`Filebase reported CAR root ${exactReportedCid}, expected ${expectedCid}`);
-  }
-  return {
-    action,
-    key,
-    bytes: body.length,
-    sha256: expectedSha256,
-    reportedCid: exactReportedCid,
-  };
+  const verified = await readback();
+  if (verified === null)
+    throw new Error("Immutable CAR missing after create; no upload receipt recorded");
+  if (expectedCid !== undefined && reportedCid !== null && reportedCid !== expectedCid)
+    throw new Error("Filebase reported CAR root different from the frozen target");
+  return receipt(action, verified.reportedCid ?? reportedCid);
 }
 
 /**
@@ -980,7 +1063,20 @@ export async function publishRun({
       region: "us-east-1",
       forcePathStyle: true,
       credentials: capabilities.filebaseCredentials,
+      // Filebase's conditional atomicity is unverified; never replay an uncertain PUT.
+      maxAttempts: 1,
     });
+    const beforeCarCreate = async () => {
+      assertPublicationAuthorizationActive(attempt);
+      assertPublicationPredecessor(
+        previousRun,
+        await readIpnsPointer(capabilities.filebaseApiToken),
+        target,
+        attempt.state,
+        recoveryAnchor,
+      );
+      assertPublicationAuthorizationActive(attempt);
+    };
     if (attempt.state === "AUTHORIZED") {
       assertPublicationAuthorizationActive(attempt);
       assertPublicationPredecessor(
@@ -997,6 +1093,7 @@ export async function publishRun({
         key: target.primaryCars.root.key,
         body: rootCarBody,
         expectedCid: target.primaryCars.root.cid,
+        beforeCreate: beforeCarCreate,
       });
       const rootReported = rootUpload.reportedCid;
       if (rootReported !== null && rootReported !== dag.rootCid) {
@@ -1024,6 +1121,7 @@ export async function publishRun({
         key: target.primaryCars.archive.key,
         body: archiveTransportBody,
         expectedCid: archiveFile.cid,
+        beforeCreate: beforeCarCreate,
       });
       if (archiveUpload.reportedCid !== null && archiveUpload.reportedCid !== archiveFile.cid) {
         throw new Error("Filebase reported an archive CID different from the signed target");
@@ -1061,6 +1159,7 @@ export async function publishRun({
         key: target.primaryCars.manifest.key,
         body: manifestCarBody,
         expectedCid: target.primaryCars.manifest.cid,
+        beforeCreate: beforeCarCreate,
       });
       const manifestReported = manifestUpload.reportedCid;
       if (manifestReported !== null && manifestReported !== manifestCid) {

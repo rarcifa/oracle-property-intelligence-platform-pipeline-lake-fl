@@ -19,6 +19,7 @@ class ImmutableS3MemoryClient {
     this.objects = new Map();
     this.putAttempts = 0;
     this.mutations = 0;
+    this.config = { maxAttempts: async () => 1 };
   }
 
   async send(command) {
@@ -39,9 +40,13 @@ class ImmutableS3MemoryClient {
     }
     if (command.constructor.name === "GetObjectCommand") {
       const body = this.objects.get(identity);
-      if (body === undefined) throw new Error(`missing ${identity}`);
+      if (body === undefined)
+        throw Object.assign(new Error("missing"), {
+          name: "NoSuchKey",
+          $metadata: { httpStatusCode: 404 },
+        });
       return {
-        Body: { transformToByteArray: async () => body },
+        Body: body,
         ContentLength: body.length,
       };
     }
@@ -147,13 +152,14 @@ describe("immutable primary CAR upload", () => {
       bucket: "elephant-oracle-open-data-lake",
       key: "runs/20260911T120000Z/root.car",
       body,
+      beforeCreate: async () => {},
     };
 
     await expect(uploadImmutableCar(options)).resolves.toMatchObject({ action: "created" });
     await expect(uploadImmutableCar(options)).resolves.toMatchObject({
       action: "reconciled-existing",
     });
-    expect(client.putAttempts).toBe(2);
+    expect(client.putAttempts).toBe(1);
     expect(client.mutations).toBe(1);
     expect(
       client.objects.get("elephant-oracle-open-data-lake/runs/20260911T120000Z/root.car"),
@@ -166,6 +172,7 @@ describe("immutable primary CAR upload", () => {
       client,
       bucket: "elephant-oracle-open-data-lake",
       key: "runs/20260911T120000Z/manifest.car",
+      beforeCreate: async () => {},
     };
     const original = Buffer.from("manifest-car-a", "utf8");
     await uploadImmutableCar({ ...common, body: original });
