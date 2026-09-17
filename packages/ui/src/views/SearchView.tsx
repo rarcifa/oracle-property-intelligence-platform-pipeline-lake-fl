@@ -59,7 +59,7 @@ interface Draft {
   requireCoordinates: boolean;
 }
 
-const EMPTY_DRAFT: Draft = {
+export const EMPTY_DRAFT: Draft = {
   q: "",
   city: "",
   propertyType: "",
@@ -93,7 +93,7 @@ function numberOrUndefined(value: string): number | undefined {
 }
 
 /** Turn the rail's draft state into the shared filter object. */
-function toOptions(
+export function toOptions(
   draft: Draft,
   sortBy: string | undefined,
   sortDir: "asc" | "desc",

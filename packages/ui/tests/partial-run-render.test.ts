@@ -42,6 +42,11 @@ describe("partial run rendering", () => {
     expect(html).toContain("20260916T181000Z");
     expect(html).toContain("No coverage snapshot matches the served run");
     expect(html).toContain("No verification report was found");
+    expect(html).toContain("not a county-complete, finalized pipeline release");
+    expect(html).toContain("Building-year proxy bands");
+    expect(html).toContain("at low confidence");
+    expect(html).not.toContain("then valid issue dates from closed roofing permits");
+    expect(html).not.toContain("both runs here were published in the same batch");
     expect(html).toContain("/ipfs/synthetic-public-root/query-table.parquet");
     expect(html).not.toContain("/ipfs/undefined");
     expect(html).not.toContain(">manifest</a>");

@@ -1,5 +1,18 @@
 # Demo script — Lake County, FL
 
+## Current partial submission walkthrough
+
+The owner chose a truthful partial handoff rather than another provider/approval
+cycle. [September 17 delivery](submission-handoff-20260917.md) identifies the
+hosted source-only snapshot and recording. `record-preview.mjs` is a separate
+partial walkthrough: explicit run/root/coverage, all-business conservation, ten
+MCP tools, actual enabled radius/age filters, executed SQL, nonempty live agent
+answers and two public manifest digest checks. It reports
+`fullAssignmentDemoPassed: false` and cannot promote publication or history.
+The strict full-demo contract below is unchanged and remains unpassed.
+
+## Strict full-assignment demo
+
 This script records one **explicit finalized public release**. It refuses to start when the
 deployed run/root/coverage, full business-account table, complete Clermont evidence,
 contractor posture, or MCP tool surface does
@@ -44,8 +57,9 @@ from public IPFS — visible on every subsequent frame, so no beat can quietly c
 curl -s "$U/api/meta/run" | jq '.run | {runId, rootCid, ipnsName, resolvedCid, propertyCount}'
 ```
 
-The runtime holds no baked dataset CID. It resolves the IPNS name and serves whatever
-immutable root that name points at, so a scheduled publish lands without a redeploy.
+Normal deployments resolve IPNS. The current partial submission deliberately pins
+an explicit run/root and matching coverage; it does not follow the unreconciled
+successful-publication pointer or claim that a later local candidate was published.
 
 ## 2. Aged roofs, by radius — the assignment's first question
 

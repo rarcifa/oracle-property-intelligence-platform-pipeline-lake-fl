@@ -1,6 +1,6 @@
 # Oracle Property Intelligence Platform Pipeline - Lake County, FL
 
-## Assignment evidence — 2026-09-16
+## Assignment evidence — 2026-09-17
 
 This is the Lake County ingestion pipeline, not the Roofing CRM or an outreach
 application. The [original assignment brief](#original-assignment-brief) below is
@@ -8,16 +8,19 @@ preserved in full. The implementation and evidence map follows that brief:
 available data, reconciliation, incremental operation, portable DuckDB access,
 roofing queries, public immutable IPFS artifacts, and a real-data demonstration.
 
-The repository has a working architecture and substantial real data. The full
-Clermont 2015–2026 harvest is retained; it has **not** been started over. The
-latest private dataset has **215,806 properties and 76,166 permits**, but that is
-not the dataset in the recorded public release. County-wide completeness and a
-final public demonstration are not established.
+The hosted partial preview serves **215,806 properties, 76,166 permits and
+33,346 business accounts**, including the full retained Clermont 2015–2026
+harvest. It has **not** been started over. An actual later CD Plus window is
+integrated into a separate **76,431-permit** candidate. Every object in the
+chosen public manifest has recorded size/digest matches from two public gateway
+hosts, including its CAR. Independent secondary-provider retention and later
+incremental publication remain unproven; neither county completeness nor a
+passed full assignment demo is claimed.
 
-This page describes the implementation in this branch. A code commit does not
-publish a dataset, upgrade the hosted runtime, or complete the demo. The dated
-execution status below separates those boundaries. No new
-Slowking evaluation has been run for these repairs. The 72/100 intake
+This page separates code, public bytes, hosted preview and successful publication.
+The hosted preview is explicitly pinned to `20260916T181000Z`; it does not move
+IPNS, successful publication history, latest/row hashes or the RAG selector.
+The dated execution status below separates those boundaries. The 72/100 intake
 result in the [2026-09-11 quality audit](docs/quality-audit.md) is historical,
 not a score for the present working tree.
 
@@ -41,41 +44,47 @@ unknown rather than being described as inaccessible.
 
 ### Which dataset is being assessed?
 
-| Dataset / evidence boundary                                                             | Properties |                                      Permits | Meaning                                                                                                                                                                                                                                                                                                                                                             |
-| --------------------------------------------------------------------------------------- | ---------: | -------------------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recorded public release, `20260910T225242Z`                                             |    215,806 | 17,671 CD Plus source permits; 17,457 linked | The committed [public pointer](artifacts/latest.json) names this release. It predates the Clermont contractor data and exposes property permit aggregates. Current hosted availability was not rechecked for this README.                                                                                                                                           |
-| Historical local candidate, `20260911T131000Z`                                          |    215,806 |                                       21,732 | One-year Clermont candidate; not the full harvest or a public release. The documentation RAG's structured artifact selector still names this local candidate.                                                                                                                                                                                                       |
-| Full private query repair, `lake-query-repair-20260916t105553z`                         |    215,806 |                                       76,166 | Real-data DuckDB/API/MCP checks are recorded in [the query repair](docs/lake-query-repair.md). This earlier query candidate is not an approval of the later conservative preview's permit decisions.                                                                                                                                                                |
-| Latest conservative private derivative / preview                                        |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | [Retained-evidence result](docs/lake-retained-evidence-repair.md). Original permit observations remain available, but current/open status, duration, primary-roof completion, and verified legal identity are not accepted conclusions.                                                                                                                             |
-| Frozen source-only export, `20260916T181000Z`; primary imports verified, promotion held |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | Historical source facts, valid low-confidence built-year proxies and a separate 33,346-account business table. Not the private unaccepted derivative; unsupported current/open/completion/legal conclusions remain null. Public primary CID imports/readbacks are verified; no recorded successful publication, hosted promotion or every-object two-gateway proof. |
+| Dataset / evidence boundary                                              | Properties |                                      Permits | Meaning                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------ | ---------: | -------------------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recorded successful release, `20260910T225242Z`                          |    215,806 | 17,671 CD Plus source permits; 17,457 linked | The committed [public pointer](artifacts/latest.json) still names this historical release. It predates the Clermont contractor data and is not the selected hosted preview.                                                                                                                                                                       |
+| Historical local candidate, `20260911T131000Z`                           |    215,806 |                                       21,732 | One-year Clermont candidate; not the full harvest or a public release. The documentation RAG's structured artifact selector still names this local candidate.                                                                                                                                                                                     |
+| Full private query repair, `lake-query-repair-20260916t105553z`          |    215,806 |                                       76,166 | Real-data DuckDB/API/MCP checks are recorded in [the query repair](docs/lake-query-repair.md). This earlier query candidate is not an approval of the later conservative preview's permit decisions.                                                                                                                                              |
+| Latest conservative private derivative / preview                         |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | [Retained-evidence result](docs/lake-retained-evidence-repair.md). Original permit observations remain available, but current/open status, duration, primary-roof completion, and verified legal identity are not accepted conclusions.                                                                                                           |
+| Frozen source-only export and hosted partial preview, `20260916T181000Z` |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | Historical source facts, low-confidence built-year proxies and all 33,346 business accounts. Public primary imports and every-object two-host readbacks verified. Hosted run/coverage agree; successful publication promotion remains held for unproven independent retention. Unsupported current/open/completion/legal conclusions remain null. |
+| Later integrated candidate, `20260917T152549Z`                           |    215,806 |  76,431: 72,450 linked; 3,981 valid unlinked | [Real incremental integration](artifacts/incremental-integration-20260917T152549Z.json): 265 inserts, 801 updates, all 58,495 Clermont records unchanged, new local root/manifest/CAR. Unpublished; not a second successful public run.                                                                                                           |
 
-Previously deployed UI, REST, MCP, and agent endpoint:
+Hosted UI, REST, MCP, and agent endpoint:
 [Lake County Oracle](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
-Live readback on 2026-09-16 found run `20260911T121542Z`, while its coverage
-described `20260910T225242Z`. It is stale and mismatched, not the full retained
-dataset or the final submission release. An empty app root was also reproduced.
+The September 17 deployment replaces the old Claude-backed runtime with the
+Vercel AI SDK/OpenAI implementation. Live metadata identifies the selected run
+and its matching source-only coverage. The old mismatched metadata and
+`undefined.length` blank-window fault were reproduced before deployment and
+repaired with regression tests. This is a partial preview, not `FINALIZED`.
 
 The recorded public root is
 `bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy`;
 its manifest is
 `bafkreigyltpgm7qxu7ccyfqeyg3q2c3ygdrqkgwnajjunrplv3xf32phmi`.
-These are identities for the older release, not for the 76,166-permit derivative.
-The newer private query repair and derivative have no established public CID.
+These are identities for the older successful release. The selected preview root is
+`bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u`;
+its [manifest](artifacts/manifest-20260916T181000Z.json) CID is
+`bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm`.
+Use these CIDs as identities; gateway URLs are only locators.
 
 ### Source coverage and count grains
 
-| Category / source                                                 | Available or retained evidence                                                                     | Loaded/queryable boundary and limitations                                                                                                                                                                                                                                                                                                             |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Properties — Florida DOR NAL, 2026 preliminary                    | 215,806 assessed parcels                                                                           | One row per distinct folio, no null property keys in the local readback. NAL is the denominator, not the smaller GIS release.                                                                                                                                                                                                                         |
-| Ownership / available contact fields — NAL                        | Owner names and public mailing addresses; source catalog measures 215,620 parcels with owner names | Owner locality is derived and labelled. No invented phone/email contacts and no outbound owner messaging. This is not a ten-year chain of title.                                                                                                                                                                                                      |
-| Sales — Florida DOR SDF / NAL                                     | 37,020 source sales; 30,977 parcels with a recorded sale in 2025–2026                              | Official appraiser pages advertise 2012–2026 annual sales and monthly all-years bulk data. The advertised FTP directory and a bounded direct annual-download probe returned managed-challenge 403 on normal routes. No older bytes were acquired; ten-year ownership tenure remains unproven.                                                         |
-| Businesses — Florida DOR TPP                                      | 33,346 source accounts, including 1,883 construction-class and 44 roofing-class NAICS accounts     | All 33,346 are now queryable locally through a typed business table, REST, MCP and Business view, including 31,286 valid unmatched accounts. 2,060 matched accounts attach to 2,726 properties via 4,451 candidate account–parcel attributions; these are not 4,451 businesses or verified legal identities. Raw payload/contact fields stay private. |
-| Coordinates — Florida GIO, 2025 release                           | 210,935 source features; 209,503 property coordinate pairs retained                                | 6,303 assessed properties lack joined coordinates and remain in the data. Pairs come from one valid source row; centroids are source-backed parcel locations, not a claim of surveyed roof/GPS accuracy.                                                                                                                                              |
-| County permits — Lake CD Plus                                     | Frozen baseline: 17,671 distinct permits from 17,915 features                                      | Unincorporated Lake only; not complete county history. A later isolated refresh captured 1,118 features / 1,066 distinct permits, adding 265 and updating 801 permit–parcel associations. The fresh window is not yet published and does not confer fresh timestamps on older records. Contractor names are not exposed in this layer.                |
-| Municipal permits / available contractor names — Clermont eTRAKiT | 58,495 retained permits across all twelve 2015–2026 partitions                                     | Source-listed contractor/contact names and lifecycle observations are retained. Selected contractor-of-record exports and all-contact capture counters have different grains; names are not verified legal/license identities.                                                                                                                        |
-| Other permit jurisdictions                                        | The [source catalog](pipeline/docs/lake-sources.yaml) enumerates all 15 permitting authorities     | Thirteen municipalities have recorded blocked, unavailable, or manual-only routes. No records are asserted for an unacquired route; jurisdiction and predecessor-system history are not replaced by a county-wide zero.                                                                                                                               |
-| BBB / contractor ratings                                          | No approved BBB ratings ingested                                                                   | Default access returned 403; this is a policy/API constraint, not proof that BBB is universally unreachable. Null means unavailable enrichment, not a zero score.                                                                                                                                                                                     |
-| Additional corporate/licensing identity                           | No adequate loaded Sunbiz/DBPR historical identity baseline established                            | Separate [kit-conformance difference](#official-kit-conformance-and-evaluation-handoff), not an extra express requirement to prove historical legal-business relationships in the assignment brief.                                                                                                                                                   |
+| Category / source                                                 | Available or retained evidence                                                                     | Loaded/queryable boundary and limitations                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Properties — Florida DOR NAL, 2026 preliminary                    | 215,806 assessed parcels                                                                           | One row per distinct folio, no null property keys in the local readback. NAL is the denominator, not the smaller GIS release.                                                                                                                                                                                                                                   |
+| Ownership / available contact fields — NAL                        | Owner names and public mailing addresses; source catalog measures 215,620 parcels with owner names | Owner locality is derived and labelled. No invented phone/email contacts and no outbound owner messaging. This is not a ten-year chain of title.                                                                                                                                                                                                                |
+| Sales — Florida DOR SDF / NAL                                     | 37,020 source sales; 30,977 parcels with a recorded sale in 2025–2026                              | Official appraiser pages advertise 2012–2026 annual sales and monthly all-years bulk data. The advertised FTP directory and a bounded direct annual-download probe returned managed-challenge 403 on normal routes. No older bytes were acquired; ten-year ownership tenure remains unproven.                                                                   |
+| Businesses — Florida DOR TPP                                      | 33,346 source accounts, including 1,883 construction-class and 44 roofing-class NAICS accounts     | All 33,346 are queryable in the hosted preview through a typed business table, REST, MCP and Business view, including 31,286 valid unmatched accounts. 2,060 matched accounts attach to 2,726 properties via 4,451 candidate account–parcel attributions; these are not 4,451 businesses or verified legal identities. Raw payload/contact fields stay private. |
+| Coordinates — Florida GIO, 2025 release                           | 210,935 source features; 209,503 property coordinate pairs retained                                | 6,303 assessed properties lack joined coordinates and remain in the data. Pairs come from one valid source row; centroids are source-backed parcel locations, not a claim of surveyed roof/GPS accuracy.                                                                                                                                                        |
+| County permits — Lake CD Plus                                     | Frozen baseline: 17,671 distinct permits from 17,915 features                                      | Unincorporated Lake only; not complete county history. A later isolated refresh captured 1,118 features / 1,066 distinct permits, adding 265 and updating 801 permit–parcel associations. The fresh window is not yet published and does not confer fresh timestamps on older records. Contractor names are not exposed in this layer.                          |
+| Municipal permits / available contractor names — Clermont eTRAKiT | 58,495 retained permits across all twelve 2015–2026 partitions                                     | Source-listed contractor/contact names and lifecycle observations are retained. Selected contractor-of-record exports and all-contact capture counters have different grains; names are not verified legal/license identities.                                                                                                                                  |
+| Other permit jurisdictions                                        | The [source catalog](pipeline/docs/lake-sources.yaml) enumerates all 15 permitting authorities     | Thirteen municipalities have recorded blocked, unavailable, or manual-only routes. No records are asserted for an unacquired route; jurisdiction and predecessor-system history are not replaced by a county-wide zero.                                                                                                                                         |
+| BBB / contractor ratings                                          | No approved BBB ratings ingested                                                                   | Default access returned 403; this is a policy/API constraint, not proof that BBB is universally unreachable. Null means unavailable enrichment, not a zero score.                                                                                                                                                                                               |
+| Additional corporate/licensing identity                           | No adequate loaded Sunbiz/DBPR historical identity baseline established                            | Separate [kit-conformance difference](#official-kit-conformance-and-evaluation-handoff), not an extra express requirement to prove historical legal-business relationships in the assignment brief.                                                                                                                                                             |
 
 Source endpoints, access evidence, jurisdiction routes, and period limits are in
 [lake-sources.yaml](pipeline/docs/lake-sources.yaml). Raw captures, identity data,
@@ -88,34 +97,36 @@ The conservative derivative has 169,007 valid actual-built-year roof proxies;
 These are not measured roof ages. Partial permit history may omit a replacement,
 and no permit-backed primary-roof completion anchor is currently accepted.
 
-### Execution of steps 1–4 — 2026-09-16
+### Execution of the approved stages 1–4 — 2026-09-17
 
-1. **Data/query work:** the separate source-only packet contains 215,806
-   properties, 76,166 historical permits and all 33,346 business accounts.
-   Historical contractor observations, including unlinked permits, are
-   explorable without implying current/open status or verified legal identity.
-   Ten-year ownership tenure remains an explicitly unmet, access-constrained
-   query; a two-year sales window is not a substitute.
-2. **Incremental/publication work:** an actual on-demand CD Plus refresh
-   completed at `2026-09-16T18:05:22.523Z`; its sanitized
-   [readback](artifacts/refresh-20260916T180522Z.json) records 265 inserted and
-   801 updated associations, excluding derived-age drift, with idempotent
-   reconciliation. The publisher now checks every listed CID, including raw
-   directory blocks, and delivers an actual CID-addressed multi-root CAR with
-   complete offline DAG verification. These repairs do not retrospectively
-   certify older publications or publish the new packet.
-3. **Stability/demo work:** replacement sources now claim exclusive DuckDB
-   worker ownership; an uncaught render error produces a visible recovery
-   panel rather than an empty window. The recorder checks coverage/run identity,
-   all-account business availability, ten MCP tools, live every-CID retrieval,
-   delivered CARs, changed incremental query bytes, prior-byte retrieval,
-   both roofing agent prompts, and console/blank failures. Tests are local;
-   the old hosted runtime has not received these fixes and no final video exists.
-4. **Submission handoff:** use the existing
-   [PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
-   Commit authorship is `rarcifa` only. Its body must distinguish tested code
-   from published data and the deployed release. Final Slowking evaluation
-   awaits the actual matching hosted release and demo, not a local-only score.
+1. **Public evidence:** all 40 listed objects plus the manifest itself have
+   recorded two-host size/SHA-256 proof. The CAR's final check completed at
+   `15:17:03 UTC`; the [combined inventory](artifacts/submission-gateway-inventory-20260917.json)
+   links immutable observation receipts rather than inventing a new publish.
+   Lighthouse metadata confirms registration, not completed independent retention;
+   [the bounded retention check](artifacts/lighthouse-retention-check-20260917T151751Z.json)
+   preserves that missing proof. Filecoin deals are not an added assignment gate.
+2. **Real incremental integration:** the captured CD Plus window is now applied
+   to a separate reproducible source-only packet. Actual Parquet comparisons prove
+   265 inserts, 801 updates and 16,870 unchanged CD Plus records, not timestamp-only
+   CID churn. All 58,495 Clermont records, all business bytes and the prior packet
+   remain unchanged. The new local root differs and its multi-root CAR verifies
+   all 1,353 blocks. [Integration evidence](artifacts/incremental-integration-20260917T152549Z.json)
+   and [held manifest](artifacts/manifest-20260917T152549Z.held.json) explicitly say
+   unpublished. Independent-retention uncertainty holds successful publication
+   and IPNS/history promotion; the incremental public demonstration is unmet.
+3. **Hosted stability and demonstration:** the selected source-only preview is
+   deployed with explicitly bound run/root/coverage, guarded DuckDB access,
+   worker cleanup, safe routing and the `undefined.length` render fix. The
+   hosted walkthrough exercises real views and both roofing agent prompts.
+   It is a partial demonstration, not a passed full-assignment demo. See
+   [delivery handoff](docs/submission-handoff-20260917.md) for the recording,
+   runtime identity, verification and exact missing outcomes.
+4. **Submission handoff:** the owner approved pushing the local work to existing
+   [PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2)
+   and updating its body. Commits are authored and committed only as `rarcifa`.
+   The final Slowking review must identify the exact pushed head, hosted preview
+   and video; no historical score is presented as a new result.
 
 Local checks on 2026-09-16 passed: 484 application tests, 941 pipeline tests,
 four retained transform tests and 100 responsive UI checks. The layout lane
@@ -127,186 +138,22 @@ REST/MCP readback showed all 33,346 accounts, 31,286 unmatched accounts and
 23,696 building-age proxies strictly older than 15 within five miles of the
 chosen Clermont center. This is local data/query proof, not a hosted demo.
 
-The owner-approved Pinata Free key has been created with pin creation/list/status
-permissions only and its JWT is configured locally. A read-only PSA request on
-2026-09-16 returned HTTP 403 with `PAID_FEATURE_ONLY`: "You must be on a paid plan
-to pin by CID". The Pinata secondary-provider route therefore remains blocked
-by plan capability, not an absent token. No paid upgrade, alternate provider or
-publication is authorized by credential setup. Pinata's [plan comparison](https://pinata.cloud/pricing)
-does not include pin-by-CID or native CAR import on Free; an ordinary CAR-file
-upload would not independently retain its inner artifact CIDs.
+### Publication status and historical evidence
 
-The owner subsequently configured an IPFS + Filecoin Lighthouse Lite account:
-500 GB storage at $12/month, with the next billing date shown as 2026-10-16.
-Its supplied `IPFS_API_KEY` passed documented read-only inventory and usage
-requests (HTTP 200, zero files/usage, 536,870,912,000-byte allowance). The owner's
-key is displayed as `admin`; it is not described as a granular pin/read-only key.
-No key value is included in this repository or the documentation corpus.
-The explicit `--secondary-provider lighthouse` branch uses Lighthouse's
-[same-CID pin API](https://docs.lighthouse.storage/how-to/pin-cid), not Pinata's PSA.
-Request acceptance, reconciled inventory/metadata and verified retention are
-separate states. Registration alone cannot advance gateway/history/IPNS promotion;
-the live replication outcome is recorded below. On 2026-09-17 the owner approved
-the existing $12/month Lighthouse plan as a specific exception to the $5/month
-ceiling. The $25 cumulative one-time ceiling and all other constraints remain
-unchanged; this is not approval for a different paid tier or remote execution.
-Live publication still needs its own exact-target approval. The subscription was established
-by the owner; the pipeline did not purchase, renew, cancel or change it. Data
-retention depends on an active provider plan, not an infinite-storage guarantee.
-The Lighthouse adapter and signed replication scope's local verification on
-2026-09-17 passed all 994 pipeline tests (82 files), including provider/credential isolation, interrupted-request
-reconciliation, 20-second request deadlines, atomic private checkpoints and
-rejection of unsupported retention receipts. Arceus confirmed this bounded
-Oracle-adapter route and reviewed the independent scope boundaries; this is
-code verification, not live publication proof.
+The bounded owner-approved replication reconciliation reached
+`REPLICATION_REQUESTS_RECORDED`, revision 22, with all three Filebase imports
+verified and all three Lighthouse registrations reconciled. No successful
+history/IPNS/latest/RAG promotion occurred. Every selected manifest object now
+has recorded two-host public proof; independent retention is still unproved.
+Normal publication/replication no longer requires per-commit personal signing.
 
-The existing publisher also supports a separately approved
-`--execution-scope replication-only` target: the three immutable CAR uploads and
-root/manifest/archive pin requests, with actual accepted/registered/uncertain
-evidence. Its terminal ledger branch is `REPLICATION_REQUESTS_RECORDED`, with
-retention unverified and promotion held. That scope cannot verify gateways,
-append successful history, repoint IPNS or change latest/row hashes/RAG selection;
-terminal retries return evidence locally without repeating remote effects.
-Omitted scope keeps old full-publication signatures unchanged. This local repair
-does not execute uploads or pins and does not satisfy public publication by
-itself; see [the scoped handoff](docs/runbook.md#replication-only-human-approval).
-
-On 2026-09-17 the owner removed our added per-commit personal-signing requirement
-for normal publication and replication. The publisher now accepts an external,
-exact-target human approval manifest recording the owner's actual consent; no
-private key or repeated signing command is required. This follows the official
-kit's human-approval manifest pattern, not cryptographic authentication. Target
-bytes/digests/CIDs, destinations, active window, nonce reservation, current
-runtime provenance and predecessor checks remain enforced. Legacy signed
-approvals and the existing signed recovery evidence remain valid; official
-coverage-only signing remains separate. Retention, gateway, history and IPNS
-verification gates are unchanged. Full publication needs approval for its own
-full target/actions; replication consent never transfers to promotion. This
-change alone is not completed publication, and no full-approved manifest or
-full live invocation was created by the removal.
-
-The owner-approved, no-signing continuation from `66bfce0` completed on
-2026-09-17 at 13:41:32 UTC with exit 0. All three existing Filebase CAR objects
-were reconciled with complete DAG readback, and all three Lighthouse inventory/
-metadata registrations matched the derived DAG block sizes, including the archive.
-The ledger reached `REPLICATION_REQUESTS_RECORDED`, revision 22; the prior accepted
-pin requests were preserved rather than repeated, and no new primary uploads
-were needed. The same immutable manifest/CIDs remain unchanged. IPNS stayed at
-sequence 13; successful history, latest/row hashes and RAG selection were not
-promoted. Retention and every-artifact two-independent-gateway proof remain open;
-this is successful limited replication reconciliation, not `FINALIZED` publication.
-See [the recorded reconciliation](artifacts/replication-reconciliation-20260917T134256Z.json).
-
-Standalone public GET verification completed at 13:52:41 UTC: 39 of the 40
-listed artifacts, plus the manifest itself, matched size/SHA-256 through both
-Filebase and Pinata public gateways. This includes directory raw blocks,
-all query/business/permit tables, sample extracts and every data shard.
-Only `snapshot.car` failed the initial checks: both gateways exceeded the
-60-second deadline; IPFS Lens returned a fetch failure. The longer archive-only
-check then matched the manifest's 341,012,658 bytes and SHA-256 on Filebase,
-but Pinata returned HTTP 429. The complete two-gateway proof remains open for
-that one object. These results do not advance the publisher or prove
-Lighthouse-local retention. See
-[the every-CID results](artifacts/public-gateway-readback-20260917T135241Z.json)
-and [the archive-only result](artifacts/public-gateway-archive-readback-20260917T135314Z.json).
-
-The signed `b3d92c6` live attempt on 2026-09-17 stopped twice on a TLS abort
-before complete primary CAR readback. The root object's size/CID metadata was
-present, but its bytes were not verified; archive/manifest objects were absent
-and no Lighthouse pins were requested. Authenticated S3 CAR Range probes
-returned HTTP 200 with the full object length, not partial responses. IPNS,
-successful history and dataset selection remain unchanged. The local repair
-now verifies an existing object by full streamed byte/size/SHA-256 comparison
-before any PUT, permits creation only on definite absence, rechecks the signed
-authorization/predecessor immediately before creation, and disables SDK PUT
-retries. Ten-minute request/body deadlines produce sanitized byte-count errors;
-there is no Range or sampled-byte fallback. Offline regression checks establish
-that safety contract, not repaired live transport or publication. The old signed
-checkout/object remain preserved; a changed candidate needs exact recorded human
-approval before live execution. Replication-only approval no longer needs signing.
-
-On 2026-09-17 the signed `9218ffc` retry returned S3 GET HTTP 500 before
-receiving bytes, with zero PUTs or pins. Read-only diagnosis ruled out optional
-SDK checksum headers: both request variants returned 500. Filebase's public
-CAR export succeeded, but serializes blocks differently from the original
-upload CAR. The repaired helper verified every one of the 1,352 frozen DAG
-blocks in a complete streamed readback; see the
-[diagnostic](artifacts/filebase-readback-20260917T110926Z.json).
-The explicitly signed `primaryReadback: imported-dag` contract binds the
-existing key through authenticated HEAD and verifies all remote roots, block
-bytes and hashes before recording an effect. Original upload transport
-digests remain distinct from observed export digests. Omitted mode retains
-legacy transport GET behavior; there is no HTTP-500 fallback. Only definite
-HEAD absence permits freshly guarded creation. This diagnosis performed no
-uploads, pins, ledger advancement or IPNS/history/data promotion. The changed
-candidate required its matching human signature before live effects; provider
-gateway readback is not independent retention or two-gateway publication proof.
-
-The owner signed and authorized `e91a76d` for one replication-only invocation on
-2026-09-17. Filebase imports and complete DAG readbacks succeeded: the existing
-root was reconciled, and the archive and manifest were created and verified.
-Lighthouse acknowledged all three same-CID requests with HTTP 200; root and
-manifest registrations reconciled. The archive validation stopped the invocation
-with exit 1: Lighthouse's reported 341,078,214 bytes exactly equal the frozen
-archive DAG's block bytes, not the manifested snapshot file's 341,012,658 bytes. Read-only
-postflight found all three expected CIDs/names in its account inventory, with public metadata.
-This identifies a size-semantics mismatch, not proof of verified retention or
-independent byte retrieval. That failed attempt's ledger remains `MANIFEST_UPLOAD_RECORDED`,
-revision 21; no retry, successful-history append, IPNS/latest/row-hash/RAG
-selection change, push or PR edit occurred. See the
-[sanitized execution evidence](artifacts/filebase-replication-20260917T122123Z.json)
-and the byte-identical, 40-object
-[artifact manifest](artifacts/manifest-20260916T181000Z.json). Repository manifest
-delivery is complete; retention and every-object two-gateway proof remain open.
-
-The subsequent owner-approved local correction derives Lighthouse's expected
-registration size from each frozen CAR's unique, hash-validated, root-reachable
-DAG blocks. An explicit `expectedDagBytes` contract checks provider metadata
-against that value; legacy size checks and Pinata behavior remain unchanged.
-The [offline replay](artifacts/lighthouse-dag-size-replay-20260917T123212Z.json)
-matches all three recorded provider sizes, including the archive, with zero
-network calls or ledger writes. Manifest file sizes/digests, signed transport
-fields, receipt formats and retention/promotion guards are unchanged. This is
-local repair evidence, not a live retry or completed publication.
-
-Authenticated Filebase readback also found the existing IPNS
-pointer at sequence 13, root
-`bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,
-but committed successful history ends at `20260910T225242Z`. Remote CAR object
-existence is not an original successful-publication receipt. Arceus requires
-verified predecessor handoff/recovery before promotion; the predecessor guard
-has not been bypassed and history has not been rewritten. The remote manifest
-`bafkreihujmyavnl3esbsvcfezl35a67lmmfxf3orxhppwjb7ylszidnlpq`
-was recovered from Filebase and IPFS Lens with matching 9,041 bytes / SHA-256
-`f44b300ab57b24832a88a4caf7d07beb630b72edd1b9defb243fc2e5940dab7c`;
-this proves that manifest's current retrieval, not its missing original approval
-or every artifact's historical verification. Hosted agent chat
-also needs the OpenAI credential configured in its cloud secret; the currently
-deployed Lambda has no configured OpenAI secret. No new accounts, paid upgrades,
-full harvest restarts, pruning, or new submission PRs are implied.
-
-The owner approved scoped sequence-13 recovery on 2026-09-16. Its local
-implementation uses Oracle's cross-environment handoff contract and the kit's
-existing Ed25519 human-signature primitive. It preserves the genuine manifest,
-root block, coverage and query-table bytes with two independent current
-readbacks, and binds their evidence, destination and last-known history to a
-separate `externally_observed_recovered` receipt. Original approval, historical
-gateway readback and successful-publication receipt remain explicitly unknown;
-no historical run is marked successful. The owner signed the recovery request
-and explicitly trusted its public key; local acceptance completed at
-`2026-09-16T19:09:34.942Z` without modifying IPNS or history. Its accepted receipt
-digest is `sha256:e8da5893fdf57eb72a82682acfdb5c2ad6bbc74261d39d5b45996ff9d4d97e71`.
-Only that verified receipt can anchor a later separately authorized publication;
-the new publication approval also binds the recovery receipt's digest.
-Live name/root/sequence drift is rejected before upload, pin creation or
-promotion. Recovery itself has no pin, IPNS write, deploy or harvest action.
-See the [operator recovery procedure](docs/runbook.md#external-predecessor-recovery).
-
-Publication accounting distinguishes the legacy 2,060 parcel-matched business
-accounts from the modern all-account table's 33,346 queryable source accounts.
-The new table's actual Parquet row count and unique, non-empty account IDs are
-checked before publication. Retaining 31,286 previously unmatched accounts is
-new query availability, not a fresh source capture or verified legal identity.
+[The delivery handoff](docs/submission-handoff-20260917.md) supplies exact CIDs,
+CAR digest/import instructions, immutable refresh evidence, provider hold and
+cost/authority boundaries. [Historical provider/recovery attempts](docs/publication-history-20260917.md)
+remain preserved separately and must not be mistaken for current readiness.
+The existing owner-funded Lighthouse Lite US$12/month plan is the expressly
+approved exception to the US$5/month storage ceiling; no new paid tier or
+account is authorized. No provider key is committed or included in the RAG corpus.
 
 ## Every acceptance criterion: evidence and remaining proof
 
@@ -318,57 +165,57 @@ execution.
 
 ### Geography and data loading
 
-| ID  | Brief requirement                                                          | Current status / evidence                                                                                                                                                                                 | Exact remaining proof or boundary                                                                                                                                                                                  |
-| --- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| G1  | Lake County, FL is the default and primary geography                       | Verified locally; county `lake`, FIPS `12069` in the [source catalog](pipeline/docs/lake-sources.yaml) and [runtime](packages/server/src/config.ts)                                                       | The final UI/agent demonstration must use this county, not reference-county fixtures.                                                                                                                              |
-| L1  | Run until all available county data is uploaded                            | Partial; full assessed roll and Clermont 2015–2026 retained; [source and period boundaries](docs/lake-retained-evidence-repair.md)                                                                        | Clearly separate accessible loaded data, constrained routes, unknown sources, and published data. No current all-county-complete claim.                                                                            |
-| L2  | Load available property records                                            | Verified locally and recorded in the older public release; 215,806 distinct properties, [readback](docs/lake-query-repair.md) / [history](artifacts/run-history.json)                                     | Serve that same chosen dataset in the final demonstration.                                                                                                                                                         |
-| L3  | Load available permits, emphasizing roofing                                | Verified locally for 76,166 retained permits; [permit-grain result](docs/lake-retained-evidence-repair.md)                                                                                                | Publish/integrate the full retained table and demonstrate defensible roofing classification; CD Plus and municipal history limits remain explicit.                                                                 |
-| L4  | Preserve status, open/close dates or equivalent, and duration-open signals | Observations preserved; current decision result not demonstrated; [decision contract](docs/lake-retained-evidence-repair.md)                                                                              | Establish source-backed status/date/work-type semantics and an explicit as-of date for long-open results. Equivalent lifecycle fields are allowed; three separate closing dates are not an assignment requirement. |
-| L5  | Load available ownership records                                           | Verified locally; NAL owner/mailing fields and [owner query implementation](packages/server/src/data/queries.ts)                                                                                          | Demonstrate the available owner fields without claiming a complete ownership history.                                                                                                                              |
-| L6  | Load available contractor records                                          | Partial / source-constrained; Clermont names retained, [contractor boundaries](packages/shared/src/honesty.ts)                                                                                            | Display source-listed names with permit provenance and jurisdiction scope. Historical verified legal-company relationships are not established or required as an express brief clause.                             |
-| L7  | Load BBB / rating scores where publicly available                          | Source-constrained; no approved BBB enrichment, [access evidence](pipeline/docs/lake-sources.yaml)                                                                                                        | Show missing ratings and the access reason; do not invent scores or require an indefinite wait for conditional enrichment.                                                                                         |
-| L8  | Load available business records                                            | Verified locally: all 33,346 account-grain records, including 31,286 unmatched, through [typed business queries](packages/shared/src/businesses.ts) and REST/MCP/UI                                       | Publish/serve the same account table in the final demonstration. Distinguish source accounts from candidate parcel associations and verified legal companies.                                                      |
-| L9  | Load location/coordinates for radius queries                               | Verified locally; 209,503 intact coordinate pairs, [readback](docs/lake-query-repair.md)                                                                                                                  | Demonstrate the radius result and source location basis; keep missing coordinates null rather than dropping properties.                                                                                            |
-| L10 | Roof age or best-available proxies, configurable threshold (suggested 15)  | Verified locally for actual-built-year proxies; [proxy result](docs/lake-retained-evidence-repair.md)                                                                                                     | Show basis, confidence, as-of date, configurable threshold and incomplete-history caveat. Do not call building age measured roof age.                                                                              |
-| L11 | Reconcile duplicate entities across uploaded datasets                      | Partial / verified locally at property and permit grain; unique folios, stable permit identity, 72,187 links and 3,979 preserved unlinked records, [readback](docs/lake-query-repair.md)                  | Demonstrate cross-source matching and ambiguous/unmatched cases; address sharing or identical contractor names alone do not prove entity equality.                                                                 |
-| L12 | Preserve source provenance                                                 | Verified locally; original observations, IDs, URLs, source/configuration and byte digests, [query provenance](docs/lake-query-repair.md) / [derivative provenance](docs/lake-retained-evidence-repair.md) | The final tables, UI and agent citations must identify the exact chosen run. Unknown per-record observation time stays unknown; export/certification time is not substituted.                                      |
+| ID  | Brief requirement                                                          | Current status / evidence                                                                                                                                                                | Exact remaining proof or boundary                                                                                                                                                                                  |
+| --- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| G1  | Lake County, FL is the default and primary geography                       | Observed hosted preview; Lake County / FIPS 12069 in matching coverage and live data                                                                                                     | Hosted demo remains partial; no reference-county fixtures.                                                                                                                                                         |
+| L1  | Run until all available county data is uploaded                            | Partial; full assessed roll and Clermont 2015–2026 retained; [source and period boundaries](docs/lake-retained-evidence-repair.md)                                                       | Clearly separate accessible loaded data, constrained routes, unknown sources, and published data. No current all-county-complete claim.                                                                            |
+| L2  | Load available property records                                            | Public CID-backed hosted preview: 215,806 properties; [chosen manifest](artifacts/manifest-20260916T181000Z.json)                                                                        | Successful publication promotion held; all assessed properties retained.                                                                                                                                           |
+| L3  | Load available permits, emphasizing roofing                                | Hosted: 76,166 historical permits, including 58,495 Clermont; later local candidate 76,431                                                                                               | Current roofing classification remains unaccepted; no countywide permit-history claim.                                                                                                                             |
+| L4  | Preserve status, open/close dates or equivalent, and duration-open signals | Observations preserved; current decision result not demonstrated; [decision contract](docs/lake-retained-evidence-repair.md)                                                             | Establish source-backed status/date/work-type semantics and an explicit as-of date for long-open results. Equivalent lifecycle fields are allowed; three separate closing dates are not an assignment requirement. |
+| L5  | Load available ownership records                                           | Hosted NAL owner/mailing fields and owner-locality results                                                                                                                               | Owner mailing geography is not verified residency or a complete ownership history.                                                                                                                                 |
+| L6  | Load available contractor records                                          | Hosted historical permit observations with Clermont source-listed names; [scope](packages/shared/src/honesty.ts)                                                                         | Not verified licenses/legal companies; names outside acquired jurisdiction remain unknown.                                                                                                                         |
+| L7  | Load BBB / rating scores where publicly available                          | Source-constrained; no approved BBB enrichment, [access evidence](pipeline/docs/lake-sources.yaml)                                                                                       | Show missing ratings and the access reason; do not invent scores or require an indefinite wait for conditional enrichment.                                                                                         |
+| L8  | Load available business records                                            | Hosted all 33,346 TPP accounts, including 31,286 valid unmatched accounts                                                                                                                | Account–parcel candidates are not verified legal companies or proof of permit work.                                                                                                                                |
+| L9  | Load location/coordinates for radius queries                               | Hosted 209,503 coordinate pairs; actual five-mile radius query observed                                                                                                                  | 6,303 assessed properties have null joined coordinates and remain retained.                                                                                                                                        |
+| L10 | Roof age or best-available proxies, configurable threshold (suggested 15)  | Hosted configurable built-year proxy; threshold 16 demonstrates strictly older than 15                                                                                                   | Low confidence, as-of 2026-09-16; not measured roof age, replacement history incomplete.                                                                                                                           |
+| L11 | Reconcile duplicate entities across uploaded datasets                      | Partial / verified locally at property and permit grain; unique folios, stable permit identity, 72,187 links and 3,979 preserved unlinked records, [readback](docs/lake-query-repair.md) | Demonstrate cross-source matching and ambiguous/unmatched cases; address sharing or identical contractor names alone do not prove entity equality.                                                                 |
+| L12 | Preserve source provenance                                                 | Hosted SQL/source/run/root provenance; immutable capture and export digests retained                                                                                                     | Unknown original observation times remain unknown; export time is not substituted.                                                                                                                                 |
 
 ### Continuous and incremental ingestion
 
-| ID  | Brief requirement                                                                                 | Current status / evidence                                                                                                                                                         | Exact remaining proof or boundary                                                                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I1  | Ongoing new/changed ingestion: on-demand or scheduled, windows/change detection, idempotent steps | Verified locally: actual bounded CD Plus refresh with 265 inserted / 801 updated associations and idempotent readback, [refresh receipt](artifacts/refresh-20260916T180522Z.json) | Integrate and republish the later snapshot with a distinct CID and matching history. No permanently hosted scheduler is required; this receipt alone is not publication proof.                                                                |
-| I2  | Visible run history: timestamps, sources, counts, deltas and limitations                          | Demonstrated for recorded releases; [seven-run history](artifacts/run-history.json) and coverage snapshots                                                                        | Include the full retained dataset's later runs and surface matching history in the final run summary. Property row-hash deltas and other table row-count deltas are labelled separately.                                                      |
-| I3  | Show ongoing ingestion/publishing through multiple runs or simulated updates                      | Historical evidence; three incremental-mode releases report zero property deltas; a later full run records 195 property updates, [history](artifacts/run-history.json)            | Demonstrate a later update with truthful deltas and new immutable artifacts for the final dataset. If simulated, label it as such and preserve the real Lake baseline. A changed metadata CID alone is not proof of changed property records. |
+| ID  | Brief requirement                                                                                 | Current status / evidence                                                                                                                       | Exact remaining proof or boundary                                                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | Ongoing new/changed ingestion: on-demand or scheduled, windows/change detection, idempotent steps | Real bounded capture and source-only integration: 265 inserts, 801 updates; [evidence](artifacts/incremental-integration-20260917T152549Z.json) | Later distinct-CID packet is local/unpublished; republish and matching successful history remain unmet.                                                                                  |
+| I2  | Visible run history: timestamps, sources, counts, deltas and limitations                          | Demonstrated for recorded releases; [seven-run history](artifacts/run-history.json) and coverage snapshots                                      | Include the full retained dataset's later runs and surface matching history in the final run summary. Property row-hash deltas and other table row-count deltas are labelled separately. |
+| I3  | Show ongoing ingestion/publishing through multiple runs or simulated updates                      | Actual changed-record later packet has new root/manifest/CAR, prior36 files unchanged                                                           | No second successful public publish; unchanged metadata alone is not claimed as data change.                                                                                             |
 
 ### Infrastructure and access
 
-| ID  | Brief requirement                                 | Current status / evidence                                                                                                                                                          | Exact remaining proof or boundary                                                                                                                           |
-| --- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1  | Optimize performance where feasible               | Measured bulk downloads/joins, bounded worker recovery and direct Parquet consolidation, [performance evidence](docs/cost.md)                                                      | Existing 2026-09-09–11 timings are historical benchmarks, not a promise of current full-harvest ETA.                                                        |
-| A2  | Identify slow/constrained sources                 | Demonstrated in discovery records; Clermont HTML is slow; managed challenges, manual-only routes, API policy and paging/IN-list limits, [catalog](pipeline/docs/lake-sources.yaml) | Keep constraints per source, jurisdiction and period; do not evade controls.                                                                                |
-| A3  | Document speed limitations/source constraints     | Demonstrated as documentation; [cost/performance model](docs/cost.md) / [source catalog](pipeline/docs/lake-sources.yaml)                                                          | Carry these limitations into the final run coverage and presentation, not just this README.                                                                 |
-| A4  | No ongoing Oracle infrastructure cost by default  | Implemented design; consumer-side DuckDB, immutable files, optional owner-funded compute, [cost model](docs/cost.md)                                                               | Demonstrate consumer querying independently of the hosted demo. Pins, storage, model calls and optional hosting are not claimed free forever.               |
-| A5  | IPFS for eligible decentralized dataset artifacts | Historical publication recorded; [manifest](artifacts/manifest-20260910T225242Z.json)                                                                                              | Publish the chosen new dataset under an exact approved release and prove retention/public retrieval. Private captures are not public dataset artifacts.     |
-| A6  | DuckDB for local/portable analytics               | Verified locally on real full retained data; [91 API/MCP/DuckDB checks](docs/lake-query-repair.md)                                                                                 | Demonstrate the final artifacts in DuckDB without an Oracle-hosted database dependency.                                                                     |
-| A7  | MCP-ready database structure                      | Implemented typed property/permit views and read-only query schema; [server interface](packages/server/README.md)                                                                  | Show the chosen data through the same documented model and MCP tools; no CRM redesign is needed.                                                            |
-| A8  | Agent access to query the database                | Implemented OpenAI/Vercel AI SDK tool-backed agent plus MCP, [server interface](packages/server/README.md)                                                                         | A successful real-model answer against the full repaired dataset is not demonstrated by key-free MCP tests.                                                 |
-| A9  | UI for exploring uploaded data                    | Implemented React search, detail, Tenant/Business/Contractor views and SQL explorer; [UI sources](packages/ui/src/views)                                                           | Demonstrate the chosen published data, not mocked layout tests or the stale hosted release; address reported console/black-window issues during that check. |
+| ID  | Brief requirement                                 | Current status / evidence                                                                                                                                                          | Exact remaining proof or boundary                                                                                                             |
+| --- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Optimize performance where feasible               | Measured bulk downloads/joins, bounded worker recovery and direct Parquet consolidation, [performance evidence](docs/cost.md)                                                      | Existing 2026-09-09–11 timings are historical benchmarks, not a promise of current full-harvest ETA.                                          |
+| A2  | Identify slow/constrained sources                 | Demonstrated in discovery records; Clermont HTML is slow; managed challenges, manual-only routes, API policy and paging/IN-list limits, [catalog](pipeline/docs/lake-sources.yaml) | Keep constraints per source, jurisdiction and period; do not evade controls.                                                                  |
+| A3  | Document speed limitations/source constraints     | Demonstrated as documentation; [cost/performance model](docs/cost.md) / [source catalog](pipeline/docs/lake-sources.yaml)                                                          | Carry these limitations into the final run coverage and presentation, not just this README.                                                   |
+| A4  | No ongoing Oracle infrastructure cost by default  | Implemented design; consumer-side DuckDB, immutable files, optional owner-funded compute, [cost model](docs/cost.md)                                                               | Demonstrate consumer querying independently of the hosted demo. Pins, storage, model calls and optional hosting are not claimed free forever. |
+| A5  | IPFS for eligible decentralized dataset artifacts | Chosen public CID imports and all-object readback recorded; [manifest](artifacts/manifest-20260916T181000Z.json)                                                                   | Independent retention and successful promotion remain held; no raw private captures published.                                                |
+| A6  | DuckDB for local/portable analytics               | Real data queried by hosted DuckDB and portable local checks; [query layer](docs/lake-query-repair.md)                                                                             | Hosted Lambda is optional convenience, not a persistent hosted database.                                                                      |
+| A7  | MCP-ready database structure                      | Ten hosted MCP tools over the same typed property/permit/business model                                                                                                            | Dataset information identifies the same selected run/root; unsupported conclusions are refused.                                               |
+| A8  | Agent access to query the database                | Live AI SDK/OpenAI agent answered both roofing discovery prompts                                                                                                                   | Source-backed proxies available; open-roofing decision refused instead of invented results.                                                   |
+| A9  | UI for exploring uploaded data                    | Live real-data UI views; blank-window fault fixed and regression-tested                                                                                                            | Final hosted partial recording includes console/blank checks; no full-assignment readiness claim.                                             |
 
 ### IPFS publication
 
-| ID  | Brief requirement                                                                                                                   | Current status / evidence                                                                                                                                      | Exact remaining proof or boundary                                                                                                                                                                                                                                     |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | CIDs are durable artifact identity; vendor URLs are locators                                                                        | Implemented; CID fields in [manifests](artifacts/manifest-20260910T225242Z.json) and [run history](artifacts/run-history.json)                                 | Cite the exact snapshot CID; never substitute an S3 object, dashboard or gateway URL as the identity.                                                                                                                                                                 |
-| P2  | Prefer CIDv1/base32 for every object                                                                                                | Demonstrated in the recorded manifest; [CID implementation](pipeline/src/core/cid.mjs)                                                                         | The final manifest must retain CIDv1 for every eligible object.                                                                                                                                                                                                       |
-| P3  | Public bytes survive local/demo teardown and loss of any single pin vendor                                                          | Not fully demonstrated; second-provider pin stage is implemented, [retention design](docs/cost.md) / [pin implementation](pipeline/src/core/secondary-pin.mjs) | Establish independent retention for the chosen objects. Two HTTP gateways alone do not prove independent pinning or survival after all pins disappear.                                                                                                                |
-| P4  | Per-run JSON manifest: every eligible object, logical name/path, CID, size, file/directory codec, digest; optional provider origins | Demonstrated format for the older release; its [manifest](artifacts/manifest-20260910T225242Z.json) lists 33 objects                                           | Build the complete final inventory: tables, coverage, indexes, extracts, and directory roots. Provider multiaddrs are optional when no candidate-operated node is serving; do not invent them. Directory digests describe DAG bytes, not a gateway HTML listing.      |
-| P5  | If IPNS is used, retain both name and resolved run CID                                                                              | Demonstrated for recorded runs; [public pointer](artifacts/latest.json) / [history](artifacts/run-history.json)                                                | Record verified resolution for the new release. The single owned name is a mutable pointer, never the snapshot identity.                                                                                                                                              |
-| P6  | Incremental republish creates new CIDs, keeps prior bytes/CIDs/history immutable                                                    | Historical distinct roots and run identities recorded; [history](artifacts/run-history.json)                                                                   | Demonstrate prior and new artifacts still retrieve, with truthful data deltas. Retaining identifiers alone is not a current prior-byte readback.                                                                                                                      |
-| P7  | Publish a CAR of the DAG for each directory artifact                                                                                | CAR generation implemented; [CAR code](pipeline/src/core/car.mjs)                                                                                              | Actual delivered, retrievable CARs rooted at each listed directory CID are not established here. The legacy carCid equals rootCid and the format=car locator alone are not delivery/import proof.                                                                     |
-| P8  | Fetch each listed CID via at least two independent public gateways; match size/digest                                               | Partial recorded proof; [verification receipt](artifacts/verification-20260910T225242Z.json) has 10 entries including the manifest                             | Only 9 of the manifest's 33 listed objects have matching verified CID entries; 24 are uncovered (21 shard files and 3 directories). Verify every final listed CID through two independent public gateways, with byte-size/digest semantics appropriate to files/DAGs. |
-| P9  | Include manifests and CARs in repository or demo packet for third-party retrieval                                                   | Manifest/history/receipts are committed in [artifacts](artifacts); complete CAR packet not demonstrated                                                        | Deliver the final manifests and CARs, including exact retrieval/import instructions. A private operator path is not an evaluator-accessible packet.                                                                                                                   |
+| ID  | Brief requirement                                                                                                                   | Current status / evidence                                                                                                                                      | Exact remaining proof or boundary                                                                                                                      |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1  | CIDs are durable artifact identity; vendor URLs are locators                                                                        | Exact CID identities in [chosen manifest](artifacts/manifest-20260916T181000Z.json)                                                                            | Hosted preview root is distinct from older successful latest/IPNS pointer.                                                                             |
+| P2  | Prefer CIDv1/base32 for every object                                                                                                | All chosen manifest objects use CIDv1/base32                                                                                                                   | Keep immutable identity; vendor URLs are locators.                                                                                                     |
+| P3  | Public bytes survive local/demo teardown and loss of any single pin vendor                                                          | Not fully demonstrated; second-provider pin stage is implemented, [retention design](docs/cost.md) / [pin implementation](pipeline/src/core/secondary-pin.mjs) | Establish independent retention for the chosen objects. Two HTTP gateways alone do not prove independent pinning or survival after all pins disappear. |
+| P4  | Per-run JSON manifest: every eligible object, logical name/path, CID, size, file/directory codec, digest; optional provider origins | Chosen complete manifest lists40 objects with path/CID/size/codec/digest                                                                                       | Manifest itself separately verified; optional provider origins omitted, not invented.                                                                  |
+| P5  | If IPNS is used, retain both name and resolved run CID                                                                              | Demonstrated for recorded runs; [public pointer](artifacts/latest.json) / [history](artifacts/run-history.json)                                                | Record verified resolution for the new release. The single owned name is a mutable pointer, never the snapshot identity.                               |
+| P6  | Incremental republish creates new CIDs, keeps prior bytes/CIDs/history immutable                                                    | Changed later Parquet data creates distinct local CIDs; previous packet unchanged                                                                              | Public incremental republish, prior-current public readback and new successful history remain unmet.                                                   |
+| P7  | Publish a CAR of the DAG for each directory artifact                                                                                | Public snapshot.car contains all listed directory DAGs; full digest readback and offline block verification                                                    | Logical CAR is341,012,658 bytes, not root-only import transport or provider export.                                                                    |
+| P8  | Fetch each listed CID via at least two independent public gateways; match size/digest                                               | All40 listed objects plus manifest have two-host size/digest matches; [inventory](artifacts/submission-gateway-inventory-20260917.json)                        | Proof aggregates dated standalone observations; not a FINALIZED receipt or independent retention proof.                                                |
+| P9  | Include manifests and CARs in repository or demo packet for third-party retrieval                                                   | Committed chosen manifest and CID-addressed public CAR with retrieval instructions in [handoff](docs/submission-handoff-20260917.md)                           | Later held candidate manifest is committed but its CAR is private/unpublished, explicitly not delivered.                                               |
 
 The gateway examples in the brief are examples, not a requirement to use only
 ipfs.io or dweb.link. The recorded receipt used public Filebase and IPFS Lens
@@ -378,26 +225,26 @@ in the source/runbook evidence, not bypassed.
 
 ### Roofing CRM–supporting queries
 
-| ID  | Brief requirement                                                  | Current status / evidence                                                                                                                                                  | Exact remaining proof or boundary                                                                                                                                                        |
-| --- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | Radius search around GPS point/map pin                             | Implemented great-circle distance and coordinate filters; [shared SQL](packages/shared/src/sql.ts)                                                                         | Demonstrate actual property results for a chosen center/radius with coordinates and provenance. Pin/GPS interaction design is out of scope.                                              |
-| Q2  | Roof age over 15 or configurable threshold                         | Verified locally for built-year proxy, [derivative result](docs/lake-retained-evidence-repair.md)                                                                          | Show the basis and missing-data caveat; distinguish strictly greater than 15 from an at-least-15 filter.                                                                                 |
-| Q3  | Open roofing permits, especially long-open permits                 | Implemented filters, but not demonstrated by the current conservative preview; [preview guard](packages/server/src/data/queries.ts)                                        | Accept defensible status/date/roofing semantics and demonstrate duration sorted long-open results. The preview currently refuses these filters rather than returning a false empty list. |
-| Q4  | Permit details with contractor name and BBB rating where available | Partial; permit-grain and source-listed Clermont names are retained, [evidence contract](docs/lake-retained-evidence-repair.md) / [MCP surface](packages/server/README.md) | Show permit/source name details without claiming verified license/legal identity; explain conditional null BBB fields.                                                                   |
-| Q5  | Properties without ownership exchange for more than 10 years       | Not demonstrated; inspected 2025–2026 sales cannot prove tenure, [sales boundary](pipeline/docs/lake-sources.yaml)                                                         | Use sufficiently historical official ownership evidence, or explicitly report this unmet question. no_recorded_sale_in_dor_window is not a ten-year tenure result.                       |
-| Q6  | Regional/out-of-area owners                                        | Implemented owner-mailing locality derivation; [owner query](packages/server/src/data/queries.ts)                                                                          | Demonstrate the locality basis and available owner fields; mailing geography is not verified residency.                                                                                  |
-| Q7  | Source-backed answers where source data is available               | Implemented SQL/run/source/parcel provenance, [query layer](packages/server/src/data/queries.ts)                                                                           | Show UI and agent answers bound to the same exact dataset, and abstain on unsupported parts. Documentation RAG is not a substitute for querying parcel rows.                             |
+| ID  | Brief requirement                                                  | Current status / evidence                                                                                                           | Exact remaining proof or boundary                                                                                                                                                        |
+| --- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Radius search around GPS point/map pin                             | Hosted five-mile radius search returns actual properties, coordinates and SQL/run/source provenance                                 | Map/GPS interaction design is not scored as pipeline scope.                                                                                                                              |
+| Q2  | Roof age over 15 or configurable threshold                         | Hosted strictly-over-15 search returns 23,696 building-age proxies within five miles of 28.5494, -81.7729                           | Threshold16 on integer ages; low-confidence built-year basis, not measured roof age.                                                                                                     |
+| Q3  | Open roofing permits, especially long-open permits                 | Implemented filters, but not demonstrated by the current conservative preview; [preview guard](packages/server/src/data/queries.ts) | Accept defensible status/date/roofing semantics and demonstrate duration sorted long-open results. The preview currently refuses these filters rather than returning a false empty list. |
+| Q4  | Permit details with contractor name and BBB rating where available | Hosted historical permit-grain observations and source-listed Clermont contractor names                                             | BBB unavailable/null, legal identity unverified; current-open classification remains refused.                                                                                            |
+| Q5  | Properties without ownership exchange for more than 10 years       | Not demonstrated; inspected 2025–2026 sales cannot prove tenure, [sales boundary](pipeline/docs/lake-sources.yaml)                  | Use sufficiently historical official ownership evidence, or explicitly report this unmet question. no_recorded_sale_in_dor_window is not a ten-year tenure result.                       |
+| Q6  | Regional/out-of-area owners                                        | Hosted Tenant view shows owner-mailing geography derived from NAL                                                                   | Out-of-area mailing address is a labelled proxy for locality, not verified residency.                                                                                                    |
+| Q7  | Source-backed answers where source data is available               | Live views and agent answer from matching run/root, SQL and upstream provenance                                                     | Documentation RAG structured selector remains older local candidate; its text is not parcel-row evidence.                                                                                |
 
 ### Demonstration requirements
 
-| ID  | Brief requirement                                          | Current status / evidence                                                                                                                        | Exact remaining proof or boundary                                                                                                              |
-| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Demonstrate uploaded dataset through UI                    | UI implemented; final full-data demonstration not established, [existing demo script](docs/demo-script.md)                                       | Record the final chosen hosted dataset and visible source limitations.                                                                         |
-| D2  | Demonstrate roofing-aligned agent query                    | Agent implemented; repaired-data model answer not demonstrated, [server interface](packages/server/README.md)                                    | Execute both roofing discovery prompts with source-backed results and explicit assumptions/missing fields.                                     |
-| D3  | Demonstrate operation without Oracle infrastructure cost   | Portable read path implemented, [cost model](docs/cost.md)                                                                                       | Show consumer-side DuckDB/MCP access; identify who funds ongoing retention and optional demo operations.                                       |
-| D4  | Demonstrate public CID manifest plus independent retrieval | Partial historical receipts, [manifest](artifacts/manifest-20260910T225242Z.json) / [verification](artifacts/verification-20260910T225242Z.json) | Complete final all-object two-gateway and portable CAR proof, rather than showing private-only access.                                         |
-| D5  | Fulfill both Oracle and builder responsibilities           | Partial; ingestion, code, evidence and cost design exist                                                                                         | Tie collection/reconciliation/publication evidence and builder implementation/demo together. Do not claim fulfilled from code or a plan alone. |
-| D6  | Pass demo using real uploaded Lake County records          | Real retained records verified locally; final uploaded/demo state not established, [query readback](docs/lake-query-repair.md)                   | Use real selected Lake records throughout; no fixtures, old CIDs or stale video can stand in for the final dataset.                            |
+| ID  | Brief requirement                                          | Current status / evidence                                                               | Exact remaining proof or boundary                                                                                                              |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Demonstrate uploaded dataset through UI                    | Actual hosted partial-data walkthrough; [delivery](docs/submission-handoff-20260917.md) | Not a passed full-county/full-brief demonstration.                                                                                             |
+| D2  | Demonstrate roofing-aligned agent query                    | Both original roofing prompts received live hosted model responses                      | Proxy query supported; current-open roofing question receives explicit unsupported-data answer.                                                |
+| D3  | Demonstrate operation without Oracle infrastructure cost   | Portable read path implemented, [cost model](docs/cost.md)                              | Show consumer-side DuckDB/MCP access; identify who funds ongoing retention and optional demo operations.                                       |
+| D4  | Demonstrate public CID manifest plus independent retrieval | Every selected CID has public two-host proof; actual manifest/CAR available by CID      | Independent retention remains unproved; new incremental run remains unpublished.                                                               |
+| D5  | Fulfill both Oracle and builder responsibilities           | Partial; ingestion, code, evidence and cost design exist                                | Tie collection/reconciliation/publication evidence and builder implementation/demo together. Do not claim fulfilled from code or a plan alone. |
+| D6  | Pass demo using real uploaded Lake County records          | Real chosen Lake records served and recorded, not fixtures                              | Full demo remains unpassed because lifecycle, tenure, retention and incremental publication are unmet.                                         |
 
 ## Demo transcript: expected-result checklist
 
@@ -408,20 +255,20 @@ recording checklist, not a claim that the beats have already passed. The
 source-only packets that cannot demonstrate accepted current/open decisions.
 They are execution checks, not evidence that the final demo has already passed.
 
-| Step | Brief beat / expected result                                                                                        | Where to show it                                                                                | Current proof / missing proof                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| M0   | Opening: Lake data loaded, DuckDB queryable, immutable IPFS snapshots, UI and agent roofing discovery               | State the chosen run and scope before presenting                                                | Full local records exist; do not announce all-county completion or final-public readiness before their evidence exists.             |
-| M1   | Completed run summary: sources, county coverage, counts, timestamps and limitations                                 | /api/meta/run and visible run/coverage summary; [history](artifacts/run-history.json)           | Historical history exists; final summary must match the full chosen dataset and distinguish constrained/unknown sources.            |
-| M2   | Total uploaded records by property, permit, ownership, contractor/BBB, business and coordinate source               | /api/stats, coverage and source-count table                                                     | Preserve source/entity/link grains and actual collection timestamps; unknown observation time cannot become a fabricated timestamp. |
-| M3   | DuckDB-backed structured querying with no Oracle-hosted database                                                    | UI SQL explorer and consumer-side DuckDB                                                        | Local real-data checks exist; demonstrate the chosen final artifacts rather than relying on a mock or remote database.              |
-| M4   | Manifest lists every eligible artifact, CID, size, logical name, codec, digest; IPNS name plus resolved CID if used | Final manifest JSON and run pointer                                                             | Older manifest format exists; final inventory/identity must be supplied without borrowing old CIDs.                                 |
-| M5   | Retrieve artifact by CID from two independent public gateways and verify matching bytes                             | Gateway fetch plus recorded size/digest result                                                  | Selected historical objects passed; repeat for every final listed CID, not just a vendor dashboard.                                 |
-| M6   | Later incremental publish changes CID, preserves prior CID; both in history; directory CAR available                | Two run manifests/history, public readbacks and CAR packet                                      | Historical runs exist; demonstrate actual later data or labelled simulation and deliver CARs.                                       |
-| M7   | UI radius query for roofs over 15: age basis, coordinates, provenance                                               | Search/detail views, chosen center and radius                                                   | Built-year proxy is allowed; show threshold/basis and partial-history caveat.                                                       |
-| M8   | UI long-open roofing permits: status, duration, contractor and BBB where present, source backing                    | Contractor/search views and permit detail                                                       | Current preview blocks open filters; semantics and actual final results remain to be demonstrated.                                  |
-| M9   | Agent: “Which properties in Lake County within five miles of [city xyz] have roofs older than 15 years?”            | Agent chat plus SQL/parcel/source citations                                                     | Use a real chosen Lake center and source-backed proxy explanation, not documentation-only retrieval.                                |
-| M10  | Agent: long-open nearby roofing permits and listed contractor                                                       | Agent chat plus permit provenance                                                               | Show status/as-of/duration and source name; explain unavailable BBB and any unanswerable portion.                                   |
-| M11  | MCP-ready interface/model usable by agents and CRM without changing the data model                                  | MCP initialize, tools/list and representative tool call; [MCP guide](packages/server/README.md) | Local tool checks exist; confirm the same chosen final dataset and coverage identity.                                               |
+| Step | Brief beat / expected result                                                                                        | Where to show it                                                              | Current proof / missing proof                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| M0   | Opening: Lake data loaded, DuckDB queryable, immutable IPFS snapshots, UI and agent roofing discovery               | Selected source-only partial run; no all-county/FINALIZED claim               | State partial scope and exact run/CID before presenting.                              |
+| M1   | Completed run summary: sources, county coverage, counts, timestamps and limitations                                 | Hosted run/root/coverage agree; counts and limitations visible                | Successful historical run history is preserved separately, not rewritten for preview. |
+| M2   | Total uploaded records by property, permit, ownership, contractor/BBB, business and coordinate source               | Live counts conserve 215,806 properties/76,166 permits/33,346 businesses      | Source/entity/link grains preserved; unknown capture timestamps not fabricated.       |
+| M3   | DuckDB-backed structured querying with no Oracle-hosted database                                                    | Real DuckDB queries in UI and portable tooling                                | Optional Lambda incurs owner usage costs; no hosted DB required.                      |
+| M4   | Manifest lists every eligible artifact, CID, size, logical name, codec, digest; IPNS name plus resolved CID if used | Committed chosen 40-object manifest, independently retrievable manifestCID    | Owned IPNS still names predecessor; preview does not pretend it was repointed.        |
+| M5   | Retrieve artifact by CID from two independent public gateways and verify matching bytes                             | All40+manifest recorded two-host matches including 341,012,658-byte CAR       | Standalone observation reports are not promotion receipts.                            |
+| M6   | Later incremental publish changes CID, preserves prior CID; both in history; directory CAR available                | Actual later 265/801 window has changed local Parquet/CIDs and verified CAR   | Not demonstrated publicly; held packet is not an incremental successful publish.      |
+| M7   | UI radius query for roofs over 15: age basis, coordinates, provenance                                               | Real radius/age query, basis and provenance observed                          | Strictly>15 uses integer threshold 16; low confidence/year-built proxy.               |
+| M8   | UI long-open roofing permits: status, duration, contractor and BBB where present, source backing                    | Historical observations visible; current-open decisions explicitly unknown    | Open status/duration/roofing semantics remain unmet, not an empty list.               |
+| M9   | Agent: “Which properties in Lake County within five miles of [city xyz] have roofs older than 15 years?”            | Live model answers original aged-roof prompt using actual tools               | Explain built-year proxy, as-of date and incomplete replacement history.              |
+| M10  | Agent: long-open nearby roofing permits and listed contractor                                                       | Live model answers original long-open prompt with unsupported-data limitation | Cannot produce defensible current-open lead list; BBB unavailable.                    |
+| M11  | MCP-ready interface/model usable by agents and CRM without changing the data model                                  | Hosted ten-tool MCP contract and matching run/root                            | No CRM data-model redesign required.                                                  |
 
 ## Fixed remaining assignment work
 

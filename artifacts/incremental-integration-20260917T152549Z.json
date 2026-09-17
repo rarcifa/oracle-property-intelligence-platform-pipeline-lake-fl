@@ -1,0 +1,213 @@
+{
+  "schemaVersion": "oracle.lake-held-incremental-packet.v1",
+  "capturedAt": "2026-09-17T15:28:57.911Z",
+  "runId": "20260917T152549Z",
+  "publicationState": "held_local_candidate",
+  "published": false,
+  "publicGatewayReadback": false,
+  "retentionVerified": false,
+  "ipnsMoved": false,
+  "currentSelectorsPromoted": false,
+  "countyComplete": false,
+  "prior": {
+    "runId": "20260916T181000Z",
+    "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+    "manifestCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+    "manifestSha256": "sha256:99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b",
+    "immutableBytesVerified": true
+  },
+  "candidate": {
+    "rootCid": "bafybeicuvlx746twkowvsaz5g73ijajjirvxberemew747krlknfk5do7q",
+    "manifestCid": "bafkreih5po2tge25ze6c5snnecdkumcoovkrrke7csh7haa63hjxtlyl4e",
+    "manifestBytes": 11682,
+    "manifestSha256": "sha256:fd7bb533135dc93c2ec9ad2086aa304e755518a89f148ff3801ed9d379af0be1",
+    "eligibleArtifacts": 41,
+    "rootCar": {
+      "bytes": 341073986,
+      "sha256": "sha256:67dbef56d47c8c10c83924e9a3f5387747def18fafcf5929c6ca5fef27c83e95"
+    },
+    "snapshotCar": {
+      "cid": "bafybeie2isprhs53basx5g7ti3dufip5buw4qnihysshswhgsij4yyalpa",
+      "bytes": 341074069,
+      "sha256": "sha256:16d6eab31c798f6c4db0f73d7bd14cc6401051c7c172354819143ed2088ae914",
+      "directoryRoots": [
+        "bafybeicuvlx746twkowvsaz5g73ijajjirvxberemew747krlknfk5do7q",
+        "bafybeidlchc4xgey3abfwv2wcusr6igiw5intsecao7ely7ftohfts3woe",
+        "bafybeic2kyssft6w5so45ategmylzvk6mctls3qvkcpxhjjvmh5zfkq3x4"
+      ],
+      "verifiedBlocks": 1353
+    }
+  },
+  "deltas": {
+    "baseAssociations": 17671,
+    "windowAssociations": 1066,
+    "mergedAssociations": 17936,
+    "inserted": 265,
+    "updated": 801,
+    "unchangedInWindow": 0,
+    "removed": null,
+    "idempotent": true
+  },
+  "sourceOnlyPermitProjectionDelta": {
+    "inserted": 265,
+    "updated": 801,
+    "unchanged": 16870,
+    "removedFromProjection": 0,
+    "sourceDeletionsProven": false,
+    "basis": "Full outer permit_id join over every scalar source-only CD Plus field in the frozen prior and later Parquets, with bidirectional full-record comparison; this excludes generated manifest or run timestamps."
+  },
+  "counts": {
+    "properties": 215806,
+    "permits": 76431,
+    "linked": 72450,
+    "valid_unlinked": 3981,
+    "promoted_permit_decisions": 0,
+    "promoted_property_decisions": 0,
+    "valid_actual_built_year_proxies": 169007,
+    "building_age_proxy_at_least_15": 120362,
+    "coordinate_pairs": 209503
+  },
+  "recordEquality": {
+    "unrelated_property_changes": 0,
+    "retained_clermont_changes": 0,
+    "properties": 215806,
+    "clermont": 58495
+  },
+  "inputBindings": [
+    {
+      "name": "NAL45P202601.csv",
+      "sha256": "0726c131c337d2d2fea6845338d22a8b4e35146a6d497e9f9fe6b1dfd1a5ca40",
+      "sizeBytes": 114614967
+    },
+    {
+      "name": "SDF45P202601.csv",
+      "sha256": "ab9974298bb2cbf0b097167ebe987907361826f1d92e3adc5e47426d70fa1e0c",
+      "sizeBytes": 5490570
+    },
+    {
+      "name": "NAP45P202601.csv",
+      "sha256": "576209d252c1b73fd11a2d5f90a3dd13e9d42319e3ce439d120fcc5f0ed43c65",
+      "sizeBytes": 7414079
+    },
+    {
+      "name": "centroids.csv",
+      "sha256": "050cd0460111ecbe9c3ae1e8fb8317df7a36affacb22f1bf1ebf0e3e264188a4",
+      "sizeBytes": 14648411
+    },
+    {
+      "name": "permits.csv",
+      "sha256": "76dbbab4426acec0b4007d6915d2085e3da4bde6a1628318cbab64985af9bbfd",
+      "sizeBytes": 4362289
+    },
+    {
+      "name": "clermont-permits.csv",
+      "sha256": "bbd2f8ba7361ffc4740b9f4aa20649cc56cddac31c49250f8bfecf41c3473c2a",
+      "sizeBytes": 15927998
+    },
+    {
+      "name": "clermont-permits.meta.json",
+      "sha256": "2437ec58df667d7eb0dd0e1f6cd3c14f348a2a003a5a8b8283fb487e2b6e7152",
+      "sizeBytes": 384
+    },
+    {
+      "name": "query-table.parquet",
+      "sha256": "2177fb9e0c1fa5a0342070e40b61b39120aabb7ae2ed97b5d147fbcc777e736e",
+      "sizeBytes": 18342697
+    },
+    {
+      "name": "permit-table.parquet",
+      "sha256": "48c83fa1abbe07ad603b3bc6ad6933329996f2e5fc718010f047a4d3d6fbcabf",
+      "sizeBytes": 2064388
+    },
+    {
+      "name": "business-table.parquet",
+      "sha256": "a5d7710de61344950b62ff7971906842b1892533f1ef47f4a6b282f2b1c4df99",
+      "sizeBytes": 564622
+    },
+    {
+      "name": "permits.json",
+      "sha256": "bc0e6c0d05337588eb6e3cd7ae9970a56e21ce8ed3836a8b8f265e9f251b56bd",
+      "sizeBytes": 10192852
+    },
+    {
+      "name": "permits-window.json",
+      "sha256": "3e702b8845e8e39d098fa773d5cee68cfbbec98511465e6de5673ea1af4aec5e",
+      "sizeBytes": 636082
+    },
+    {
+      "name": "permits.json",
+      "sha256": "55d54c8e87d9ab28537e79e20753f86283d6ff34e37a0a77ddb31a17f7cf24b4",
+      "sizeBytes": 10345364
+    },
+    {
+      "name": "permit-source-observations-window.json",
+      "sha256": "ada2fed8f69c9f1138f774fd5b7e9b75994cfecbf7ee39d5af684a6bde25c981",
+      "sizeBytes": 1280526
+    },
+    {
+      "name": "refresh-20260916T180522Z.json",
+      "sha256": "7b7b70851e5ee3675e9066d4a0366c456fb0f771f6f6371ce202a74acb96ac5c",
+      "sizeBytes": 1563
+    }
+  ],
+  "sourceCapture": {
+    "capturedAt": "2026-09-16T18:05:22.523Z",
+    "source": "https://utility.arcgis.com/usrsvcs/servers/365d9a169bc34110a3db2157c76f6c95/rest/services/Individual/CDPermitParcels/MapServer/0",
+    "where": "Permit_LastModDate > timestamp '2026-09-09 00:00:00'",
+    "sourceFeatures": 1118,
+    "distinctObservedPermitIds": 1066,
+    "recordObservationMap": "incremental-refresh.json#sourceCapture.observedPermitIds"
+  },
+  "sourceOnlyFiles": [
+    {
+      "name": "query-table.parquet",
+      "sha256": "5e26486d31deadeb88e100455f616ec5b238b0b4f442e6fddf222943b492f059",
+      "size": 18342462
+    },
+    {
+      "name": "permit-table.parquet",
+      "sha256": "081e5a207a49b3fad4dd238e8c3b9ba014c0984352c48427f94408b855db8d25",
+      "size": 2070711
+    },
+    {
+      "name": "business-table.parquet",
+      "sha256": "a5d7710de61344950b62ff7971906842b1892533f1ef47f4a6b282f2b1c4df99",
+      "size": 564622
+    },
+    {
+      "name": "source-semantics.json",
+      "sha256": "f508fc93213b25daa9d3551bbb70a89821e26279adf5258df56a357207ae0133",
+      "size": 2042
+    }
+  ],
+  "immutableInputsUnchanged": true,
+  "protectedSelectors": [
+    {
+      "name": "artifacts/run-history.json",
+      "sha256": "07ac5ead6c71124adc3c901892fca05741c1ece932e7d3746f8d0973c9bc9172"
+    },
+    {
+      "name": "artifacts/latest.json",
+      "sha256": "f49ef74fc077e16e931858ad6ba1f425faca4ef43cc4d8ef82fd0ebe2702706f"
+    },
+    {
+      "name": "artifacts/row-hashes.json",
+      "sha256": "5c70e3fe01b0f63855d9de986c87c897478400d46fb5b354df2b34a829cff7f5"
+    },
+    {
+      "name": "packages/rag/corpus-source.json",
+      "sha256": "e96b54e68cffd9e4eb893dd08cc0a40c6ef94dbd07abac1111f7b0f9bd296591"
+    },
+    {
+      "name": "artifacts/manifest-20260916T181000Z.json",
+      "sha256": "99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b"
+    }
+  ],
+  "limitations": [
+    "Only the listed CD Plus window permit IDs carry this fresh source observation; retained Clermont and older CD Plus capture times remain unchanged or unknown.",
+    "Windowing cannot prove deletions. Source descriptions/status text do not establish accepted roof completion, current-open duration, license/legal identity or BBB scores.",
+    "New CIDs are local candidate identities, not evidence of IPFS publication or pointer/history promotion.",
+    "Both CID identities are retained here, but only the preceding packet has actual provider/public-byte evidence. The later candidate has not been uploaded, independently fetched or retained and does not satisfy incremental public republication.",
+    "Current permit status, roof completion/classification, duration, license/legal contractor identity and BBB remain held/unknown. Source-listed names, literal status/date observations and valid unmatched records are preserved."
+  ]
+}

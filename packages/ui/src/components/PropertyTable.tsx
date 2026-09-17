@@ -114,7 +114,7 @@ export function PropertyTable({
             const basis = basisLabel(str(row, "roof_age_basis"));
             const outOfState = bool(row, "owner_out_of_state") === true;
             const outOfCounty = bool(row, "owner_out_of_county") === true;
-            const openRoofing = num(row, "open_roofing_permit_count") ?? 0;
+            const openRoofing = num(row, "open_roofing_permit_count");
             const longestOpen = num(row, "longest_open_roofing_permit_days");
             return (
               <tr
@@ -162,9 +162,11 @@ export function PropertyTable({
                     </span>
                   )}
                 </td>
-                <td className="num">{formatCount(num(row, "permit_count") ?? 0)}</td>
+                <td className="num">{formatCount(num(row, "permit_count"))}</td>
                 <td className="num">
-                  {openRoofing > 0 ? (
+                  {openRoofing === null ? (
+                    <span className="dim">unknown</span>
+                  ) : openRoofing > 0 ? (
                     <Badge
                       tone="warn"
                       title={longestOpen ? `Longest open ${longestOpen} days` : undefined}

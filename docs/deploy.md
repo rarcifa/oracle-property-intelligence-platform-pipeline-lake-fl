@@ -12,8 +12,9 @@ succeeded and served HTTP 502 on every route.
 
 One ARM64 Lambda behind a Function URL, in `us-east-2`. That is the whole thing. There is
 no database, no container orchestrator and no persistent compute, because the dataset lives
-on IPFS and the function fetches it by CID at cold start. Idle cost is zero, which is what
-makes the assignment's no-ongoing-cost claim true rather than aspirational.
+on IPFS and the function fetches it by CID at cold start. Lambda has no always-on
+instance charge; owner-funded Secrets Manager, logs, pinning and model usage can
+still incur costs. The portable default does not require this hosted convenience.
 
 The function serves all four surfaces on one URL: the UI at `/`, the REST API at `/api`,
 the MCP server at `/mcp`, and the agent at `/api/chat`.
@@ -99,13 +100,22 @@ republishing needed no redeploy. The variable was right and the conclusion was n
 was baked in at `cdk deploy` time, so a scheduled publish moved the pointer and the runtime
 went on serving the previous run, silently, until somebody redeployed.
 
-To pin one run deliberately, set `ORACLE_PARQUET_URL` in the deploying shell — it still
-overrides the pointer:
+To pin one partial preview deliberately, bind all three explicit values and bundle
+the matching immutable metadata. This does not move IPNS or mark publication successful:
 
 ```bash
 ORACLE_PARQUET_URL="https://ipfs.filebase.io/ipfs/<root-cid>/query-table.parquet" \
+ORACLE_DATA_RUN_ID="<YYYYMMDDTHHMMSSZ>" ORACLE_DATA_ROOT_CID="<root-cid>" \
   pnpm --filter @oracle-lake/infra exec cdk deploy
 ```
+
+Before deploying, build with the same values and `ORACLE_BUNDLE_RUN_DIR` naming
+that run's immutable packet. The bundle checks coverage/index run identity and
+coverage/schema/index byte digests against the committed manifest. September 17's
+selected hosted preview is `20260916T181000Z`, not the older successful pointer;
+see [the delivery handoff](submission-handoff-20260917.md). OpenAI credentials
+are held in `oracle-lake/openai-api-key`; no provider key is bundled or exposed
+as a Lambda environment value. The old Anthropic secret was not deleted.
 
 ## Alerting
 

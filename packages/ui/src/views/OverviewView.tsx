@@ -80,6 +80,7 @@ export function OverviewView(): JSX.Element {
   const verification = meta?.verification ?? null;
   const runHistory = meta?.runHistory ?? null;
   const verifiedGateways = run?.verifiedGateways ?? [];
+  const evidenceOnly = meta?.sourceObservationsOnly === true || meta?.localEvidencePreview === true;
   const total = stats.data?.stats.properties ?? 0;
 
   return (
@@ -92,9 +93,20 @@ export function OverviewView(): JSX.Element {
               ? "Source-only partial run"
               : "Published run"
         }
-        subtitle="One immutable columnar table, addressed by CID. Every figure below is a query against it."
+        subtitle={
+          evidenceOnly
+            ? "Partial historical source observations and low-confidence building-year proxies. This selection is not a county-complete, finalized pipeline release."
+            : "The served query table and its recorded publication identity."
+        }
       >
         {metaError ? <ErrorPanel error={metaError} /> : null}
+        {evidenceOnly ? (
+          <p className="notice gated">
+            Current/open permit status, completion, verified company/license identity and BBB
+            ratings remain unaccepted or unavailable. Building-year proxies do not measure roof age;
+            incomplete permit history may omit a later replacement.
+          </p>
+        ) : null}
         {!meta && !metaError ? <SkeletonRows rows={4} /> : null}
         {run ? (
           <div className="kv-list">
@@ -131,7 +143,7 @@ export function OverviewView(): JSX.Element {
 
       <Panel
         title="Run history"
-        subtitle="Every publish, with its CIDs and the record deltas it produced. A run never overwrites the one before it. The timestamps are when the publish set was assembled, not ingest wall-clock — both runs here were published in the same batch, which is why they are seconds apart while their run ids are 27 minutes apart."
+        subtitle="Retained publication entries with immutable CIDs and recorded deltas. A selected partial snapshot is not automatically added to publication history or made the latest release."
       >
         {runHistory === null || runHistory.runs.length === 0 ? (
           <p className="dim" style={{ margin: 0 }}>
@@ -184,7 +196,7 @@ export function OverviewView(): JSX.Element {
 
       <Panel
         title="Independent gateway verification"
-        subtitle="Each published artifact was fetched from several independent IPFS gateways and hashed. Identical SHA-256 across gateways is what makes the CID checkable rather than claimed."
+        subtitle="A report, when present, records public CID retrieval and byte/digest matches. Missing evidence makes no verification or independent-retention claim."
       >
         {verification === null ? (
           <EmptyState>
@@ -277,7 +289,15 @@ export function OverviewView(): JSX.Element {
             return (
               <StatTile
                 key={tile.key}
-                label={legacyPermits ? "Linked permit records (legacy aggregate)" : tile.label}
+                label={
+                  evidenceOnly && tile.key === "roof_age_known"
+                    ? "Built-year roof-age proxies"
+                    : evidenceOnly && tile.key === "roof_age_15_plus"
+                      ? "Built-year proxies 15+ years"
+                      : legacyPermits
+                        ? "Linked permit records (legacy aggregate)"
+                        : tile.label
+                }
                 loading={stats.loading && !stats.data}
                 value={typeof value === "number" ? formatCount(value) : "—"}
                 note={
@@ -298,8 +318,12 @@ export function OverviewView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Roof age by band and basis"
-        subtitle="Roof age is a proxy: valid completion dates from closed roofing permits, then valid issue dates from closed roofing permits, then year built. Open permits do not reset age. Work-class and historical coverage gaps remain; the basis is shown per parcel."
+        title={evidenceOnly ? "Building-year proxy bands" : "Roof age by band and basis"}
+        subtitle={
+          evidenceOnly
+            ? "Only valid built-year anchors are accepted here, at low confidence. Completion/close anchors are not accepted; partial history may omit later reroofing. A proxy is not measured roof age."
+            : "The selected run's recorded derivation basis is shown per parcel. A defensible roof reset requires accepted completed primary-roof work and a valid completion/close date; issue dates alone do not establish completion."
+        }
       >
         {stats.loading && !stats.data ? (
           <SkeletonRows rows={7} height={20} />
@@ -322,10 +346,16 @@ export function OverviewView(): JSX.Element {
 
       <Panel
         title="Documented limitations"
-        subtitle="Published verbatim from the run's coverage snapshot. These are the things this dataset does not know, and why."
+        subtitle="Limitations from the coverage snapshot matching the served run. Missing coverage does not establish completeness."
       >
         {!coverage ? (
-          <SkeletonRows rows={4} height={40} />
+          !meta && !metaError ? (
+            <SkeletonRows rows={4} height={40} />
+          ) : (
+            <EmptyState>
+              No matching coverage snapshot supplies this run's source limitations.
+            </EmptyState>
+          )
         ) : coverage.limitations.length === 0 ? (
           <EmptyState>The coverage snapshot records no limitations.</EmptyState>
         ) : (
@@ -397,7 +427,7 @@ export function OverviewView(): JSX.Element {
               </div>
               {Object.keys(coverage.signals).length > 0 ? (
                 <div style={{ marginTop: 12 }}>
-                  <span className="micro">signals recorded at publish time</span>
+                  <span className="micro">signals recorded in the frozen snapshot</span>
                   <div className="kv-list">
                     {Object.entries(coverage.signals).map(([key, value]) => (
                       <div className="kv" key={key}>
@@ -414,7 +444,7 @@ export function OverviewView(): JSX.Element {
 
         <Panel
           title="Gateways"
-          subtitle="Where the published bytes can be fetched, and which gateways this app refuses to use."
+          subtitle="CID-derived retrieval locators, not independent retention proof. Per-object verification is reported separately when available."
         >
           {!meta ? (
             <SkeletonRows rows={4} />

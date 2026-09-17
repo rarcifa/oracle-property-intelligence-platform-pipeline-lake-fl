@@ -59,7 +59,8 @@ const DURATION_BUCKETS: readonly { key: string; label: string }[] = [
 ];
 
 export function ContractorView(): JSX.Element {
-  const { source, meta } = useDataSource();
+  const { source, meta, metaError } = useDataSource();
+  const metadataReady = meta !== null;
   const evidenceOnly = meta?.sourceObservationsOnly === true || meta?.localEvidencePreview === true;
   const view = useAsync(() => source.getContractorView(), [source]);
   const stats = useAsync(() => source.getStats(), [source]);
@@ -77,8 +78,8 @@ export function ContractorView(): JSX.Element {
   );
 
   const results = useAsync(
-    () => (evidenceOnly ? Promise.resolve(null) : source.search(options)),
-    [source, evidenceOnly, JSON.stringify(options)],
+    () => (!metadataReady || evidenceOnly ? Promise.resolve(null) : source.search(options)),
+    [source, metadataReady, evidenceOnly, JSON.stringify(options)],
   );
   const historicalSql = `SELECT permit_number, jurisdiction, permit_status, issued_date, permit_description,
     contractor_name, parcel_identifier, linkage_status, source_url FROM permits
@@ -103,10 +104,11 @@ export function ContractorView(): JSX.Element {
           <div className="panel-title">
             <h2>What this view cannot tell you, and why</h2>
             <span className="prose">
-              <code>bbb_rating</code> is null on every row. <code>contractor_name</code> is null
-              everywhere except Clermont, the one jurisdiction of fifteen whose permit portal
-              publishes a contractor of record. Both columns are published anyway, because a missing
-              column and an empty column say different things.
+              <code>contractor_name</code> retains source-listed names from Clermont, one of fifteen
+              jurisdictions, not verified legal-company or license identities.{" "}
+              <code>bbb_rating</code>
+              remains null. Missing names or ratings are not proof of an unassigned permit or a zero
+              BBB score.
             </span>
           </div>
         </header>
@@ -138,7 +140,7 @@ export function ContractorView(): JSX.Element {
             value={typeof contractorNames === "number" ? formatCount(contractorNames) : "—"}
             note={
               proofReady
-                ? `Clermont only (1 of 15 jurisdictions) · out of ${formatCount(totalParcels)} parcels · queried, not asserted`
+                ? `Clermont source-listed names only (1 of 15 jurisdictions) · out of ${formatCount(totalParcels)} parcels · not verified legal identities`
                 : undefined
             }
             tone="warn"
@@ -183,10 +185,12 @@ export function ContractorView(): JSX.Element {
                   : tile.label
               }
               note={
-                tile.key === "permit_records" &&
-                typeof view.data?.posture.permit_records_total !== "number"
-                  ? "property aggregate only; total and unlinked counts unavailable"
-                  : tile.note
+                evidenceOnly && (tile.key.includes("open") || tile.key.includes("roofing"))
+                  ? "Unaccepted decision field: unknown, not zero or confirmed absence"
+                  : tile.key === "permit_records" &&
+                      typeof view.data?.posture.permit_records_total !== "number"
+                    ? "property aggregate only; total and unlinked counts unavailable"
+                    : tile.note
               }
               loading={view.loading && !view.data}
               value={
@@ -212,8 +216,12 @@ export function ContractorView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="How long open permits of any type have been open"
-        subtitle="Generic permit posture, bucketed from longest_open_permit_days on each parcel."
+        title={evidenceOnly ? "Current-open duration unavailable" : "Open permit duration"}
+        subtitle={
+          evidenceOnly
+            ? "Historical observations do not establish current status or duration. Missing values are unknown, not zero."
+            : "Generic permit posture, bucketed from longest_open_permit_days on each parcel."
+        }
       >
         {view.loading && !view.data ? (
           <SkeletonRows rows={4} height={18} />
@@ -243,17 +251,27 @@ export function ContractorView(): JSX.Element {
 
       <Panel
         title={
-          evidenceOnly
-            ? "Retained historical permit observations"
-            : "Parcels with an open roofing permit"
+          !metadataReady
+            ? "Permit data selection pending"
+            : evidenceOnly
+              ? "Retained historical permit observations"
+              : "Parcels with an open roofing permit"
         }
         subtitle={
-          evidenceOnly
-            ? "All sources, including valid unlinked records. Status is retained source text, not current; names are source-listed, not verified legal identities."
-            : "Ordered by the longest open roofing permit duration, descending."
+          !metadataReady
+            ? "Current/open queries wait until the selected dataset's decision eligibility is known."
+            : evidenceOnly
+              ? "All sources, including valid unlinked records. Status is retained source text, not current; names are source-listed, not verified legal identities."
+              : "Ordered by the longest open roofing permit duration, descending."
         }
       >
-        {evidenceOnly ? (
+        {!metadataReady ? (
+          metaError ? (
+            <ErrorPanel error={metaError} />
+          ) : (
+            <SkeletonRows rows={5} height={24} />
+          )
+        ) : evidenceOnly ? (
           <>
             <p className="notice gated">
               Current-open roofing status and duration are unknown in this selected dataset.

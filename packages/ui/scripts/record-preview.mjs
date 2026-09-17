@@ -1,6 +1,7 @@
 /** Actual hosted partial-data walkthrough. This is NOT the strict passed full demo. */
 import { chromium } from "@playwright/test";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { mkdir, writeFile, readFile, rename } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { URL } from "node:url";
@@ -68,6 +69,8 @@ page.on("response", (response) => {
     responses.push({ url: response.url(), status: response.status() });
 });
 const beats = [];
+const agentAnswers = [];
+const gatewayChecks = [];
 async function beat(route, name) {
   await page.goto(base + "/#/" + route, { waitUntil: "networkidle", timeout: 120000 });
   await page.getByRole("heading", { name: "Oracle Property Intelligence", exact: true }).waitFor();
@@ -89,11 +92,28 @@ try {
   await beat("business", "All source business accounts, including unmatched accounts");
   await beat("contractor", "Historical source-listed Clermont contractor names; BBB unknown");
   await beat("search", "Coordinates and configurable aged-building roof proxy search");
+  await page.getByRole("checkbox", { name: "Roof at least 15 years old", exact: true }).check();
   await page.getByLabel("Exact", { exact: true }).fill("16");
   await page.getByLabel("Latitude", { exact: true }).fill("28.5494");
   await page.getByLabel("Longitude", { exact: true }).fill("-81.7729");
   await page.getByLabel("Radius (miles)", { exact: true }).fill("5");
   await page.waitForTimeout(5000);
+  const radiusResult = await get(
+    "/api/properties?minRoofAge=16&lat=28.5494&lon=-81.7729&radiusMiles=5&limit=5",
+  );
+  if (
+    !(radiusResult.matched > 0) ||
+    radiusResult.provenance?.runId !== runId ||
+    radiusResult.provenance?.rootCid !== rootCid ||
+    !radiusResult.rows.every((row) => row.roof_age_years >= 16 && row.distance_miles <= 5)
+  )
+    throw new Error("Actual aged-building radius query failed");
+  beats.push({
+    name: "Actual radius and strictly-over-15 built-year proxy results",
+    matched: radiusResult.matched,
+    provenance: radiusResult.provenance,
+    observedAt: new Date().toISOString(),
+  });
   await page.screenshot({ path: path.join(out, "radius-search.png") });
   if (meta.chatEnabled) {
     await beat("ask", "Live model agent over the selected DuckDB snapshot");
@@ -111,11 +131,48 @@ try {
       );
       await page.locator(".message.assistant").last().scrollIntoViewIfNeeded();
       await page.waitForTimeout(4500);
+      const answer = await page.locator(".message.assistant .message-body").last().innerText();
+      if (!answer.trim()) throw new Error("Agent returned citations but no actual answer text");
+      agentAnswers.push({
+        prompt,
+        observedText: await page.locator(".message.assistant").last().innerText(),
+      });
       beats.push({ name: prompt, observedAt: new Date().toISOString(), liveAgentAnswered: true });
     }
     await page.screenshot({ path: path.join(out, "agent-answers.png") });
   }
   await beat("sql", "Read-only DuckDB query explorer");
+  await page
+    .getByLabel("Statement", { exact: true })
+    .fill("SELECT count(*) AS properties, count(latitude) AS coordinates FROM properties");
+  await page.getByRole("button", { name: "Run query", exact: true }).click();
+  await page.getByRole("heading", { name: "Result", exact: true }).waitFor();
+  await page.screenshot({ path: path.join(out, "duckdb-query.png") });
+  beats.push({
+    name: "Executed read-only DuckDB query through hosted UI",
+    observedText: await page.locator("main").innerText(),
+    observedAt: new Date().toISOString(),
+  });
+  const manifestCid = "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm";
+  for (const gateway of ["https://ipfs.filebase.io", "https://gateway.pinata.cloud"]) {
+    const locator = `${gateway}/ipfs/${manifestCid}`;
+    const response = await globalThis.fetch(locator, {
+      signal: globalThis.AbortSignal.timeout(60000),
+    });
+    if (!response.ok) throw new Error(`Manifest public retrieval HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (
+      bytes.length !== 11417 ||
+      sha256 !== "99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b"
+    )
+      throw new Error("Public manifest bytes differ from the chosen immutable packet");
+    gatewayChecks.push({ gateway, cid: manifestCid, bytes: bytes.length, sha256 });
+    await page.goto(locator, { waitUntil: "load", timeout: 60000 });
+    await page.waitForTimeout(4000);
+    beats.push({ name: "Public manifest retrieval by CID", gateway, cid: manifestCid });
+  }
+  await page.screenshot({ path: path.join(out, "public-manifest.png") });
   if (failures.length || responses.some((response) => response.status >= 500))
     throw new Error(`Preview runtime failures: ${JSON.stringify({ failures, responses })}`);
   complete = true;
@@ -126,6 +183,8 @@ try {
   if (complete && video) {
     const videoPath = await video.path();
     const bytes = await readFile(videoPath);
+    const finalVideoPath = path.join(out, "walkthrough.webm");
+    await rename(videoPath, finalVideoPath);
     const report = {
       schemaVersion: "oracle.hosted-partial-preview-demo.v1",
       startedAt,
@@ -141,8 +200,10 @@ try {
       browserErrors: failures,
       apiResponses: responses,
       beats,
+      agentAnswers,
+      gatewayChecks,
       video: {
-        filename: path.basename(videoPath),
+        filename: path.basename(finalVideoPath),
         bytes: bytes.length,
         sha256: createHash("sha256").update(bytes).digest("hex"),
       },

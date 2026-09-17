@@ -102,7 +102,12 @@ export function BusinessView(): JSX.Element {
         title="All source business accounts"
         subtitle="Account-grain records remain searchable even when their address matches no assessed parcel."
       >
-        {!view.loading && !view.data?.businessesAvailable ? (
+        {view.error ? (
+          <div className="notice">
+            Account-grain availability could not be read. This does not establish missing data or
+            zero businesses.
+          </div>
+        ) : !view.loading && !view.data?.businessesAvailable ? (
           <div className="notice">
             This release does not include an account-grain business artifact. Missing availability
             is not a zero-business result.
@@ -206,13 +211,13 @@ export function BusinessView(): JSX.Element {
       </Panel>
 
       <div className="grid-2">
-        <Panel title="TPP accounts by city">
+        <Panel title="Account–parcel associations by city">
           {view.loading && !view.data ? (
             <SkeletonRows rows={8} height={18} />
           ) : (
             <BarChart
-              ariaLabel="Tangible personal property accounts by city"
-              emptyText="No city in the published roll carries a TPP account."
+              ariaLabel="Matched account–parcel associations by city"
+              emptyText="No matched parcel groups are shown; unmatched source accounts are separate."
               data={(view.data?.byCity ?? []).slice(0, 20).map((entry) => ({
                 label: entry.city,
                 value: entry.business_accounts,
@@ -221,13 +226,13 @@ export function BusinessView(): JSX.Element {
           )}
         </Panel>
 
-        <Panel title="TPP accounts by property type">
+        <Panel title="Account–parcel associations by property type">
           {view.loading && !view.data ? (
             <SkeletonRows rows={8} height={18} />
           ) : (
             <BarChart
-              ariaLabel="Tangible personal property accounts by property type"
-              emptyText="No property type in the published roll carries a TPP account."
+              ariaLabel="Matched account–parcel associations by property type"
+              emptyText="No matched property-type groups are shown; unmatched source accounts are separate."
               data={(view.data?.byType ?? []).slice(0, 20).map((entry) => ({
                 label: entry.property_type,
                 value: entry.business_accounts,

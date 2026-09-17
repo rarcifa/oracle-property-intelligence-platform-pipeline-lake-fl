@@ -14,7 +14,8 @@ import { BUSINESS_VIEW_NOTE, CONTRACTOR_VIEW_NOTE } from "./notes.js";
 describe("BUSINESS_VIEW_NOTE", () => {
   it("states the join limits without freezing release-specific figures into copy", () => {
     expect(BUSINESS_VIEW_NOTE).toMatch(/normalized street\+ZIP/i);
-    expect(BUSINESS_VIEW_NOTE).toMatch(/cannot publish source accounts without a matching/i);
+    expect(BUSINESS_VIEW_NOTE).toMatch(/retains all source accounts, including valid unmatched/i);
+    expect(BUSINESS_VIEW_NOTE).not.toMatch(/cannot publish source accounts without a matching/i);
     expect(BUSINESS_VIEW_NOTE).not.toMatch(/2,060|33,346|6\.2%/);
   });
 
@@ -38,6 +39,10 @@ describe("BUSINESS_VIEW_NOTE", () => {
     // either. The bulk portal is the challenged one.
     expect(BUSINESS_VIEW_NOTE).toMatch(/bulk data-download portal/i);
     expect(BUSINESS_VIEW_NOTE).not.toMatch(/Sunbiz search answers HTTP 403/i);
+    expect(BUSINESS_VIEW_NOTE).toMatch(
+      /Sunbiz and dated DBPR identity records remain prerequisites/i,
+    );
+    expect(BUSINESS_VIEW_NOTE).not.toMatch(/corporate registration is outside/i);
   });
 });
 
@@ -61,6 +66,8 @@ describe("CONTRACTOR_VIEW_NOTE", () => {
   it("distinguishes the two kinds of null contractor_name carries", () => {
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/contractor_gated_403/);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/contractor_absent_on_permit/);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/legacy annotations, not a substitute/i);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(/Missing contractor text does not prove/i);
   });
 
   it("separates the technical block from the policy one", () => {
@@ -72,5 +79,8 @@ describe("CONTRACTOR_VIEW_NOTE", () => {
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/robots\.txt/i);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/official BBB API/i);
     expect(CONTRACTOR_VIEW_NOTE).toMatch(/permit detail pages/i);
+    expect(CONTRACTOR_VIEW_NOTE).toMatch(
+      /historical status text is an observation, not a current decision/i,
+    );
   });
 });

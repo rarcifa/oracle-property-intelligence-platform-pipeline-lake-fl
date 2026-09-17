@@ -8,7 +8,12 @@
 
 import { chatRequestSchema } from "@oracle-lake/shared";
 import type { AppContext } from "../context.js";
-import { sanitizeProviderError, ChatUnavailableError, createChatAgent } from "../chat/agent.js";
+import {
+  sanitizeProviderError,
+  ChatEmptyAnswerError,
+  ChatUnavailableError,
+  createChatAgent,
+} from "../chat/agent.js";
 import { callerOf, createRateLimiter, DEFAULT_CHAT_RATE_LIMIT } from "../chat/rate-limit.js";
 import { fail, json, type Router } from "../http/router.js";
 
@@ -51,6 +56,10 @@ export function registerChatRoutes(router: Router, context: AppContext): void {
     } catch (error) {
       if (error instanceof ChatUnavailableError) {
         return fail(503, "chat_unavailable", error.detail);
+      }
+      if (error instanceof ChatEmptyAnswerError) {
+        console.error(JSON.stringify({ event: "chat_empty_answer" }));
+        return fail(502, "chat_empty_answer", error.detail);
       }
       // Log the real error for the operator; tell the caller only what is
       // theirs to know. This route is public and unauthenticated.

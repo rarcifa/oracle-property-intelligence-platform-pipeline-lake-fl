@@ -10,7 +10,7 @@
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, tool, ToolLoopAgent } from "ai";
 import { z } from "zod";
 import {
   assertReadOnlySql,
@@ -54,6 +54,17 @@ export class ChatUnavailableError extends Error {
     super(detail);
     this.name = "ChatUnavailableError";
     this.detail = detail;
+  }
+}
+
+/** No usable answer after the bounded evidence-gathering and synthesis calls. */
+export class ChatEmptyAnswerError extends Error {
+  readonly detail =
+    "The natural-language agent could not produce an answer from the available evidence. Try again, or query the data views directly; they are unaffected.";
+
+  constructor() {
+    super("The model returned no answer after the final evidence-only synthesis");
+    this.name = "ChatEmptyAnswerError";
   }
 }
 
@@ -447,6 +458,9 @@ export function createChatAgent(context: AppContext): ChatAgent {
         );
       }
 
+      // One deadline covers evidence gathering AND final synthesis. Giving the
+      // latter its own timeout would exceed the approved turn/Lambda budget.
+      const abortSignal = AbortSignal.timeout(chatTimeoutMs);
       const collector = new CitationCollector();
       // Stamp every citation with the run it was computed against, so a reader
       // can re-run the SQL against the same immutable CID from any gateway.
@@ -454,23 +468,43 @@ export function createChatAgent(context: AppContext): ChatAgent {
       collector.runId = runProvenance.runId ?? null;
       collector.rootCid = runProvenance.rootCid ?? null;
       const openai = createOpenAI({ apiKey: openaiApiKey });
+      const model = openai(chatModelId);
+      const turnMessages = messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
 
-      const result = await generateText({
-        model: openai(chatModelId),
-        system: SYSTEM_PROMPT,
-        messages: messages.map((message) => ({ role: message.role, content: message.content })),
+      const agent = new ToolLoopAgent({
+        model,
+        instructions: SYSTEM_PROMPT,
         tools: buildTools(context, collector),
-        stopWhen: stepCountIs(10),
-        abortSignal: AbortSignal.timeout(chatTimeoutMs),
+        // Reserve the tenth model step for a final answer if a tool-only step
+        // exhausts the loop. Citations alone are not a successful NL answer.
+        stopWhen: stepCountIs(9),
       });
+      abortSignal.throwIfAborted();
+      const result = await agent.generate({ messages: turnMessages, abortSignal });
+      let answer = result.text.trim();
+      if (answer.length === 0) {
+        abortSignal.throwIfAborted();
+        const synthesis = await generateText({
+          model,
+          system: `${SYSTEM_PROMPT}\n\nThe evidence-gathering phase has ended. Answer the original user question now, using only the tool results from this turn below. No further tools are available. Preserve their source limitations, unknown values, and unsupported-decision refusals. If these results cannot answer the question, explicitly explain the missing evidence rather than inventing a result. Produce a nonempty plain-language answer and name its evidence.`,
+          messages: [...turnMessages, ...result.response.messages],
+          toolChoice: "none",
+          maxRetries: 0,
+          abortSignal,
+        });
+        answer = synthesis.text.trim();
+      }
+      if (answer.length === 0) throw new ChatEmptyAnswerError();
 
-      const provenance = await context.provenance();
       return {
-        answer: result.text.trim(),
+        answer,
         citations: collector.citations,
         documents: collector.documents,
         model: chatModelId,
-        runId: provenance.runId,
+        runId: runProvenance.runId,
       };
     },
   };

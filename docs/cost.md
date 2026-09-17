@@ -8,9 +8,11 @@ runtime is free forever.
 ## Default read path
 
 Published data is identified by immutable IPFS CIDs. The repaired publisher prepares a
-CID-addressed multi-root CAR containing every directory DAG, for delivery in the public
-release/demo packet; its actual delivery is still pending. No CAR is currently committed
-as proof of the full retained release. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
+CID-addressed multi-root CAR containing every listed directory DAG. The chosen
+source-only preview's logical `snapshot.car` is public by CID and its complete
+341,012,658 bytes match the manifest digest through Filebase and Pinata gateways;
+see the [handoff](submission-handoff-20260917.md). Independent retention remains
+unproven; delivery is not a successful publication-promotion receipt. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
 agent, or MCP process can query it without an Oracle-operated database. A vendor gateway is
 a locator, never the identity.
 
@@ -89,7 +91,8 @@ is implied. Lighthouse's current [retention contract](https://docs.lighthouse.st
 depends on an active plan, so the demo must disclose who continues funding it.
 
 - The hosted Lambda is a demo convenience, not the data source. Reserved concurrency caps
-  the request and model-spend blast radius.
+  concurrent requests, not cumulative charges. Per-caller request/model limits and
+  the approved cumulative allowance remain necessary; concurrency is not a dollar cap.
 - Natural-language chat uses an OpenAI model only when the owner configures a Secrets
   Manager key. REST, MCP, SQL, RAG retrieval, and the UI remain usable without it.
 - BBB enrichment is policy/API-gated under the Soofi kit. The default route returned 403;
