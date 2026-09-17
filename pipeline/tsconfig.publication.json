@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/core/finalize-consumed-publication.ts",
+    "scripts/lake/finalize-consumed-publication.ts",
+    "tests/finalize-consumed-publication.test.ts"
+  ]
+}

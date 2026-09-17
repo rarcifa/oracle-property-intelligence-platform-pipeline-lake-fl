@@ -123,6 +123,12 @@ export const runRecordSchema = z
       .string()
       .regex(/^(?:local|[1-9][0-9]{0,19})$/)
       .optional(),
+    // Optional without a default: validating legacy immutable history must not
+    // inject provenance that was never recorded.
+    candidateCommit: z
+      .string()
+      .regex(/^[a-f0-9]{40}$/)
+      .optional(),
     startedAt: isoTimestamp,
     finishedAt: isoTimestamp,
     mode: z.enum(["full", "incremental"]),

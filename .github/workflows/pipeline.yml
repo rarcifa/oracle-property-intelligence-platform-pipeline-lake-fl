@@ -6,8 +6,8 @@
 #
 # Scheduled and ordinary manual runs build a frozen local candidate and upload
 # it for inspection. Publication is a separate manual dispatch that restores
-# those exact bytes and additionally requires a short-lived exact-target
-# signature; credentials alone are never authority.
+# those exact bytes and additionally requires short-lived exact-target
+# recorded human consent; credentials alone are never authority.
 name: Lake County ingestion
 
 on:
@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       publication_run_id:
-        description: "Exact PREPARED_LOCAL run id covered by the signed publication authorization"
+        description: "Exact PREPARED_LOCAL run id covered by the recorded publication approval"
         type: string
         required: false
       candidate_workflow_run_id:
@@ -449,7 +449,7 @@ jobs:
         run: |
           echo "::notice::This schedule/manual dry run built local artifacts only. Publishing" \
                "requires workflow_dispatch with publish=true and an external exact-target" \
-               "Ed25519 authorization; stored credentials alone are never authority."
+               "human approval; stored credentials alone are never authority."
 
       - uses: actions/upload-artifact@v4
         with:

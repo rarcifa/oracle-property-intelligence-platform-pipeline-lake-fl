@@ -69,10 +69,7 @@ function runRecord(runId, overrides = {}) {
     carCid: computeRawCid(`${runId}-car`),
     ipnsName: "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
     resolvedCid: computeRawCid(`${runId}-root`),
-    verifiedGateways: [
-      "https://gateway.pinata.cloud",
-      "https://gw.ipfs-lens.dev",
-    ],
+    verifiedGateways: ["https://gateway.pinata.cloud", "https://gw.ipfs-lens.dev"],
     status: "succeeded",
     ...overrides,
   };
@@ -84,6 +81,31 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+describe("optional execution commit provenance", () => {
+  it("accepts a strict lowercase 40-hex commit without changing legacy records", () => {
+    const legacy = runRecord("legacy-record");
+    expect(validateRunRecord(legacy)).toEqual(legacy);
+    expect(validateRunRecord({ ...legacy, candidateCommit: "4".repeat(40) }).candidateCommit).toBe(
+      "4".repeat(40),
+    );
+  });
+
+  it.each(["4".repeat(39), "4".repeat(41), "G".repeat(40), "A".repeat(40), " 4".repeat(40), null])(
+    "rejects invalid optional commit %s",
+    (candidateCommit) => {
+      expect(() => validateRunRecord(runRecord("invalid-record", { candidateCommit }))).toThrow(
+        /candidateCommit/,
+      );
+    },
+  );
+
+  it("keeps other unknown fields strict", () => {
+    expect(() =>
+      validateRunRecord(runRecord("unknown-record", { executionCommit: "4".repeat(40) })),
+    ).toThrow(/Unrecognized/);
+  });
 });
 
 describe("readRunHistory", () => {
@@ -103,9 +125,7 @@ describe("readRunHistory", () => {
       JSON.stringify({ schemaVersion: "elephant.run-history.v0", runs: [] }),
       "utf8",
     );
-    await expect(readRunHistory(historyPath)).rejects.toThrow(
-      /Invalid run history/,
-    );
+    await expect(readRunHistory(historyPath)).rejects.toThrow(/Invalid run history/);
   });
 });
 
@@ -166,10 +186,7 @@ describe("mergeRunHistoryFile", () => {
     );
 
     const merged = await mergeRunHistoryFile(historyPath, carriedPath);
-    expect(merged.runs.map((run) => run.runId)).toEqual([
-      "20260909T120000Z",
-      "20260908T120000Z",
-    ]);
+    expect(merged.runs.map((run) => run.runId)).toEqual(["20260909T120000Z", "20260908T120000Z"]);
 
     // The point of merging before publishing: the run about to be appended lands
     // on top of a history that already knows about the carried runs.
@@ -214,10 +231,7 @@ describe("appendRun", () => {
         ],
       }),
     );
-    expect(second.runs.map((run) => run.runId)).toEqual([
-      "run-0002",
-      "run-0001",
-    ]);
+    expect(second.runs.map((run) => run.runId)).toEqual(["run-0002", "run-0001"]);
     const onDisk = JSON.parse(await readFile(historyPath, "utf8"));
     expect(onDisk).toEqual(second);
   });
@@ -243,10 +257,7 @@ describe("appendRun", () => {
     const historyPath = await scratchHistoryPath();
     await appendRun(historyPath, runRecord("run-0001"));
     await expect(
-      appendRun(
-        historyPath,
-        runRecord("run-0001", { rootCid: computeRawCid("rewritten") }),
-      ),
+      appendRun(historyPath, runRecord("run-0001", { rootCid: computeRawCid("rewritten") })),
     ).rejects.toThrow(/already recorded .*append-only/);
     const onDisk = await readRunHistory(historyPath);
     expect(onDisk.runs).toHaveLength(1);
@@ -260,11 +271,7 @@ describe("appendRun", () => {
     // A stored value that validation would normalize is still a rewrite of a
     // published run, so appending on top of it has to fail closed.
     stored.runs[0].sources[0].name = "  fl-dor-nal  ";
-    await writeFile(
-      historyPath,
-      `${JSON.stringify(stored, null, 2)}\n`,
-      "utf8",
-    );
+    await writeFile(historyPath, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
     await expect(appendRun(historyPath, runRecord("run-0002"))).rejects.toThrow(
       /would alter a previously recorded run/,
     );
@@ -272,9 +279,9 @@ describe("appendRun", () => {
 
   it("refuses malformed run records", async () => {
     const historyPath = await scratchHistoryPath();
-    await expect(
-      appendRun(historyPath, runRecord("run-0001", { mode: "delta" })),
-    ).rejects.toThrow(/mode/);
+    await expect(appendRun(historyPath, runRecord("run-0001", { mode: "delta" }))).rejects.toThrow(
+      /mode/,
+    );
     await expect(
       appendRun(
         historyPath,
@@ -286,14 +293,11 @@ describe("appendRun", () => {
     await expect(
       appendRun(historyPath, runRecord("run-0001", { status: "green" })),
     ).rejects.toThrow(/status/);
+    await expect(appendRun(historyPath, { ...runRecord("run-0001"), extra: true })).rejects.toThrow(
+      /Invalid run record/,
+    );
     await expect(
-      appendRun(historyPath, { ...runRecord("run-0001"), extra: true }),
-    ).rejects.toThrow(/Invalid run record/);
-    await expect(
-      appendRun(
-        historyPath,
-        runRecord("run-0001", { finishedAt: "2026-09-08T00:00:00.000Z" }),
-      ),
+      appendRun(historyPath, runRecord("run-0001", { finishedAt: "2026-09-08T00:00:00.000Z" })),
     ).rejects.toThrow(/finishedAt must not precede startedAt/);
     expect(await readRunHistory(historyPath)).toEqual({
       schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
@@ -321,10 +325,7 @@ describe("appendRun", () => {
 describe("computeTableDeltas", () => {
   it("counts inserts, updates, unchanged rows and removals", () => {
     expect(
-      computeTableDeltas(
-        { a: "h1", b: "h2", c: "h3" },
-        { a: "h1", b: "h2-changed", d: "h4" },
-      ),
+      computeTableDeltas({ a: "h1", b: "h2", c: "h3" }, { a: "h1", b: "h2-changed", d: "h4" }),
     ).toEqual({ inserted: 1, updated: 1, unchanged: 1, removed: 1 });
   });
 

@@ -63,11 +63,8 @@ import {
   assertPermitTableGate,
   assertQueryTableGate,
 } from "../../src/counties/lake/adapter.mjs";
-import {
-  appendRun,
-  computeTableDeltas,
-  publishedBusinessAccountRows,
-} from "../../src/core/run-history.mjs";
+import { computeTableDeltas, publishedBusinessAccountRows } from "../../src/core/run-history.mjs";
+import { finalizeConsumedPublication } from "../../src/core/finalize-consumed-publication.ts";
 import { loadRecoveryAnchor } from "../../src/core/predecessor-recovery.mjs";
 import {
   PINATA_SECONDARY_PIN_API_BASE,
@@ -1610,47 +1607,16 @@ export async function publishRun({
     attempt = await consumePublicationAuthorization(PUBLICATION_LEDGER_PATH, attemptId);
   }
   if (attempt.state === "APPROVAL_CONSUMED") {
-    // History first, then the row-hash baseline. If this is written before the
-    // append, an interrupted run leaves a baseline with no matching history
-    // entry, and the retry then diffs the run against itself and reports every
-    // row as unchanged when it was in fact the first load.
-    const history = JSON.parse(await readFile(historyPath, "utf8"));
-    const existing = history.runs?.find((entry) => entry.runId === runId);
-    if (existing === undefined) await appendRun(historyPath, durableRunRecord);
-    else if (JSON.stringify(existing) !== JSON.stringify(durableRunRecord)) {
-      throw new Error(`Run ${runId} exists with different immutable history evidence`);
-    }
-    await writeFile(
-      path.join(ARTIFACTS_DIR, "row-hashes.json"),
-      `${JSON.stringify({ runId, hashes: Object.fromEntries(currentHashes) })}\n`,
-      "utf8",
-    );
-    await writeFile(
-      path.join(ARTIFACTS_DIR, "latest.json"),
-      `${JSON.stringify(
-        {
-          runId,
-          mode,
-          candidateWorkflowRunId,
-          candidateCommit,
-          rootCid: dag.rootCid,
-          manifestCid,
-          carCid: archiveFile.cid,
-          ipnsName: LAKE_IPNS_NETWORK_KEY,
-          resolvedCid: dag.rootCid,
-          verifiedGateways,
-          propertyCount: coverage.tables.properties.rows,
-          publishedAt: durableRunRecord.finishedAt,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
-    attempt = await advancePublicationAttempt(PUBLICATION_LEDGER_PATH, attemptId, "FINALIZED", {
-      runHistory: path.relative(REPO_ROOT, historyPath),
-      rootCid: dag.rootCid,
+    const finalized = await finalizeConsumedPublication({
+      repoRoot: REPO_ROOT,
+      attemptId,
+      authorization: approval,
+      publicKeyPem: publicKey,
+      expectedCandidateCommit: candidateCommit,
+      readPointer: () => readIpnsPointer(capabilities.filebaseApiToken),
+      readHashes: async () => currentHashes,
     });
+    attempt = finalized.attempt;
   }
   log("publish_complete", { ...publishResult, attemptId, state: attempt.state, verifiedGateways });
   return durableRunRecord;
@@ -1927,7 +1893,9 @@ export async function readCurrentRowHashes(parquetPath) {
       "-csv",
       "-noheader",
       "-c",
-      `SELECT request_identifier || ',' || md5(concat_ws('|', coalesce(CAST(assessed_value AS VARCHAR),''), ` +
+      // Two CSV columns, not one comma-containing quoted field. The latter
+      // incorrectly put CSV quotes into the stored parcel IDs and hashes.
+      `SELECT request_identifier, md5(concat_ws('|', coalesce(CAST(assessed_value AS VARCHAR),''), ` +
         `coalesce(CAST(permit_count AS VARCHAR),''), coalesce(CAST(open_permit_count AS VARCHAR),''), ` +
         `coalesce(CAST(roof_age_years AS VARCHAR),''), coalesce(owner_name,''), coalesce(latest_permit_date,''))) ` +
         `FROM '${parquetPath}';`,
