@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "oracle.hosted-runtime-readback.v1",
+  "observedAt": "2026-09-17T16:02:50.984Z",
+  "baseUrl": "https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws",
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "county": {
+        "key": "lake",
+        "name": "Lake",
+        "stateCode": "FL",
+        "fips": "12069"
+      },
+      "dataSource": "https://ipfs.filebase.io/ipfs/bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u/query-table.parquet",
+      "dataSourceKind": "ipfs",
+      "runId": "20260916T181000Z",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "propertyCount": 215806
+    }
+  },
+  "metadata": {
+    "status": 200,
+    "run": {
+      "runId": "20260916T181000Z",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"
+    },
+    "coverageRunId": "20260916T181000Z",
+    "sourceObservationsOnly": true,
+    "countyComplete": false,
+    "chatEnabled": true
+  },
+  "mcpDataset": {
+    "status": 200,
+    "isError": false,
+    "run": {
+      "runId": "20260916T181000Z",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"
+    },
+    "liveCounts": {
+      "properties": 215806,
+      "with_coordinates": 209503,
+      "roof_age_known": 169007,
+      "roof_age_15_plus": 120362,
+      "with_permits": 30605,
+      "permit_records": 76166,
+      "owner_out_of_county": 50039,
+      "owner_out_of_state": 20236,
+      "no_recorded_sale": 184829,
+      "distinct_owners": 168315,
+      "with_business_account": 2726,
+      "business_accounts": 4451,
+      "contractor_names_present": 17750,
+      "bbb_ratings_present": 0,
+      "permit_records_property_aggregate": 72187,
+      "permit_records_total": 76166,
+      "permit_records_linked": 72187,
+      "permit_records_valid_unlinked": 3979
+    },
+    "coverageTables": {
+      "properties": {
+        "rows": 215806,
+        "source": "FL DOR NAL 2026P"
+      },
+      "permits": {
+        "rows": 76166,
+        "linked": 72187,
+        "validUnlinked": 3979,
+        "unmatchedParcelKeys": 422,
+        "linkedPermitRecordsOnProperties": 72187,
+        "bySource": {
+          "lake_cdplus_permits": 17671,
+          "lake_clermont_etrakit_permits": 58495
+        },
+        "source": "Lake County CD Plus permit layer and Clermont eTRAKiT 3",
+        "clermontCaptureWindow": {
+          "firstYear": 2015,
+          "lastYear": 2026,
+          "permitYears": [
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26"
+          ],
+          "allRequiredYearPartitionsCaptured": true,
+          "completeCountywideHistory": false
+        }
+      },
+      "contractors": {
+        "availability": "supported_partial",
+        "rows": 49676,
+        "distinctContractors": 6235,
+        "distinctLicenses": null,
+        "identityBasis": "source_listed_name_only",
+        "verifiedLegalIdentity": false,
+        "propertiesCovered": 18564,
+        "countyParcels": 215806,
+        "jurisdictionsCovered": 1,
+        "jurisdictionsInCounty": 15,
+        "permitYears": [
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20",
+          "21",
+          "22",
+          "23",
+          "24",
+          "25",
+          "26"
+        ],
+        "enumeratedPermits": 58495,
+        "deadPermits": 0,
+        "achievablePermits": 58495,
+        "complete": true,
+        "completeBasis": "all_achievable_retained_capture_records_only",
+        "sourceProfileAccepted": false,
+        "currentStatusAccepted": false,
+        "legalIdentityAccepted": false,
+        "baselineSha256": "05959a36584293386b52127513aa5b90728b3f634424b2141518ae8fb8e85e02",
+        "evidenceSha256": "e378c41ad8c050e67e64dd05c246a3cc78488dce26e6afb5e3d428ac2844b94d",
+        "source": "Clermont eTRAKiT 3 permit detail pages"
+      },
+      "coordinates": {
+        "rows": 209503,
+        "source": "FL GIO parcel centroids 2025"
+      },
+      "businessAccounts": {
+        "rows": 33346,
+        "withSitusAddress": 32738,
+        "matchedToParcel": 2060,
+        "attributedAcrossParcels": 4451,
+        "propertiesWithAccount": 2726,
+        "sharedAddressGroups": 90,
+        "accountTableAvailable": true,
+        "queryableSourceAccounts": 33346,
+        "queryableValidUnmatchedAccounts": 31286,
+        "source": "FL DOR TPP 2026P"
+      }
+    }
+  },
+  "openPermitRefusal": {
+    "status": 400,
+    "body": {
+      "error": "invalid_search",
+      "detail": "This source-observation dataset cannot answer current/open or completed-roof permit filters; unknown evidence is not an empty result or confirmed absence"
+    }
+  },
+  "clarifiedOpenPermitRefusal": {
+    "status": 200,
+    "body": {
+      "answer": "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. Captured status text is historical evidence, not current status; unknown does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Historical permit observations and low-confidence built-year roof proxies remain available in the data views.",
+      "citations": [],
+      "documents": [],
+      "model": "gpt-5-mini",
+      "runId": "20260916T181000Z",
+      "grounding": {
+        "mode": "source-only-refusal",
+        "runId": "20260916T181000Z",
+        "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "capabilities": {
+          "currentOpenPermitStatus": "unsupported",
+          "openPermitDuration": "unsupported"
+        }
+      }
+    }
+  },
+  "deployedSourceCommit": "889755c7b8a327f732d8929849acf7cbfff5d901",
+  "deployment": {
+    "account": "122610508924",
+    "region": "us-east-2",
+    "functionName": "OracleLakeRuntime-Runtime99E3DDFA-TPsmfMp7LFaQ",
+    "lastModified": "2026-09-17T16:01:36.000+0000",
+    "codeSha256Base64": "L4KNKjoIercFI7QjfWZnCnS9nNTFuG1M1sGZJX8hkDs=",
+    "cdkAsset": "6ebea22dbc57c1ecc5c535a0056a1695d97049a7accb036c3c26d239d25cbf0a",
+    "updateStatus": "Successful",
+    "alertingConfigured": "none"
+  },
+  "browserContractor": {
+    "observedBy": "selected connected browser",
+    "rootVisible": true,
+    "selectedRunVisible": true,
+    "builtYearProxyBadgeCorrect": true,
+    "unsupportedDecisionFieldsLabelledUnknown": true,
+    "consoleErrors": []
+  },
+  "independentRetentionVerified": false,
+  "publicationPromoted": false,
+  "fullAssignmentDemoPassed": false
+}

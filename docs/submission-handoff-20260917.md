@@ -111,6 +111,10 @@ projection do not prove zero source deletions outside that window.
    history is jurisdiction/source constrained. BBB and additional contact enrichment
    are conditional and unavailable. Official identity baseline ordering/adequate
    Sunbiz/DBPR temporal relationships remain a separate kit-conformance limitation.
+6. **Natural-language property lists are not reliably established.** The model
+   can fail to return usable canonical parcel rows; the guard then abstains rather
+   than inventing samples. The recorder labels that question unfulfilled. Every
+   displayed sample, when present, must pass an independent hosted query replay.
 
 A clean console is not proof of grounded model output. The earlier September 17
 take produced a sample identifier/address absent from the selected dataset; the

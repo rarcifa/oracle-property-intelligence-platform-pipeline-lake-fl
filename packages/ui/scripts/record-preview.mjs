@@ -164,7 +164,32 @@ try {
       const answer = await page.locator(".message.assistant .message-body").last().innerText();
       if (!answer.trim()) throw new Error("Agent returned citations but no actual answer text");
       const verificationQueries = [];
-      if (agentAnswers.length === 0) {
+      const propertyPrompt = agentAnswers.length === 0;
+      const observation = {
+        prompt,
+        observedText: await page.locator(".message.assistant").last().innerText(),
+        grounding: chat.grounding,
+        groundingVerified: false,
+        safeAbstentionVerified: false,
+        functionalQuestionFulfilled: false,
+        answerOutcome: "unverified",
+        verificationQueries,
+      };
+      agentAnswers.push(observation);
+      if (chat.runId !== runId) throw new Error("Actual chat selected a different run");
+      if (propertyPrompt && chat.grounding?.mode === "no-verified-records") {
+        if (
+          !answer.includes("No verified") ||
+          chat.grounding.evidence.some(
+            (evidence) =>
+              evidence.rows.length > 0 || evidence.runId !== runId || evidence.rootCid !== rootCid,
+          )
+        )
+          throw new Error("Agent abstention contradicts its selected-run evidence");
+        // A safe refusal is a demonstrated limitation, NOT a fulfilled data query.
+        observation.safeAbstentionVerified = true;
+        observation.answerOutcome = "no-verified-records";
+      } else if (propertyPrompt) {
         if (
           chat.grounding?.mode !== "canonical-query-rows" ||
           !chat.grounding.evidence.some((item) =>
@@ -267,19 +292,30 @@ try {
           }
           verificationQueries.push({ sql: evidence.sql, verifiedRows: evidence.rows.length });
         }
+        observation.groundingVerified = true;
+        observation.functionalQuestionFulfilled = true;
+        observation.answerOutcome = "canonical-query-rows";
       } else if (chat.grounding?.mode !== "source-only-refusal") {
         throw new Error(
           "Source-only open-permit prompt did not explicitly refuse unsupported decisions",
         );
+      } else {
+        if (
+          chat.grounding.runId !== runId ||
+          chat.grounding.rootCid !== rootCid ||
+          chat.grounding.capabilities?.currentOpenPermitStatus !== "unsupported" ||
+          chat.grounding.capabilities?.openPermitDuration !== "unsupported"
+        )
+          throw new Error("Agent refusal is not bound to unsupported selected-run capabilities");
+        observation.safeAbstentionVerified = true;
+        observation.answerOutcome = "source-only-refusal";
       }
-      agentAnswers.push({
-        prompt,
-        observedText: await page.locator(".message.assistant").last().innerText(),
-        grounding: chat.grounding,
-        groundingVerified: true,
-        verificationQueries,
+      beats.push({
+        name: prompt,
+        observedAt: new Date().toISOString(),
+        liveAgentAnswered: true,
+        functionalQuestionFulfilled: observation.functionalQuestionFulfilled,
       });
-      beats.push({ name: prompt, observedAt: new Date().toISOString(), liveAgentAnswered: true });
     }
     await page.screenshot({ path: path.join(out, "agent-answers.png") });
   }
