@@ -740,7 +740,7 @@ try {
   });
   await page.screenshot({ path: path.join(out, "radius-search.png") });
   if (meta.chatEnabled) {
-    await beat("ask", "Live model agent over the selected DuckDB snapshot");
+    await beat("ask", "Live agent over the selected DuckDB snapshot");
     for (const prompt of [
       "Which properties in Lake County within five miles of Clermont have roofs older than 15 years?",
       "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",

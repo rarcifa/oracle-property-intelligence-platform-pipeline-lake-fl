@@ -10,10 +10,12 @@
 
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { PERMIT_TABLE_COLUMN_NAMES, QUERY_TABLE_COLUMN_NAMES } from "@oracle-lake/shared";
 import { buildCorpus } from "../src/corpus/build.js";
-import { selectCorpusSource } from "../src/corpus/source.js";
+import { promotionReceiptSchema, REPO_ROOT, selectCorpusSource } from "../src/corpus/source.js";
 import {
   splitSections,
   windowBody,
@@ -189,6 +191,63 @@ describe("corpus construction", () => {
         );
       }
     }
+  });
+
+  it("binds measured permit/contractor counts to actual coverage bytes, not schema bytes", async () => {
+    const corpus = await corpusPromise;
+    const selected = await selectedPromise;
+    const path = selected.artifactPaths.get("coverage.json")!;
+    const bytes = await readFile(path);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    expect(selected.receipt.artifacts.find((entry) => entry.name === "coverage.json")?.sha256).toBe(
+      digest,
+    );
+    let expectedCid: string | null = null;
+    if (selected.releaseReceiptPath) {
+      const promotion = promotionReceiptSchema.parse(
+        JSON.parse(await readFile(selected.releaseReceiptPath, "utf8")),
+      );
+      const manifestEvidence = promotion.evidence.find((entry) => entry.role === "manifest")!;
+      const manifestBytes = await readFile(resolve(REPO_ROOT, manifestEvidence.path));
+      expect(createHash("sha256").update(manifestBytes).digest("hex")).toBe(
+        manifestEvidence.sha256,
+      );
+      const manifest = z
+        .object({
+          artifacts: z.array(z.object({ name: z.string(), cid: z.string(), sha256: z.string() })),
+        })
+        .parse(JSON.parse(manifestBytes.toString("utf8")));
+      const entry = manifest.artifacts.find((artifact) => artifact.name === "coverage.json")!;
+      expect(entry.sha256).toBe(`sha256:${digest}`);
+      expectedCid = entry.cid;
+      expect(
+        corpus.sourceSnapshot.inputs.find((input) => input.path === manifestEvidence.path)?.sha256,
+      ).toBe(manifestEvidence.sha256);
+    }
+    for (const docId of ["permit:table", "coverage:clermont-contractors"]) {
+      const chunk = corpus.chunks.find((entry) => entry.docId === docId)!;
+      expect(chunk.provenance).toEqual({
+        sourceFile: selected.receipt.runDirectory + "/coverage.json",
+        artifact: "coverage.json",
+        runId: selected.receipt.runId,
+        cid: expectedCid,
+        rootCid: selected.receipt.rootCid,
+        ipfsPath:
+          selected.receipt.releaseState === "published"
+            ? `ipfs://${selected.receipt.rootCid}/coverage.json`
+            : null,
+        releaseState: selected.receipt.releaseState,
+      });
+      expect(chunk.metadata.sourceInputSha256).toBe(digest);
+      expect(
+        corpus.sourceSnapshot.inputs.find((input) => input.path === chunk.provenance.sourceFile)
+          ?.sha256,
+      ).toBe(digest);
+    }
+    expect(
+      corpus.chunks.find((entry) => entry.docId === "permit-column:contractor_name")?.provenance
+        .artifact,
+    ).toBe("permit-schema.json");
   });
 
   it("states the reason a column is empty rather than leaving it bare", async () => {

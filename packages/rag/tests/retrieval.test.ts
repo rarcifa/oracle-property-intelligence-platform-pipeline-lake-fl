@@ -64,6 +64,22 @@ describe("ranking behaviour", () => {
     expect(result.chunks[0]?.text).toContain("Permits@leesburgflorida.gov");
   });
 
+  it.each([
+    "How many Clermont permit rows name contractors and is that countywide coverage?",
+    "How many permit rows with contractor names are retained for Clermont?",
+    "What are the Clermont contractor coverage counts?",
+  ])("routes quantitative contractor coverage to measured evidence: %s", (query) => {
+    const result = retrieve({ query, topK: 3 }, index);
+    const measured = result.chunks.find((chunk) => chunk.docId === "coverage:clermont-contractors");
+    expect(measured).toBeDefined();
+    expect(measured?.docType).toBe("coverage");
+    expect(measured?.metadata.family).toBe("contractor-coverage");
+    expect(measured?.metadata.jurisdiction).toBe("Clermont");
+    expect(measured?.text).toContain("These counts are not countywide contractor coverage");
+    expect(measured?.provenance.runId).toBe(index.raw.builtFrom.runId);
+    expect(measured?.provenance.rootCid).toBe(index.raw.builtFrom.rootCid);
+  });
+
   it("prefers the source document over the columns that merely cite it", () => {
     const result = retrieve(
       { query: "what does the Lake County CD Plus permit layer cover", topK: 5 },

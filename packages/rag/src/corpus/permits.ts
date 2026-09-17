@@ -46,7 +46,11 @@ function tableValue(table: Record<string, unknown>, key: string): number | null 
 }
 
 /** Build one table-grain document and one document per permit column. */
-export function buildPermitDocs(coverage: Coverage, provenance: Provenance): CorpusChunk[] {
+export function buildPermitDocs(
+  coverage: Coverage,
+  provenance: Provenance,
+  coverageArtifact: { provenance: Provenance; sha256: string },
+): CorpusChunk[] {
   const permits = (coverage.tables.permits ?? {}) as Record<string, unknown>;
   const contractors = (coverage.tables.contractors ?? {}) as Record<string, unknown>;
   const rows = tableValue(permits, "rows");
@@ -89,8 +93,9 @@ export function buildPermitDocs(coverage: Coverage, provenance: Provenance): Cor
         rows: String(rows ?? "unknown"),
         linked: String(linked ?? "unknown"),
         validUnlinked: String(validUnlinked ?? "unknown"),
+        sourceInputSha256: coverageArtifact.sha256,
       },
-      provenance,
+      provenance: coverageArtifact.provenance,
     }),
     entityChunk({
       docId: "coverage:clermont-contractors",
@@ -105,6 +110,10 @@ export function buildPermitDocs(coverage: Coverage, provenance: Provenance): Cor
       aliases: [
         "Clermont contractor coverage",
         "contractor rows",
+        "contractor coverage counts",
+        "permit rows name contractors",
+        "permit rows naming contractors",
+        "permit rows with contractor names",
         "distinct contractors",
         "one of fifteen jurisdictions",
       ],
@@ -113,8 +122,9 @@ export function buildPermitDocs(coverage: Coverage, provenance: Provenance): Cor
         jurisdiction: "Clermont",
         rows: String(contractorRows ?? "unknown"),
         jurisdictionsCovered: String(coveredJurisdictions ?? "unknown"),
+        sourceInputSha256: coverageArtifact.sha256,
       },
-      provenance,
+      provenance: coverageArtifact.provenance,
     }),
   ];
 

@@ -159,7 +159,7 @@ The [baseline RAG promotion receipt](packages/rag/promotion-receipt.json) and
 [validated selector](packages/rag/corpus-source.json) now bind published baseline
 artifacts, with 320 indexed chunks at promotion. Documentation retrieval remains
 distinct from canonical property-row evidence. The later index rebuild contains
-311 chunks over 141 documents and 48 source inputs. The deployed consumer and
+311 chunks over 141 documents and 49 source inputs. The deployed consumer and
 18:23 live readback bind this finalized baseline; final live NL replay/recording
 must independently verify the same run/root.
 
@@ -307,7 +307,7 @@ and [local materializer](packages/server/tests/materialize-historical-fixture.ts
 It has root=null, is not a release, and never borrows current published data/CIDs.
 Actual selected-source and documentation compatibility tests remain separate.
 
-The CI-equivalent local unit run reports **652/652 passing, no skips**, with
+The CI-equivalent local unit run reports **656/656 passing, no skips**, with
 the actual public selected snapshot and separately identified historical
 regression fixture. All **125 responsive-browser tests** and **14 isolated
 recorder checks** passed, including compound historical-row rendering and paint

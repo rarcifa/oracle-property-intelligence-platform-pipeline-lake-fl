@@ -26,7 +26,6 @@ import {
   buildSampleDocs,
   coverageSchema,
   indexSchema,
-  type Coverage,
   type PublishedIndex,
   type SampleExtract,
 } from "./artifacts.js";
@@ -35,7 +34,9 @@ import { buildPermitDocs } from "./permits.js";
 import {
   buildSourceSnapshot,
   collectLocalModuleClosure,
+  promotionReceiptSchema,
   selectCorpusSource,
+  sha256,
   type SourceInput,
 } from "./source.js";
 import {
@@ -235,14 +236,75 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
     );
   }
 
-  const coverage = coverageSchema.parse(await readJson<Coverage>(artifactPath("coverage.json")));
+  const coverageBytes = await readFile(artifactPath("coverage.json"));
+  const coverage = coverageSchema.parse(JSON.parse(coverageBytes.toString("utf8")));
   if (coverage.runId !== runId) {
     throw new Error(`coverage.json belongs to ${coverage.runId}, expected ${runId}`);
   }
 
+  const coverageInput = selected.receipt.artifacts.find(
+    (artifact) => artifact.name === "coverage.json",
+  );
+  if (!coverageInput || sha256(coverageBytes) !== coverageInput.sha256) {
+    throw new Error("Selected corpus has no matching coverage digest binding");
+  }
+  const coverageProvenance = artifactProvenance("coverage.json");
+  let coverageManifestPath: string | null = null;
+  if (selected.releaseReceiptPath) {
+    const promotion = promotionReceiptSchema.parse(await readJson(selected.releaseReceiptPath));
+    const manifestEvidence = promotion.evidence.filter((entry) => entry.role === "manifest");
+    if (
+      manifestEvidence.length !== 1 ||
+      promotion.runId !== runId ||
+      promotion.rootCid !== rootCid
+    ) {
+      throw new Error("Coverage identity requires the exact selected published manifest");
+    }
+    coverageManifestPath = resolve(REPO_ROOT, manifestEvidence[0]!.path);
+    const manifestBytes = await readFile(coverageManifestPath);
+    if (
+      sha256(manifestBytes) !== manifestEvidence[0]!.sha256 ||
+      promotion.manifestDigest !== `sha256:${sha256(manifestBytes)}`
+    ) {
+      throw new Error("Coverage identity manifest digest mismatch");
+    }
+    const manifest = z
+      .object({
+        runId: z.string(),
+        root: z.object({ cid: z.string() }),
+        artifacts: z.array(
+          z.object({
+            name: z.string(),
+            cid: z.string().regex(/^b[a-z2-7]+$/),
+            size: z.number().int().nonnegative(),
+            codec: z.enum(["file", "directory"]),
+            sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+          }),
+        ),
+      })
+      .parse(JSON.parse(manifestBytes.toString("utf8")));
+    const entries = manifest.artifacts.filter((entry) => entry.name === "coverage.json");
+    if (
+      manifest.runId !== runId ||
+      manifest.root.cid !== rootCid ||
+      entries.length !== 1 ||
+      entries[0]!.codec !== "file" ||
+      entries[0]!.sha256 !== `sha256:${coverageInput.sha256}` ||
+      entries[0]!.size !== coverageBytes.length
+    ) {
+      throw new Error("Coverage artifact does not match the selected immutable manifest");
+    }
+    coverageProvenance.cid = entries[0]!.cid;
+  }
+
   // (d) One document per property column and per permit column.
   chunks.push(...buildColumnDocs(artifactProvenance("schema.json")));
-  chunks.push(...buildPermitDocs(coverage, artifactProvenance("permit-schema.json")));
+  chunks.push(
+    ...buildPermitDocs(coverage, artifactProvenance("permit-schema.json"), {
+      provenance: coverageProvenance,
+      sha256: coverageInput.sha256,
+    }),
+  );
 
   // (e) The coverage snapshot, with one document per limitation.
   const coverageDocs = buildCoverageDocs(coverage, artifactProvenance("coverage.json"));
@@ -364,6 +426,7 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
   const sourcePaths = [
     selected.receiptPath,
     ...(selected.releaseReceiptPath ? [selected.releaseReceiptPath] : []),
+    ...(coverageManifestPath ? [coverageManifestPath] : []),
     ...selected.artifactPaths.values(),
     ...chunks.map((chunk) => resolve(REPO_ROOT, chunk.provenance.sourceFile)),
     ...generatorSources,

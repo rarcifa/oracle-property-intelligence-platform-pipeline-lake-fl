@@ -233,7 +233,7 @@ as `rarcifa <ricardo.arcifa@cronoslabs.org>`, without co-authorship/session trai
 
 ## Verification boundary and final fields to fill
 
-The CI-equivalent local unit run reports **652/652 passing, no skips**, with
+The CI-equivalent local unit run reports **656/656 passing, no skips**, with
 the actual public selected snapshot and separately identified historical
 regression fixture. All **125 responsive-browser tests** and **14 isolated
 recorder checks** passed, covering paint monitoring and historical-row rendering.
