@@ -8,6 +8,7 @@ import path from "node:path";
 import { URL } from "node:url";
 import { EXPECTED_MCP_TOOLS } from "./demo-contract.mjs";
 import { assertPaintSample, startPaintMonitor } from "./record-preview-paint.mjs";
+import { assertHistoricalRowsDisplayed, historicalRowCells } from "./record-preview-historical.mjs";
 import { validateArtifactManifest } from "../../../pipeline/src/core/artifact-manifest.mjs";
 import {
   buildUnixfsDirectory,
@@ -244,6 +245,23 @@ async function selfTest() {
   assert.throws(() => assertPaintSample({ pixels: 1000000, darkPixels: 1000000, brightPixels: 0 }));
   assert.throws(() => assertPaintSample({ pixels: 0, darkPixels: 0, brightPixels: 0 }));
   assert.throws(() => assertPaintSample({ pixels: 100, darkPixels: 100, brightPixels: -1 }));
+  assert.deepEqual(
+    historicalRowCells({
+      permit_number: "SYNTHETIC-PERMIT-ONLY",
+      jurisdiction: "synthetic jurisdiction",
+      permit_status: "ISSUED",
+      issued_date: "raw source date only",
+      permit_type: "ROOF/REROOF",
+      contractor_name: "synthetic source-listed name",
+    }),
+    [
+      "SYNTHETIC-PERMIT-ONLY synthetic jurisdiction",
+      "ISSUED raw source date only",
+      "ROOF/REROOF",
+      "—",
+      "synthetic source-listed name BBB: unknown",
+    ],
+  );
   const hosted = "https://preview.example.invalid";
   const gateways = ["https://ipfs.filebase.io", "https://gateway.pinata.cloud"];
   const queryBytes = Buffer.from("synthetic query bytes for recorder contract tests only");
@@ -674,8 +692,7 @@ try {
     )
   )
     throw new Error("Historical source-listed permit evidence failed independent replay");
-  for (const row of historicalResult.rows.slice(0, 5))
-    await page.locator("main table tbody").getByText(row.permit_number, { exact: true }).waitFor();
+  const displayedHistoricalRows = await assertHistoricalRowsDisplayed(page, historicalResult.rows);
   const historicalText = await page.locator("main").innerText();
   if (!historicalText.includes("not currently open permits"))
     throw new Error("Historical records lost their current-status caveat");
@@ -685,6 +702,7 @@ try {
     evidenceState: "historical-source-observations-not-current-open",
     rowsDisplayed: historicalResult.rows.length,
     independentlyReplayed: true,
+    ...displayedHistoricalRows,
     provenance: historicalResult.provenance,
     sourceRows: historicalResult.rows,
     currentOpenConclusion: false,

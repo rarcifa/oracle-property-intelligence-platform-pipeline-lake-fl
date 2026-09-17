@@ -22,18 +22,22 @@ Lighthouse archive retention and complete gateway verification remain pending.
 It is **not** a second finalized publication or a promoted latest/history/IPNS run.
 
 The baseline documentation RAG selector is now **published** and bound to that
-finalized root. Updated consumer deployment, supported agent-query replay,
-replacement video, current-head CI and a new Slowking score are still pending.
-Earlier live readback and recordings remain dated evidence, not proof of those
-later changes. County completeness and a passed full-assignment demo are not claimed.
+finalized root. The repaired consumer is deployed from commit
+`508d308c0175a9b159bcc5d0d8d893ff1c934557`; the 18:23 UTC live readback
+confirms its selected run, counts, finalized publication and ten MCP tools.
+Supported agent-query replay, replacement video, current-head CI and a new
+Slowking score are still pending. Earlier recordings remain dated evidence,
+not proof of later changes. County completeness and a passed full-assignment
+demo are not claimed.
 
 ### Where to evaluate
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
   Local edits are not proof that its remote head already contains them.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
-  The [16:02 UTC readback](artifacts/hosted-runtime-readback-20260917.json)
-  establishes the earlier baseline deployment; replacement deployment is pending.
+  The [18:23 UTC readback](artifacts/hosted-runtime-readback-20260917.json)
+  establishes the repaired deployment. The [16:02 UTC receipt](artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
+  is preserved separately as historical evidence.
 - [Baseline manifest](artifacts/manifest-20260916T181000Z.json),
   [normal verification](artifacts/verification-20260916T181000Z.json),
   [publication ledger](artifacts/publication-attempts.json),
@@ -154,8 +158,10 @@ new account or upgrade was performed.
 The [baseline RAG promotion receipt](packages/rag/promotion-receipt.json) and
 [validated selector](packages/rag/corpus-source.json) now bind published baseline
 artifacts, with 320 indexed chunks at promotion. Documentation retrieval remains
-distinct from canonical property-row evidence. New consumer deployment and final
-live NL replay/recording must still be bound to the actual deployed run/root.
+distinct from canonical property-row evidence. The later index rebuild contains
+311 chunks over 141 documents and 48 source inputs. The deployed consumer and
+18:23 live readback bind this finalized baseline; final live NL replay/recording
+must independently verify the same run/root.
 
 ## Every acceptance criterion: evidence and remaining boundary
 
@@ -301,10 +307,11 @@ and [local materializer](packages/server/tests/materialize-historical-fixture.ts
 It has root=null, is not a release, and never borrows current published data/CIDs.
 Actual selected-source and documentation compatibility tests remain separate.
 
-The CI-equivalent local unit run reports **649/649 passing, no skips**, with
+The CI-equivalent local unit run reports **652/652 passing, no skips**, with
 the actual public selected snapshot and separately identified historical
-regression fixture. All **125 responsive-browser tests** and **six isolated
-recorder paint checks** passed. Local lint, typecheck and build passed. These
+regression fixture. All **125 responsive-browser tests** and **14 isolated
+recorder checks** passed, including compound historical-row rendering and paint
+checks. Local lint, typecheck and build passed. These
 are local checks, not current-head CI, deployment or assignment-demo proof.
 Actual CI results will be linked only after they finish.
 

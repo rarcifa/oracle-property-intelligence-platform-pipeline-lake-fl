@@ -96,7 +96,7 @@ export async function buildBusinessTable(
     SELECT count(*) AS source_accounts,
       count(*) FILTER (WHERE matched_parcel_count > 0) AS matched_accounts,
       count(*) FILTER (WHERE matched_parcel_count = 0) AS valid_unmatched_accounts,
-      coalesce(sum(matched_parcel_count), 0) AS account_parcel_attributions,
+      coalesce(sum(matched_parcel_count), 0)::INTEGER AS account_parcel_attributions,
       count(*) FILTER (WHERE situs_address IS NOT NULL) AS accounts_with_situs
       FROM read_parquet(${quote(publicPath)});`;
   const [counts] = await run(sql);

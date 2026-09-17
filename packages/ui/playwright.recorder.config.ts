@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./test/browser",
-  testMatch: /record-preview-paint\.browser\.spec\.ts$/,
+  testMatch: /record-preview-(paint|historical)\.browser\.spec\.ts$/,
   outputDir: "./test-results/recorder-paint",
   fullyParallel: true,
   timeout: 15000,

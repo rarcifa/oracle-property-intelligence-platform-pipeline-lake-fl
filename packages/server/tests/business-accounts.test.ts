@@ -6,6 +6,7 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BUSINESS_TABLE_COLUMNS,
+  BUSINESS_ACCOUNT_COUNTS_SQL,
   buildBusinessSearchSql,
   businessSearchSchema,
   quote,
@@ -89,7 +90,49 @@ describe("all-source business accounts", () => {
       matched_accounts: 1,
       valid_unmatched_accounts: 2,
       account_parcel_attributions: 2,
+      accounts_with_situs: 2,
     });
+  });
+  it("types the attribution aggregate as INTEGER with exact numeric conservation", async () => {
+    const rows = await store.query(
+      `SELECT *, typeof(account_parcel_attributions) AS attribution_type
+       FROM (${BUSINESS_ACCOUNT_COUNTS_SQL})`,
+    );
+    expect(rows).toEqual([
+      {
+        source_business_accounts: 3,
+        matched_business_accounts: 1,
+        unmatched_business_accounts: 2,
+        account_parcel_attributions: 2,
+        attribution_type: "INTEGER",
+      },
+    ]);
+  });
+  it("keeps empty attribution aggregates numeric zero", async () => {
+    const rows = await store.query(
+      `WITH businesses AS (SELECT 0::INTEGER AS matched_parcel_count WHERE FALSE)
+       SELECT *, typeof(account_parcel_attributions) AS attribution_type
+       FROM (${BUSINESS_ACCOUNT_COUNTS_SQL})`,
+    );
+    expect(rows).toEqual([
+      {
+        source_business_accounts: 0,
+        matched_business_accounts: 0,
+        unmatched_business_accounts: 0,
+        account_parcel_attributions: 0,
+        attribution_type: "INTEGER",
+      },
+    ]);
+  });
+  it("rejects attribution overflow rather than truncating synthetic associations", async () => {
+    await expect(
+      store.query(
+        `WITH businesses AS (
+           SELECT * FROM (VALUES (2147483647::INTEGER), (1::INTEGER))
+           AS counts(matched_parcel_count)
+         ) ${BUSINESS_ACCOUNT_COUNTS_SQL}`,
+      ),
+    ).rejects.toThrow(/out of range|out of range for destination type/i);
   });
   it("returns actual unmatched account rows and honest candidate association grain", async () => {
     const unmatched = await searchBusinessAccounts(store, provenance, { linked: false });

@@ -7,10 +7,15 @@ addresses every clause while preserving the assignment brief verbatim.
 ## Evaluate the actual release
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
-  Final repaired commit/push and the release-bound PR body are pending.
+  Consumer repairs are pushed at `508d308c0175a9b159bcc5d0d8d893ff1c934557`;
+  final evidence and current-head CI remain pending.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
-  [Earlier live readback](../artifacts/hosted-runtime-readback-20260917.json) was observed
-  at `2026-09-17T16:02:50.984Z`; it is not proof of the pending replacement deployment.
+  [Repaired live readback](../artifacts/hosted-runtime-readback-20260917.json) was observed
+  at `2026-09-17T18:23:38.962Z`. App source is
+  `508d308c0175a9b159bcc5d0d8d893ff1c934557`; the CDK code asset is
+  `9379fd0a56bf95e2576430e6f9e90cd82c5e99c58e11f0fcedafc27f2b8ac52b`.
+  The [16:02 receipt](../artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
+  is preserved separately and is not proof of the repaired app.
 - Finalized dataset baseline: `20260916T181000Z`,
   root `bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u`.
 - [Complete baseline manifest](../artifacts/manifest-20260916T181000Z.json),
@@ -228,10 +233,11 @@ as `rarcifa <ricardo.arcifa@cronoslabs.org>`, without co-authorship/session trai
 
 ## Verification boundary and final fields to fill
 
-The CI-equivalent local unit run reports **649/649 passing, no skips**, with
+The CI-equivalent local unit run reports **652/652 passing, no skips**, with
 the actual public selected snapshot and separately identified historical
-regression fixture. All **125 responsive-browser tests** and **six isolated
-recorder paint checks** passed. Local lint, typecheck and build passed.
+regression fixture. All **125 responsive-browser tests** and **14 isolated
+recorder checks** passed, covering paint monitoring and historical-row rendering.
+Local lint, typecheck and build passed.
 Historical 554-app/1,094-pipeline/four-transform reports remain historical.
 None of these local results establishes current-head CI, the replacement
 deployment/video or a final new Slowking score. Those evidence links remain

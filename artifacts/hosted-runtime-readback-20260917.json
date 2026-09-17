@@ -1,6 +1,6 @@
 {
   "schemaVersion": "oracle.hosted-runtime-readback.v1",
-  "observedAt": "2026-09-17T16:02:50.984Z",
+  "observedAt": "2026-09-17T18:23:38.962Z",
   "baseUrl": "https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws",
   "health": {
     "status": 200,
@@ -23,19 +23,114 @@
     "status": 200,
     "run": {
       "runId": "20260916T181000Z",
-      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"
+      "mode": "full",
+      "candidateWorkflowRunId": "local",
+      "candidateCommit": "4fc47a475bd01d483b81150b741914eec2f8bc32",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "manifestCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "carCid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+      "resolvedCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "verifiedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gateway.pinata.cloud"
+      ],
+      "propertyCount": 215806,
+      "publishedAt": "2026-09-17T17:19:34.120Z"
     },
     "coverageRunId": "20260916T181000Z",
     "sourceObservationsOnly": true,
     "countyComplete": false,
-    "chatEnabled": true
+    "chatEnabled": true,
+    "publicationEvidence": {
+      "runId": "20260916T181000Z",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "manifestCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "manifestSha256": "sha256:99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b",
+      "manifestBytes": 11417,
+      "carCid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "carBytes": 341012658,
+      "carSha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f",
+      "artifactCount": 40,
+      "verifiedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gateway.pinata.cloud"
+      ],
+      "recordedAt": "2026-09-17T17:33:43.074Z",
+      "scope": "finalized-publication-receipt",
+      "retentionVerified": true,
+      "publicationPromoted": true
+    },
+    "successfulHistoryRuns": [
+      {
+        "runId": "20260916T181000Z",
+        "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "manifestCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+        "mode": "full"
+      },
+      {
+        "runId": "20260910T225242Z",
+        "rootCid": "bafybeigpkklcelrvukkwvor42wfmibmvwuveufwjspsumgmpbx3r26iowy",
+        "manifestCid": "bafkreigyltpgm7qxu7ccyfqeyg3q2c3ygdrqkgwnajjunrplv3xf32phmi",
+        "mode": "full"
+      },
+      {
+        "runId": "20260910T214904Z",
+        "rootCid": "bafybeidslvwzrmoczzrxek2fxydtbqvvvzgld4e3p3t2bkschep22ky4hq",
+        "manifestCid": "bafkreigbiggimzy5rghm2bdhnnvwewu3sa3mdibbxmvb2a2tgdr4uik2ri",
+        "mode": "full"
+      },
+      {
+        "runId": "20260910T210850Z",
+        "rootCid": "bafybeidtc5bhhp5abcn5xx75uu6fs6ttna7el2fmenb2cmrirh5vpxg7cm",
+        "manifestCid": "bafkreievuim7a2vsyqwhkmhcm3fz35tijlayv7ar5z4o7pzseqlckedljy",
+        "mode": "full"
+      },
+      {
+        "runId": "20260910T153418Z",
+        "rootCid": "bafybeibshsx6h6xtbqb65at6oycndtpp3ufdou5i5unahulvtn46n4fr4m",
+        "manifestCid": "bafkreidpwpuddp5ri732aphkrqyz6cxkb6nmrzeshwxtdctzxscbzncjgq",
+        "mode": "incremental"
+      },
+      {
+        "runId": "20260910T135850Z",
+        "rootCid": "bafybeif5vpiyp2v5foc7k3swsgoujzlvo7exaspntdsrmc4tp5vkuok67q",
+        "manifestCid": "bafkreib6hsmjlfi5hdk3be73bepgrdikmkpvgrbbghvgz6jbzsyptmqjcm",
+        "mode": "incremental"
+      },
+      {
+        "runId": "20260909T185056Z",
+        "rootCid": "bafybeiay65owaalyfthqnyfsmr47xmyl5bf373bylai757kbrn62rgz33q",
+        "manifestCid": "bafkreidgtpx6dbrbmlilwpyb5zj3vdowipsxquhzy4tr2pdzlr6l5xslaq",
+        "mode": "incremental"
+      },
+      {
+        "runId": "20260909T182356Z",
+        "rootCid": "bafybeigb3grzqolyja5lefcf3pkfxb5tuhkdtbidnitigq4zzomivrltee",
+        "manifestCid": "bafkreieasg746kmlxv3kyrmewdjjacju3nrnriqsuj646vzijbcdpiwonm",
+        "mode": "full"
+      }
+    ]
   },
   "mcpDataset": {
     "status": 200,
     "isError": false,
     "run": {
       "runId": "20260916T181000Z",
-      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"
+      "mode": "full",
+      "candidateWorkflowRunId": "local",
+      "candidateCommit": "4fc47a475bd01d483b81150b741914eec2f8bc32",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "manifestCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "carCid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "ipnsName": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+      "resolvedCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "verifiedGateways": [
+        "https://ipfs.filebase.io",
+        "https://gateway.pinata.cloud"
+      ],
+      "propertyCount": 215806,
+      "publishedAt": "2026-09-17T17:19:34.120Z"
     },
     "liveCounts": {
       "properties": 215806,
@@ -147,6 +242,54 @@
         "queryableValidUnmatchedAccounts": 31286,
         "source": "FL DOR TPP 2026P"
       }
+    },
+    "toolNames": [
+      "listOracleBusinessAccounts",
+      "getPropertyQuerySchema",
+      "queryProperties",
+      "getOracleDatasetInfo",
+      "listOracleProperties",
+      "getOracleProperty",
+      "getPropertyPermits",
+      "findAgedRoofs",
+      "findOpenRoofPermits",
+      "findPropertiesInRadius"
+    ]
+  },
+  "historicalPermitCounts": {
+    "status": 200,
+    "body": {
+      "rows": [
+        {
+          "source_rows": 58495,
+          "literal_roof_reroof": 9969,
+          "source_issued_roof_reroof": 276,
+          "source_issued_roof_reroof_with_date": 266
+        }
+      ],
+      "rowCount": 1,
+      "truncated": false,
+      "sql": "SELECT count(*) AS source_rows, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF') AS literal_roof_reroof, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF' AND permit_status='ISSUED') AS source_issued_roof_reroof, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF' AND permit_status='ISSUED' AND issued_date IS NOT NULL AND trim(issued_date)<>'') AS source_issued_roof_reroof_with_date FROM permits WHERE source_system='lake_clermont_etrakit_permits'",
+      "provenance": {
+        "sql": "SELECT count(*) AS source_rows, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF') AS literal_roof_reroof, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF' AND permit_status='ISSUED') AS source_issued_roof_reroof, count(*) FILTER (WHERE upper(trim(permit_type))='ROOF/REROOF' AND permit_status='ISSUED' AND issued_date IS NOT NULL AND trim(issued_date)<>'') AS source_issued_roof_reroof_with_date FROM permits WHERE source_system='lake_clermont_etrakit_permits'",
+        "dataSource": "https://ipfs.filebase.io/ipfs/bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u/query-table.parquet",
+        "dataSourceKind": "ipfs",
+        "sourceSystems": [
+          "BBB policy/API gate (default route HTTP 403)",
+          "Clermont eTRAKiT permits; null elsewhere",
+          "FL DOR NAL 2026P",
+          "FL DOR SDF 2026P",
+          "FL DOR TPP 2026P",
+          "FL GIO parcel centroids 2025",
+          "Lake County CD Plus permit layer + Clermont eTRAKiT permits",
+          "derived by the pipeline",
+          "not ingested for this run"
+        ],
+        "runId": "20260916T181000Z",
+        "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "sourceObservationsOnly": true,
+        "decisionCaveat": "Unaccepted historical observations. Current/open status, primary-roof completion and legal-company/license identity remain unknown; built year is only a low-confidence proxy with incomplete permit history."
+      }
     }
   },
   "openPermitRefusal": {
@@ -159,7 +302,7 @@
   "clarifiedOpenPermitRefusal": {
     "status": 200,
     "body": {
-      "answer": "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. Captured status text is historical evidence, not current status; unknown does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Historical permit observations and low-confidence built-year roof proxies remain available in the data views.",
+      "answer": "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. This does not mean the historical permits are missing: retained permit records remain queryable in the Contractor view, including source-listed types (such as ROOF/REROOF), statuses, raw issued dates and contractor names where present. An ISSUED source record is not asserted to be currently open. Unknown current status does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Low-confidence built-year roof proxies also remain available in the data views.",
       "citations": [],
       "documents": [],
       "model": "gpt-5-mini",
@@ -175,26 +318,19 @@
       }
     }
   },
-  "deployedSourceCommit": "889755c7b8a327f732d8929849acf7cbfff5d901",
+  "deployedSourceCommit": "508d308c0175a9b159bcc5d0d8d893ff1c934557",
   "deployment": {
     "account": "122610508924",
+    "operatorArn": "arn:aws:iam::122610508924:user/etl",
     "region": "us-east-2",
     "functionName": "OracleLakeRuntime-Runtime99E3DDFA-TPsmfMp7LFaQ",
-    "lastModified": "2026-09-17T16:01:36.000+0000",
-    "codeSha256Base64": "L4KNKjoIercFI7QjfWZnCnS9nNTFuG1M1sGZJX8hkDs=",
-    "cdkAsset": "6ebea22dbc57c1ecc5c535a0056a1695d97049a7accb036c3c26d239d25cbf0a",
+    "lastModified": "2026-09-17T18:22:47.000+0000",
+    "codeSha256Base64": "0+2qtU4ngHThlDy9t7gJCxrvt35VWwX9DwV0+0lrtu8=",
+    "cdkAsset": "9379fd0a56bf95e2576430e6f9e90cd82c5e99c58e11f0fcedafc27f2b8ac52b",
     "updateStatus": "Successful",
     "alertingConfigured": "none"
   },
-  "browserContractor": {
-    "observedBy": "selected connected browser",
-    "rootVisible": true,
-    "selectedRunVisible": true,
-    "builtYearProxyBadgeCorrect": true,
-    "unsupportedDecisionFieldsLabelledUnknown": true,
-    "consoleErrors": []
-  },
-  "independentRetentionVerified": false,
-  "publicationPromoted": false,
+  "independentRetentionVerified": true,
+  "publicationPromoted": true,
   "fullAssignmentDemoPassed": false
 }

@@ -80,7 +80,7 @@ export function buildBusinessSearchSql(options: BusinessSearchOptions = {}, coun
 export const BUSINESS_ACCOUNT_COUNTS_SQL = `SELECT count(*) AS source_business_accounts,
   count(*) FILTER (WHERE matched_parcel_count > 0) AS matched_business_accounts,
   count(*) FILTER (WHERE matched_parcel_count = 0) AS unmatched_business_accounts,
-  coalesce(sum(matched_parcel_count), 0) AS account_parcel_attributions
+  coalesce(sum(matched_parcel_count), 0)::INTEGER AS account_parcel_attributions
 FROM ${BUSINESSES_VIEW}`;
 
 export const BUSINESS_ACCOUNT_NOTE =
