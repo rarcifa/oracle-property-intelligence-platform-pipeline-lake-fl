@@ -33,6 +33,11 @@ beforeEach(() => {
     if (!(key in saved)) delete process.env[key];
   }
   Object.assign(process.env, saved);
+  // Server regression fixtures are deliberately local/unpublished. They are
+  // not a pinned public runtime selection for these independent CDK tests.
+  delete process.env.ORACLE_DATA_RUN_ID;
+  delete process.env.ORACLE_DATA_ROOT_CID;
+  delete process.env.ORACLE_PARQUET_URL;
 });
 
 afterEach(() => {
@@ -43,6 +48,11 @@ afterEach(() => {
 });
 
 describe("hosted runtime observability", () => {
+  it("still rejects an explicitly incomplete public runtime pin", () => {
+    process.env.ORACLE_DATA_RUN_ID = "20260911T131000Z";
+    process.env.ORACLE_DATA_ROOT_CID = "";
+    expect(() => configuredTemplate()).toThrow(/exact run ID and CIDv1 root/);
+  });
   it("makes the root CDK app reject the wrong deploy target before synthesis", () => {
     const appPath = fileURLToPath(new URL("../../infra/app.ts", import.meta.url));
     const tsxPath = fileURLToPath(new URL("../../infra/node_modules/.bin/tsx", import.meta.url));
@@ -150,9 +160,7 @@ describe("hosted runtime observability", () => {
       "utf8",
     );
     expect(rendered).toContain("OracleLake-dataset-unavailable");
-    expect(runtimeSource).toContain(
-      "cloudWatchAlarmDedupKey(DATASET_UNAVAILABLE_ALARM_NAME)",
-    );
+    expect(runtimeSource).toContain("cloudWatchAlarmDedupKey(DATASET_UNAVAILABLE_ALARM_NAME)");
     expect(runtimeSource).not.toContain("oracle-lake-runtime/dataset-unavailable/");
   });
 });

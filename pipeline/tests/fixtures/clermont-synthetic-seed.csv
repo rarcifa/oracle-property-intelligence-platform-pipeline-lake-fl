@@ -1,0 +1,2 @@
+parcel_id,source_identifier,alt_key,method,url,address,city,state,zip,county,county_fips
+SYNTHETIC-TEST-PARCEL,SYNTHETIC-TEST-PARCEL,SYNTHETIC-TEST-ALT,GET,https://example.invalid/synthetic-property,TEST FIXTURE ONLY,Clermont,FL,00000,Lake,12069

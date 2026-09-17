@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { LEGACY_LAMBDA_COMMAND } from "./duckdb-legacy-json-fixture.js";
 
 const fixtureRoot = fileURLToPath(
   new URL("./fixtures/lake-query-table-sql-regressions/", import.meta.url),
@@ -36,12 +37,19 @@ function quote(value: string): string {
 }
 
 function execute(statement: string): string {
-  return execFileSync("duckdb", ["-batch", "-json", "-c", statement], {
-    encoding: "utf8",
-    timeout: 60000,
-    maxBuffer: 16 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  // This regression intentionally executes the frozen legacy SQL unchanged.
+  // DuckDB 1.5 prints deprecated-arrow warnings to stdout, even in JSON mode;
+  // explicitly select its documented compatibility mode, never strip output.
+  return execFileSync(
+    "duckdb",
+    ["-batch", "-json", "-cmd", LEGACY_LAMBDA_COMMAND, "-c", statement],
+    {
+      encoding: "utf8",
+      timeout: 60000,
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
 }
 
 function query<Schema extends z.ZodType>(statement: string, schema: Schema): z.output<Schema>[] {

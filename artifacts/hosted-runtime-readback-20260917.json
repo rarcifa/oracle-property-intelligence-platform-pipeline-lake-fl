@@ -1,6 +1,6 @@
 {
   "schemaVersion": "oracle.hosted-runtime-readback.v1",
-  "observedAt": "2026-09-17T18:49:28.540Z",
+  "observedAt": "2026-09-17T18:57:44.083Z",
   "baseUrl": "https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws",
   "health": {
     "status": 200,
@@ -318,15 +318,15 @@
       }
     }
   },
-  "deployedSourceCommit": "292e71523305db688f686535ab42ce83df2ec20e",
+  "deployedSourceCommit": "2cf3ab8284d694094b22a8b1824d6acc535ef334",
   "deployment": {
     "account": "122610508924",
     "operatorArn": "arn:aws:iam::122610508924:user/etl",
     "region": "us-east-2",
     "functionName": "OracleLakeRuntime-Runtime99E3DDFA-TPsmfMp7LFaQ",
-    "lastModified": "2026-09-17T18:48:57.000+0000",
-    "codeSha256Base64": "z2q0HrzhkylZ8a9owtRApecEg+rMK1h+FgiuYtHkae8=",
-    "cdkAsset": "61841281b9bba1fb2e43beba8b4f0e393fc882e46e901a77c9f0ff8c88ce59a8",
+    "lastModified": "2026-09-17T18:56:57.000+0000",
+    "codeSha256Base64": "v6N962LZ8JImwMjORkNfUmx7YmnUrDHqDywxn2yY0Y0=",
+    "cdkAsset": "e10a265860900a495d0e2792c9aef7376d9161b268ce22f4e72957d649ba5248",
     "updateStatus": "Successful",
     "alertingConfigured": "none"
   },

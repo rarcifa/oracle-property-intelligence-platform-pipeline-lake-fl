@@ -4,7 +4,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { canonicalJson } from "../src/batch/contracts.js";
 import {
@@ -47,9 +47,19 @@ import {
   clermontPrepareTemplateSchema,
 } from "../src/batch/clermont-run-contracts.js";
 import { getClermontRunStatus } from "../src/batch/clermont-status.js";
+import {
+  createClermontScopeFixture,
+  removeClermontScopeFixture,
+} from "./clermont-scope-fixture.js";
 
 const NOW = "2026-09-11T12:00:00.000Z";
-const REPO_ROOT = path.resolve(process.cwd(), "..");
+let REPO_ROOT: string;
+beforeAll(async () => {
+  REPO_ROOT = await createClermontScopeFixture(path.resolve(process.cwd(), ".."));
+});
+afterAll(async () => {
+  if (REPO_ROOT !== undefined) await removeClermontScopeFixture(REPO_ROOT);
+});
 const RUN_ID = "lake-clermont-production-test";
 const ACTIVE_GUARD = {
   leaseError: null,

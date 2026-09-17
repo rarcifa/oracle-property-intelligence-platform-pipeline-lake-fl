@@ -13,6 +13,11 @@ import {
   type IncrementalSourceOnlyOptions,
 } from "../scripts/lake/build-source-only-incremental.js";
 import { reconcilePermitRefresh } from "../scripts/lake/summarize-permit-refresh.js";
+import {
+  createLegacyDuckDbFixture,
+  removeLegacyDuckDbFixture,
+  LEGACY_LAMBDA_COMMAND,
+} from "./duckdb-legacy-json-fixture.js";
 
 const sha = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
 const quote = (value: string): string => value.replaceAll("'", "''");
@@ -21,8 +26,12 @@ const fixtures = fileURLToPath(
 );
 let directory: string;
 let options: IncrementalSourceOnlyOptions;
+let duckDbFixture: string | undefined;
+const originalPath = process.env.PATH;
 const sql = (statement: string): Record<string, unknown>[] => {
-  const result = execFileSync("duckdb", ["-json", "-c", statement], {
+  // Preserve the frozen input SQL; select DuckDB's explicit legacy-lambda mode
+  // so diagnostics are not mixed into JSON. Parsing remains strict.
+  const result = execFileSync("duckdb", ["-json", "-cmd", LEGACY_LAMBDA_COMMAND, "-c", statement], {
     encoding: "utf8",
     timeout: 60000,
   });
@@ -34,6 +43,8 @@ const bound = async (input: string) => {
 };
 
 beforeAll(async () => {
+  duckDbFixture = await createLegacyDuckDbFixture();
+  process.env.PATH = `${duckDbFixture}${path.delimiter}${originalPath ?? ""}`;
   directory = await mkdtemp(path.join(tmpdir(), "lake-source-only-incremental-"));
   const names = [
     "NAL45P202601.csv",
@@ -190,6 +201,9 @@ beforeAll(async () => {
 }, 60000);
 
 afterAll(async () => {
+  if (originalPath === undefined) delete process.env.PATH;
+  else process.env.PATH = originalPath;
+  if (duckDbFixture) await removeLegacyDuckDbFixture(duckDbFixture);
   if (directory) await rm(directory, { recursive: true, force: true });
   if (options) await rm(options.output, { recursive: true, force: true });
 });

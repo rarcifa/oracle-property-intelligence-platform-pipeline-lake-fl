@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/p
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { canonicalJson, sha256Text } from "../src/batch/contracts.js";
 
@@ -47,9 +47,19 @@ import {
   syntheticClermontBaseline,
   writeSyntheticClermontArtifacts,
 } from "./clermont-batch-fixtures.js";
+import {
+  createClermontScopeFixture,
+  removeClermontScopeFixture,
+} from "./clermont-scope-fixture.js";
 
 const NOW = "2026-09-11T12:00:00.000Z";
-const REPO_ROOT = path.resolve(process.cwd(), "..");
+let REPO_ROOT: string;
+beforeAll(async () => {
+  REPO_ROOT = await createClermontScopeFixture(path.resolve(process.cwd(), ".."));
+});
+afterAll(async () => {
+  if (REPO_ROOT !== undefined) await removeClermontScopeFixture(REPO_ROOT);
+});
 const ACTIVE_GUARD = {
   leaseError: null,
   async assertActive() {},
