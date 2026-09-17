@@ -123,6 +123,43 @@ export async function mockPublishedRun(page: Page): Promise<void> {
   await page.route(/\/api\/properties\/[^/]+$/, (route) => route.fulfill(json(FIXTURES.property)));
 }
 
+/** Synthetic layout state only: never a publication, retention or readback receipt. */
+export async function mockStandalonePublicationEvidence(
+  page: Page,
+  finalized = false,
+): Promise<void> {
+  const meta = structuredClone(FIXTURES.run);
+  const run = object(meta.run, "run.run");
+  for (const field of ["manifestCid", "carCid", "ipnsName", "resolvedCid", "verifiedGateways"]) {
+    delete run[field];
+  }
+  Object.assign(meta, {
+    sourceObservationsOnly: true,
+    publicationEvidence: {
+      ...DESIGN_FIXTURE_IDENTITY,
+      manifestCid: "not-a-public-manifest-cid-design-fixture",
+      manifestSha256: `sha256:${"a".repeat(64)}`,
+      manifestBytes: 123,
+      carCid: "not-a-public-car-cid-design-fixture",
+      carBytes: 341012658,
+      carSha256: `sha256:${"b".repeat(64)}`,
+      artifactCount: 40,
+      verifiedGateways: ["https://gateway-a.example", "https://gateway-b.example"],
+      recordedAt: "2026-09-17T15:31:26.176Z",
+      scope: finalized ? "finalized-publication-receipt" : "standalone-public-gateway-observations",
+      retentionVerified: finalized,
+      publicationPromoted: finalized,
+    },
+  });
+  await page.route(/\/api\/meta\/run$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(meta),
+    }),
+  );
+}
+
 /**
  * Pin the server data path before the app boots. Without this the provider may
  * start DuckDB-WASM, which is blocked here and would only add a mode-pill race.

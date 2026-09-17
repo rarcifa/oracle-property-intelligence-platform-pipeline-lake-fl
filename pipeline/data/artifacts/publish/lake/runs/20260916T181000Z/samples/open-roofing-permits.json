@@ -1,0 +1,7 @@
+{
+  "query": "SELECT request_identifier, address_street, address_city, latitude, longitude, open_roofing_permit_count, longest_open_roofing_permit_days, latest_permit_date, roof_age_years, roof_age_basis, contractor_name, bbb_rating, enrichment_status FROM 'query-table.parquet' WHERE open_roofing_permit_count > 0 ORDER BY longest_open_roofing_permit_days DESC NULLS LAST LIMIT 100",
+  "available": false,
+  "note": "Current-open roofing decisions are not accepted in this source-only snapshot; empty rows do not establish zero open permits.",
+  "rowCount": 0,
+  "rows": []
+}

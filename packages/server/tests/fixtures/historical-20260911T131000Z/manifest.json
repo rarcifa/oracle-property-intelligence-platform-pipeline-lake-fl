@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "oracle.historical-regression-fixture.v1",
+  "runId": "20260911T131000Z",
+  "rootCid": null,
+  "releaseState": "historical-local-test-fixture",
+  "testOnly": true,
+  "purpose": "Actual historical local candidate bytes for legacy consumer regression only. This is not a published dataset, source-semantic acceptance, or current submission evidence.",
+  "runDirectory": "pipeline/data/artifacts/publish/lake/runs/20260911T131000Z",
+  "artifacts": [
+    {
+      "name": "query-table.parquet",
+      "fixtureFile": "query-table.parquet.bin",
+      "size": 20187303,
+      "sha256": "8d9cbc037eac0f7a33036b0d0a16738ccf51eb11d7585415c1d252f0c8f2c4e2"
+    },
+    {
+      "name": "permit-table.parquet",
+      "fixtureFile": "permit-table.parquet.bin",
+      "size": 621794,
+      "sha256": "a4f5c2b67c92519639670be4628c34626c58b56d1b874d46010f90002543ba01"
+    }
+  ],
+  "metadata": [
+    {
+      "name": "coverage.json",
+      "size": 5412,
+      "sha256": "28baa3eb1158f5f9ca6d7a5fbb49202a2643e665d20e0fe1e5a4519bf239783f"
+    },
+    {
+      "name": "index.json",
+      "size": 4606,
+      "sha256": "51237a737bbd634484f834d768ff6fe3ef3828466f8cc47d23c443b667eb497a"
+    },
+    {
+      "name": "schema.json",
+      "size": 5980,
+      "sha256": "e54d3f642027da9cc4965067cab6fe62a1f253c00b09282ef466e9b557586c24"
+    },
+    {
+      "name": "permit-schema.json",
+      "size": 2106,
+      "sha256": "44ec46c4f51c61507920ba2f88fc1660d9377148cb77293db6a5851603bd87d6"
+    }
+  ]
+}

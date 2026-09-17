@@ -72,7 +72,7 @@ async function fixture(): Promise<{
   await writeFile(manifestPath, manifestBytes);
   const manifestDigest = `sha256:${digest(manifestBytes)}`;
   const verificationArtifacts = [
-    ...entries.map(({ name, cid }) => ({ name, cid })),
+    ...manifest.artifacts.map(({ name, cid }) => ({ name, cid })),
     { name: "manifest.json", cid: manifestCid },
   ].map((artifact) => ({
     ...artifact,
@@ -137,6 +137,41 @@ afterEach(async () => {
 });
 
 describe("published RAG promotion", () => {
+  it("requires public root-block verification for directory artifacts too", async () => {
+    const paths = await fixture();
+    await expect(validatePublishedRelease({ ...paths, runId, rootCid })).resolves.toBeDefined();
+    const verification = JSON.parse(await readFile(paths.verificationPath, "utf8"));
+    verification.verification.artifacts = verification.verification.artifacts.filter(
+      (artifact: { name: string }) => artifact.name !== "/",
+    );
+    verification.verification.checkedArtifacts -= 1;
+    verification.verification.verifiedArtifacts -= 1;
+    await writeFile(paths.verificationPath, `${JSON.stringify(verification)}\n`);
+    await expect(validatePublishedRelease({ ...paths, runId, rootCid })).rejects.toThrow(
+      /whole manifest/,
+    );
+  });
+
+  it("accepts real publisher commit fields only when all release receipts agree", async () => {
+    const paths = await fixture();
+    const candidateCommit = "4".repeat(40);
+    const latest = JSON.parse(await readFile(paths.latestPath, "utf8"));
+    const verification = JSON.parse(await readFile(paths.verificationPath, "utf8"));
+    const ledger = JSON.parse(await readFile(paths.ledgerPath, "utf8"));
+    latest.candidateCommit = candidateCommit;
+    verification.candidateCommit = candidateCommit;
+    ledger.attempts[attemptId].target.candidateCommit = candidateCommit;
+    await writeFile(paths.latestPath, `${JSON.stringify(latest)}\n`);
+    await writeFile(paths.verificationPath, `${JSON.stringify(verification)}\n`);
+    await writeFile(paths.ledgerPath, `${JSON.stringify(ledger)}\n`);
+    await expect(validatePublishedRelease({ ...paths, runId, rootCid })).resolves.toBeDefined();
+    verification.candidateCommit = "5".repeat(40);
+    await writeFile(paths.verificationPath, `${JSON.stringify(verification)}\n`);
+    await expect(validatePublishedRelease({ ...paths, runId, rootCid })).rejects.toThrow(
+      /do not share one release identity/,
+    );
+  });
+
   it("constructs a receipt only from one exact FINALIZED run and verified manifest", async () => {
     const paths = await fixture();
     const result = await validatePublishedRelease({ ...paths, runId, rootCid });

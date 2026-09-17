@@ -9,7 +9,7 @@ import {
 import { loadConfig } from "../src/config.js";
 import type { AppContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
-import { searchProperties } from "../src/data/queries.js";
+import { runReadOnlySql, searchProperties } from "../src/data/queries.js";
 import type * as QueryModule from "../src/data/queries.js";
 
 const transport = vi.hoisted(() => ({ model: null as MockLanguageModelV4 | null }));
@@ -17,6 +17,7 @@ vi.mock("@ai-sdk/openai", () => ({ createOpenAI: () => () => transport.model }))
 vi.mock("../src/data/queries.js", async (importOriginal) => ({
   ...(await importOriginal<typeof QueryModule>()),
   searchProperties: vi.fn(),
+  runReadOnlySql: vi.fn(),
 }));
 
 type ModelResult = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>;
@@ -186,6 +187,71 @@ describe("canonical record answer finalization", () => {
     expect(result?.grounding.mode).toBe("no-verified-records");
     expect(result?.answer).not.toContain("12 properties");
   });
+
+  it.each([
+    { parcel_id: row.request_identifier, address_street: row.address_street },
+    { request_identifier: "FABRICATED-ID", address_street: "840 DEER RUN" },
+    { ...row, address_street: "MODEL-REPLACED STREET" },
+  ])(
+    "does not promote arbitrary SQL aliases or literals to canonical property evidence: %j",
+    (sqlRow) => {
+      const result = finalizeRecordAnswer([{ ...evidence, tool: "runSql", rows: [sqlRow] }], true);
+      expect(result?.grounding.mode).toBe("no-verified-records");
+      expect(result?.answer).not.toMatch(/FABRICATED-ID|840 DEER RUN|MODEL-REPLACED STREET/);
+      if (result?.grounding.mode === "no-verified-records") {
+        expect(result.grounding.evidence[0]?.rows).toEqual([]);
+      }
+    },
+  );
+
+  it.each([
+    [
+      "SELECT request_identifier AS parcel_id, address_street FROM properties LIMIT 25",
+      { parcel_id: row.request_identifier, address_street: row.address_street },
+    ],
+    [
+      "SELECT 'FABRICATED-ID' AS request_identifier, '840 DEER RUN' AS address_street FROM properties LIMIT 25",
+      { request_identifier: "FABRICATED-ID", address_street: "840 DEER RUN" },
+    ],
+  ])(
+    "keeps SQL replay evidence but refuses an SDK-selected unsafe projection: %s",
+    async (sql, sqlRow) => {
+      vi.mocked(runReadOnlySql).mockResolvedValue({
+        rows: [sqlRow],
+        rowCount: 1,
+        truncated: false,
+        sql,
+        provenance: { ...provenance, sql },
+      });
+      transport.model = new MockLanguageModelV4({
+        doGenerate: [
+          result(
+            [
+              {
+                type: "tool-call",
+                toolCallId: "unsafe-projection",
+                toolName: "runSql",
+                input: JSON.stringify({ sql }),
+              },
+            ],
+            true,
+          ),
+          result([{ type: "text", text: "FABRICATED-ID at 840 DEER RUN qualifies." }]),
+        ],
+      });
+      const response = await createChatAgent(context()).run([
+        { role: "user", content: "Which properties have roofs older than 15 years?" },
+      ]);
+      expect(response.grounding?.mode).toBe("no-verified-records");
+      expect(response.answer).not.toMatch(/FABRICATED-ID|840 DEER RUN/);
+      expect(response.citations).toMatchObject([
+        { tool: "runSql", sql, runId: RUN, rootCid: ROOT, parcelIds: [] },
+      ]);
+      if (response.grounding?.mode === "no-verified-records") {
+        expect(response.grounding.evidence[0]).toMatchObject({ sql, rows: [] });
+      }
+    },
+  );
 
   it("bounds the exact structured evidence to 25 rows total and preserves null rather than replacing it", () => {
     const many = {

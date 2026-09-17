@@ -181,7 +181,7 @@ export function SearchView(): JSX.Element {
     setSortDir("desc");
   };
 
-  const rows = results.data?.rows ?? [];
+  const rows = results.error ? [] : (results.data?.rows ?? []);
   const centre =
     typeof options.lat === "number" && typeof options.lon === "number"
       ? { lat: options.lat, lon: options.lon }
@@ -582,15 +582,17 @@ export function SearchView(): JSX.Element {
           actions={results.loading ? <span className="micro">querying…</span> : null}
         >
           {results.error ? <ErrorPanel error={results.error} onRetry={results.reload} /> : null}
-          <PropertyTable
-            rows={rows}
-            loading={results.loading}
-            sort={{ sortBy, sortDir }}
-            onSort={onSort}
-            onOpen={(parcelId) => navigate(propertyPath(parcelId))}
-            showDistance={typeof options.radiusMiles === "number"}
-          />
-          {results.data ? (
+          {!results.error ? (
+            <PropertyTable
+              rows={rows}
+              loading={results.loading}
+              sort={{ sortBy, sortDir }}
+              onSort={onSort}
+              onOpen={(parcelId) => navigate(propertyPath(parcelId))}
+              showDistance={typeof options.radiusMiles === "number"}
+            />
+          ) : null}
+          {!results.error && results.data ? (
             <Pager
               offset={results.data.offset}
               limit={results.data.limit}
@@ -600,7 +602,7 @@ export function SearchView(): JSX.Element {
               busy={results.loading}
             />
           ) : null}
-          {results.data ? (
+          {!results.error && results.data ? (
             <div style={{ marginTop: 12 }}>
               <SqlBlock provenance={results.data.provenance} open />
             </div>

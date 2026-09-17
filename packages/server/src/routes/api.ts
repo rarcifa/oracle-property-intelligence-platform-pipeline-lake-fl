@@ -78,10 +78,9 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
 
   router.get("/api/meta/run", async () => {
     const provenance = await context.provenance();
-    const [{ coverage, latest, verification }, runHistory] = await Promise.all([
-      readServedMetadata(context.config, provenance),
-      readRunHistory(context.config),
-    ]);
+    const [{ coverage, latest, verification, publicationEvidence }, runHistory] = await Promise.all(
+      [readServedMetadata(context.config, provenance), readRunHistory(context.config)],
+    );
     // `latest.json` is bundled at deploy time, so it names whichever run was
     // current when the Lambda was built. The dataset itself is resolved from
     // IPNS at runtime and upgrades in place, so after any publish the two
@@ -107,6 +106,7 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
       run,
       coverage,
       verification,
+      publicationEvidence,
       runHistory,
       dataSource: provenance.dataSource,
       dataSourceKind: provenance.dataSourceKind,

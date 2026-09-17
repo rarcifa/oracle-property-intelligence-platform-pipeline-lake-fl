@@ -19,7 +19,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:index": "tsx src/cli.ts build --run-id 20260911T131000Z",
+    "build:index": "tsx src/cli.ts build",
     "promote:published": "tsx src/cli.ts promote",
     "inspect": "tsx src/cli.ts inspect",
     "query": "tsx src/cli.ts query",

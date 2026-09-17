@@ -38,6 +38,10 @@ const latestSchema = z
     runId,
     mode: z.enum(["full", "incremental"]),
     candidateWorkflowRunId: z.string(),
+    candidateCommit: z
+      .string()
+      .regex(/^[a-f0-9]{40}$/)
+      .optional(),
     rootCid: cid,
     manifestCid: cid,
     resolvedCid: cid,
@@ -68,6 +72,10 @@ const verificationSchema = z
     runId,
     mode: z.enum(["full", "incremental"]),
     candidateWorkflowRunId: z.string(),
+    candidateCommit: z
+      .string()
+      .regex(/^[a-f0-9]{40}$/)
+      .optional(),
     rootCid: cid,
     manifestCid: cid,
     manifestDigest: digest,
@@ -127,9 +135,10 @@ function assertCompleteVerification(
     }
   }
   const expected = new Map([
-    ...manifest.artifacts
-      .filter((artifact) => artifact.codec === "file")
-      .map((artifact) => [artifact.name, artifact.cid] as const),
+    // Directory CIDs are verified as raw root blocks by the normal publisher;
+    // their complete DAGs are carried by the separately verified snapshot CAR.
+    // They must not disappear from the release's every-object evidence check.
+    ...manifest.artifacts.map((artifact) => [artifact.name, artifact.cid] as const),
     ["manifest.json", manifestCid] as const,
   ]);
   if (expected.size !== report.checkedArtifacts) {
@@ -203,7 +212,8 @@ export async function validatePublishedRelease(options: PromotionOptions): Promi
     verification.rootCid !== options.rootCid ||
     verification.manifestCid !== latest.manifestCid ||
     verification.mode !== latest.mode ||
-    verification.candidateWorkflowRunId !== latest.candidateWorkflowRunId
+    verification.candidateWorkflowRunId !== latest.candidateWorkflowRunId ||
+    verification.candidateCommit !== latest.candidateCommit
   ) {
     throw new Error("manifest, verification and latest pointer do not share one release identity");
   }
@@ -232,7 +242,8 @@ export async function validatePublishedRelease(options: PromotionOptions): Promi
       target.rootCid === options.rootCid &&
       target.manifestDigest === manifestDigest &&
       target.mode === latest.mode &&
-      target.candidateWorkflowRunId === latest.candidateWorkflowRunId
+      target.candidateWorkflowRunId === latest.candidateWorkflowRunId &&
+      target.candidateCommit === latest.candidateCommit
     );
   });
   if (finalized.length !== 1) {

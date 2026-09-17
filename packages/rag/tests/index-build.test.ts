@@ -12,11 +12,18 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { buildIndex, INDEX_PATH } from "../src/index/build-index.js";
-import { buildSourceSnapshot, collectLocalModuleClosure, REPO_ROOT } from "../src/corpus/source.js";
+import {
+  buildSourceSnapshot,
+  collectLocalModuleClosure,
+  corpusSourceSchema,
+  CORPUS_SOURCE_PATH,
+  REPO_ROOT,
+} from "../src/corpus/source.js";
 import { ragIndexSchema } from "../src/types.js";
 import { cosine } from "../src/index/lsa.js";
 
 const committed = ragIndexSchema.parse(JSON.parse(readFileSync(INDEX_PATH, "utf8")));
+const selected = corpusSourceSchema.parse(JSON.parse(readFileSync(CORPUS_SOURCE_PATH, "utf8")));
 const rebuiltPromise = buildIndex();
 
 describe("committed index", () => {
@@ -58,22 +65,27 @@ describe("committed index", () => {
     expect(serialised).not.toMatch(/openai|bedrock|anthropic|voyage|cohere/i);
   });
 
-  it("binds one unpublished candidate without borrowing a public CID", () => {
+  it("binds the explicitly selected receipt without borrowing another run's CID", () => {
     expect(committed.builtFrom).toMatchObject({
-      runId: "20260911T131000Z",
-      releaseState: "local_candidate",
-      rootCid: null,
+      runId: selected.runId,
+      releaseState: selected.releaseState,
+      rootCid: selected.rootCid,
       sourceReceipt: "packages/rag/corpus-source.json",
     });
     expect(committed.builtFrom.snapshotDigest).toBe(committed.sourceSnapshot.digest);
     expect(committed.sourceSnapshot.inputs).toHaveLength(committed.builtFrom.sourceCount);
     for (const chunk of committed.chunks.filter(
-      (entry) => entry.provenance.releaseState === "local_candidate",
+      (entry) => entry.provenance.releaseState !== "repository",
     )) {
-      expect(chunk.provenance.runId).toBe("20260911T131000Z");
-      expect(chunk.provenance.rootCid).toBeNull();
-      expect(chunk.provenance.cid).toBeNull();
-      expect(chunk.provenance.ipfsPath).toBeNull();
+      expect(chunk.provenance.runId).toBe(selected.runId);
+      expect(chunk.provenance.releaseState).toBe(selected.releaseState);
+      expect(chunk.provenance.rootCid).toBe(selected.rootCid);
+      if (selected.releaseState === "local_candidate") {
+        expect(chunk.provenance.cid).toBeNull();
+        expect(chunk.provenance.ipfsPath).toBeNull();
+      } else {
+        expect(chunk.provenance.ipfsPath).toMatch(/^ipfs:\/\//);
+      }
     }
   });
 

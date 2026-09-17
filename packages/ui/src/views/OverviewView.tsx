@@ -76,10 +76,20 @@ export function OverviewView(): JSX.Element {
 
   const run = meta?.run ?? null;
   const rootCid = run?.rootCid ?? null;
+  const candidateEvidence = meta?.publicationEvidence ?? null;
+  const publicationEvidence =
+    run && candidateEvidence?.runId === run.runId && candidateEvidence.rootCid === rootCid
+      ? candidateEvidence
+      : null;
+  const manifestCid = run?.manifestCid ?? publicationEvidence?.manifestCid ?? null;
+  const carCid = run?.carCid ?? publicationEvidence?.carCid ?? null;
   const coverage = meta?.coverage ?? null;
   const verification = meta?.verification ?? null;
   const runHistory = meta?.runHistory ?? null;
-  const verifiedGateways = run?.verifiedGateways ?? [];
+  const verifiedGateways =
+    run?.verifiedGateways && run.verifiedGateways.length > 0
+      ? run.verifiedGateways
+      : (publicationEvidence?.verifiedGateways ?? []);
   const evidenceOnly = meta?.sourceObservationsOnly === true || meta?.localEvidencePreview === true;
   const total = stats.data?.stats.properties ?? 0;
 
@@ -95,7 +105,7 @@ export function OverviewView(): JSX.Element {
         }
         subtitle={
           evidenceOnly
-            ? "Partial historical source observations and low-confidence building-year proxies. This selection is not a county-complete, finalized pipeline release."
+            ? "Partial historical source observations and low-confidence building-year proxies. This selection does not establish county completeness or accepted permit lifecycle semantics."
             : "The served query table and its recorded publication identity."
         }
       >
@@ -112,8 +122,29 @@ export function OverviewView(): JSX.Element {
           <div className="kv-list">
             <Kv label="Run id" value={run.runId} onCopy={copy} copied={copied} />
             <Kv label="Root CID" value={run.rootCid} onCopy={copy} copied={copied} mono />
-            <Kv label="Manifest CID" value={run.manifestCid} onCopy={copy} copied={copied} mono />
-            <Kv label="CAR CID" value={run.carCid} onCopy={copy} copied={copied} mono />
+            <Kv label="Manifest CID" value={manifestCid} onCopy={copy} copied={copied} mono />
+            <Kv label="CAR CID" value={carCid} onCopy={copy} copied={copied} mono />
+            {publicationEvidence ? (
+              <>
+                {manifestCid === publicationEvidence.manifestCid ? (
+                  <Kv label="Manifest SHA-256" value={publicationEvidence.manifestSha256} mono />
+                ) : null}
+                <Kv
+                  label="Artifacts in manifest"
+                  value={formatCount(publicationEvidence.artifactCount)}
+                />
+                {carCid === publicationEvidence.carCid ? (
+                  <>
+                    <Kv
+                      label="CAR size"
+                      value={`${formatCount(publicationEvidence.carBytes)} bytes`}
+                    />
+                    <Kv label="CAR SHA-256" value={publicationEvidence.carSha256} mono />
+                  </>
+                ) : null}
+                <Kv label="Evidence recorded" value={publicationEvidence.recordedAt} mono />
+              </>
+            ) : null}
             <Kv label="IPNS name" value={run.ipnsName} onCopy={copy} copied={copied} mono />
             <Kv
               label="IPNS resolves to"
@@ -139,6 +170,15 @@ export function OverviewView(): JSX.Element {
             <Kv label="Reading from" value={source.dataSource} />
           </div>
         ) : null}
+        {publicationEvidence ? (
+          <p className="notice gated">
+            {publicationEvidence.scope === "finalized-publication-receipt" &&
+            publicationEvidence.retentionVerified &&
+            publicationEvidence.publicationPromoted
+              ? "Finalized publication receipts bind this snapshot to independent retention and public gateway byte matches. They do not establish county completeness or accepted current permit status."
+              : "Recorded public gateway byte matches only. Independent retention remains unverified; this evidence does not promote the run to a finalized release or change IPNS/latest."}
+          </p>
+        ) : null}
       </Panel>
 
       <Panel
@@ -158,19 +198,20 @@ export function OverviewView(): JSX.Element {
                   <th>Mode</th>
                   <th>Finished</th>
                   <th>Root CID</th>
+                  <th>Table</th>
                   <th className="num">Rows</th>
                   <th className="num">Inserted</th>
                   <th className="num">Updated</th>
                   <th className="num">Unchanged</th>
+                  <th className="num">Removed</th>
                 </tr>
               </thead>
               <tbody>
                 {[...runHistory.runs]
                   .sort((a, b) => b.runId.localeCompare(a.runId))
-                  .map((entry) => {
-                    const properties = entry.tables?.find((table) => table.name === "properties");
-                    return (
-                      <tr key={entry.runId}>
+                  .flatMap((entry) =>
+                    (entry.tables?.length ? entry.tables : [null]).map((table, index) => (
+                      <tr key={`${entry.runId}:${table?.name ?? "unknown"}:${index}`}>
                         <td className="mono">{entry.runId}</td>
                         <td>{entry.mode ?? "—"}</td>
                         <td className="mono">
@@ -181,13 +222,15 @@ export function OverviewView(): JSX.Element {
                             ? `${entry.rootCid.slice(0, 10)}…${entry.rootCid.slice(-6)}`
                             : "—"}
                         </td>
-                        <td className="num">{formatCount(properties?.rows)}</td>
-                        <td className="num">{formatCount(properties?.inserted)}</td>
-                        <td className="num">{formatCount(properties?.updated)}</td>
-                        <td className="num">{formatCount(properties?.unchanged)}</td>
+                        <td>{table?.name ?? "unknown"}</td>
+                        <td className="num">{formatCount(table?.rows)}</td>
+                        <td className="num">{formatCount(table?.inserted)}</td>
+                        <td className="num">{formatCount(table?.updated)}</td>
+                        <td className="num">{formatCount(table?.unchanged)}</td>
+                        <td className="num">{formatCount(table?.removed)}</td>
                       </tr>
-                    );
-                  })}
+                    )),
+                  )}
               </tbody>
             </table>
           </div>
@@ -475,9 +518,9 @@ export function OverviewView(): JSX.Element {
                       {gateway.note}
                     </span>
                   </div>
-                  {run.manifestCid ? (
+                  {manifestCid ? (
                     <a
-                      href={gatewayUrl(gateway, run.manifestCid)}
+                      href={gatewayUrl(gateway, manifestCid)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn small ghost"

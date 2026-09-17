@@ -11,8 +11,13 @@ Published data is identified by immutable IPFS CIDs. The repaired publisher prep
 CID-addressed multi-root CAR containing every listed directory DAG. The chosen
 source-only preview's logical `snapshot.car` is public by CID and its complete
 341,012,658 bytes match the manifest digest through Filebase and Pinata gateways;
-see the [handoff](submission-handoff-20260917.md). Independent retention remains
-unproven; delivery is not a successful publication-promotion receipt. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
+see the [handoff](submission-handoff-20260917.md). The later normal publication
+of `20260916T181000Z` established independent Lighthouse retention through
+authenticated exact-CID inventory/metadata, public manifest bytes and complete
+CAR bytes with all manifested roots verified. Its ledger is `FINALIZED`; the
+newer incremental archive remains queued at Lighthouse and is not yet a
+finalized publication. Neither result promises indefinite retention if both
+providers stop serving the data. DuckDB reads the roughly 20 MB property Parquet with HTTP range requests, so a browser,
 agent, or MCP process can query it without an Oracle-operated database. A vendor gateway is
 a locator, never the identity.
 
@@ -75,7 +80,7 @@ ingestion failure. It does not silently delete old certified evidence.
 The existing US$25 one-time and US$5/month recurring-storage ceilings are cumulative,
 not renewed on each repair. Approval-consumption records and unactivated cost-allocation
 tags do not establish actual spend. Before upload/deploy, reconcile retained current and
-noncurrent storage, remaining allowance and the signed estimate. Measured frozen baseline
+noncurrent storage, remaining allowance and the approved estimate. Measured frozen baseline
 artifacts total 12,240,346,190 bytes: about US$0.34/month at the conservative US$0.03/GiB
 model for one copy, not a bill or proof of remote promotion. Pinata Free quota and existing
 usage must fit the dataset plus the delivered CAR before pinning; no Pinata paid

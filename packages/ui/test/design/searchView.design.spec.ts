@@ -57,6 +57,31 @@ for (const bp of BREAKPOINTS) {
       await expectNoHorizontalOverflow(page);
     });
 
+    test("keeps an unsupported-results alert readable at this breakpoint", async ({ page }) => {
+      await page.route(/\/api\/properties(\?|$)/, (route) =>
+        route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "invalid_search",
+            detail: "Current/open roofing status is unsupported; unknown does not mean no permits.",
+          }),
+        }),
+      );
+      await page.reload();
+      await page.evaluate(() => document.fonts.ready);
+      const alert = page.getByRole("alert");
+      await expect(alert).toBeVisible();
+      await expectWithinViewport(page, alert, "unsupported-results alert");
+      await expectNoClippedText(page, ".notice.error");
+      await expectHitTarget(
+        page.getByRole("button", { name: "Try again" }),
+        bp.minControlSize,
+        "query retry",
+      );
+      await expectNoHorizontalOverflow(page);
+    });
+
     test("keeps every radius and roof-age control reachable", async ({ page }) => {
       const pair = page.locator(".filter-rail .pair").first();
       expect(await gridColumnCount(pair)).toBe(bp.search.pairColumns);

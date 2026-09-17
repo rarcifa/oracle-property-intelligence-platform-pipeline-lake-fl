@@ -3,7 +3,8 @@
 Everything runs from the repository root. Node 22.18+ within major 22 and the DuckDB CLI are
 required.
 Credentials alone never enable publication. A live release additionally needs Filebase
-credentials and a short-lived Ed25519 authorization for the exact frozen target.
+credentials and recorded owner consent for the exact frozen target. Normal publication
+does not require personal signing; legacy recovery verifies an already trusted public key.
 
 ## One-time setup
 
@@ -69,9 +70,11 @@ python3 pipeline/scripts/validate-county-readiness.py \
 
 ## Plan the complete Clermont history before a full run
 
-The portal exposes one partition per permit year from 2015 through 2026. The repaired
-local candidate contains **year 26 only**. Do not label its 4,061/4,061 achievable rows as
-all available Clermont history.
+The portal exposes one partition per permit year from 2015 through 2026. The full
+retained baseline now contains **58,495 permits across all twelve partitions**.
+The earlier 4,061-row year-26 candidate remains historical. Reuse the certified
+baseline and its digest; do not restart acquisition to repair query or publication code.
+The commands below are an operator reference, not authority to launch another harvest.
 
 Create an intended prepare template with `authorization: null`. It must bind the exact Node
 runtime, AWS account/region/bucket/prefix, fixed 150 GiB retained-storage ceiling, concurrency 2,
@@ -235,14 +238,22 @@ blindly repeating POST. File sizes must match expected manifest/archive bytes;
 directory metadata size is provider-reported, not falsely equated with the
 manifest's raw directory-block size.
 
-Registration is **not** verified independent retention. This branch does not
-invent PSA `pinned` status, and both publisher and ledger reject promotion on
-registration-only evidence. Live requests are recorded below. Real
-provider retention acknowledgement remains to be established under a separate
-exact-target full-publication approval; the plan-specific budget exception is recorded above.
-Two gateways alone can
-still retrieve blocks from Filebase. Do not demand sealed Filecoin deals or add
-a new certification workflow merely to replace the provider's acknowledgement.
+Registration alone is **not** verified independent retention. Full publication now
+requires the actual accepted Lighthouse request ID and acknowledgement digest, exact
+authenticated CID/name inventory and unencrypted DAG-size metadata, plus public
+Lighthouse manifest and complete snapshot-CAR bytes matching local size/digest.
+Every CAR block and its exact directory roots must validate. The root receipt is bound
+to that verified archive receipt. This is `retention-evidence-verified`, not an
+invented PSA `pinned` status. All listed objects must additionally match through
+two independent public gateways before history/IPNS promotion.
+
+For the measured local DNS sinkhole affecting only the Lighthouse gateway,
+`LIGHTHOUSE_DNS_SERVERS=1.1.1.1` explicitly selects an alternate DNS resolver for
+that hostname. HTTPS hostname/certificate validation remains enabled; global DNS
+and county-source routes are unchanged. CAR proof has a bounded ten-minute
+deadline; small manifest proof has a twenty-second deadline. Do not disable TLS.
+Replication-only remains non-promotional even if those bytes are available.
+Do not demand sealed Filecoin deals or introduce another signing workflow.
 
 ### Replication-only human approval
 
@@ -651,6 +662,24 @@ acquisition. Run history records property row deltas and per-table count deltas.
 mutable local hash cache is absent, publication reconstructs property hashes from the
 immutable predecessor Parquet and fails closed if it cannot.
 
+For the selected source-observation contract, use the existing conservative
+incremental builder instead of promoting inferred open/completion decisions:
+
+```bash
+pnpm --dir pipeline exec tsx scripts/lake/build-source-only-incremental.ts /absolute/private/incremental-input.json
+```
+
+The input binds the prior property/permit/business tables, the seven retained
+source inputs, the captured window and its normalized merge by byte size and
+SHA-256. The builder validates actual insert/update deltas and idempotence,
+preserves all retained Clermont rows and business bytes, and writes a new local
+source-only candidate. It does not harvest Clermont, publish, repoint IPNS or
+turn historical source status into a current-open conclusion. Assemble and
+publish that candidate separately using the exact-target recorded-consent
+Lighthouse route above. Historical preparation receipts stay unchanged after
+publication; the finalized ledger and successful run history record the later
+publication outcome.
+
 ## A pilot
 
 ```bash
@@ -666,5 +695,15 @@ run manifest with the three-way success / permanent / retryable classification.
 ROOT=$(jq -r .rootCid artifacts/latest.json)
 curl -L "https://ipfs.filebase.io/ipfs/$ROOT/coverage.json" | jq .tables.properties.rows
 curl -L "https://gateway.pinata.cloud/ipfs/$ROOT/query-table.parquet" -o query-table.parquet
-duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 15 AND open_roofing_permit_count > 0"
+curl -L "https://gateway.pinata.cloud/ipfs/$ROOT/permit-table.parquet" -o permit-table.parquet
+duckdb -c "SELECT count(*) FROM 'query-table.parquet' WHERE roof_age_years >= 16 AND roof_age_basis = 'built_year_proxy'"
+duckdb -c "SELECT permit_number, permit_type, permit_status, issued_date, contractor_name FROM 'permit-table.parquet' WHERE source_system = 'lake_clermont_etrakit_permits' AND permit_type = 'ROOF/REROOF' AND permit_status = 'ISSUED' ORDER BY permit_id LIMIT 10"
 ```
+
+Use new download paths and verify size/SHA-256 against that run's manifest.
+These local analytical reads require no Oracle-hosted database or AWS runtime.
+The second query shows retained historical source-listed status, **not currently
+open permits**. In a source-only snapshot, `is_open`, `is_roofing` and
+`days_open` are unknown: a SQL predicate that filters their nulls away must not
+be reported as proof of zero open permits. The raw issue date is not a roof
+completion date or accepted duration-open signal.

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "oracle.lake.clermont-historical-permit-evidence.v1",
+  "generatedAt": "2026-09-17T17:27:44Z",
+  "scope": {
+    "county": "lake",
+    "jurisdiction": "clermont",
+    "sourceSystem": "lake_clermont_etrakit_permits",
+    "evidenceType": "retained source-listed historical permit observations",
+    "notCurrentOpenConclusion": true,
+    "notRoofAgeResetConclusion": true,
+    "notLegalIdentityConclusion": true
+  },
+  "bindings": {
+    "retainedCsv": {
+      "path": "pipeline/data/baselines/lake/clermont/baselines/05959a36584293386b52127513aa5b90728b3f634424b2141518ae8fb8e85e02/exports/clermont-permits.csv",
+      "sha256": "bbd2f8ba7361ffc4740b9f4aa20649cc56cddac31c49250f8bfecf41c3473c2a",
+      "rows": 58495
+    },
+    "latestRetainedPermitParquet": {
+      "path": "pipeline/data/artifacts/publish/lake/runs/20260917T152549Z/permit-table.parquet",
+      "sha256": "081e5a207a49b3fad4dd238e8c3b9ba014c0984352c48427f94408b855db8d25"
+    }
+  },
+  "counts": {
+    "totalRetainedClermontRows": 58495,
+    "literalRoofReroof": 9969,
+    "sourceStatusIssued": 7257,
+    "literalRoofReroofAndIssued": 276,
+    "literalRoofReroofAndIssuedWithIssueDate": 266,
+    "literalRoofReroofAndIssuedBefore2021-09-17": 135
+  },
+  "boundedDiagnosis": {
+    "selectedCandidateCount": 10,
+    "selectionRule": "oldest retained CSV rows where permit_type is literal ROOF/REROOF, permit_status is ISSUED, and issued_date is non-empty",
+    "normalRouteProbe": {
+      "candidatePermitNumber": "15-0059",
+      "method": "normal GET via curl --max-time 12; no auth; no custom user-agent/header; no evasion",
+      "terminalOutcome": "timeout",
+      "curlExitCode": 28
+    },
+    "liveDetailSuccessCount": 0,
+    "privateDiagnosticRecoveryPath": "/Users/ricardoarcifa/.local/share/oracle-lake-fl-kit/score-repair-20260917-9msga0/recovered-from-repo-20260917T172744Z/blocked-summary-N8mTCO/diagnostic-blocked-summary.json"
+  },
+  "allowedWording": "Retained Clermont 2015-2026 source rows include source-listed ROOF/REROOF + ISSUED permit observations and raw issued dates where present.",
+  "blockedWording": "Do not describe these retained rows as currently open roofing permits; do not compute accepted days-open; do not use them to reset primary roof age; do not treat contractor names as BBB, license, or legal-identity verification."
+}

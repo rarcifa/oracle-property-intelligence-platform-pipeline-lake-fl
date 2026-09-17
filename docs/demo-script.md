@@ -2,13 +2,18 @@
 
 ## Current partial submission walkthrough
 
-The owner chose a truthful partial handoff rather than another provider/approval
-cycle. [September 17 delivery](submission-handoff-20260917.md) identifies the
-hosted source-only snapshot and recording. `record-preview.mjs` is a separate
-partial walkthrough: explicit run/root/coverage, all-business conservation, ten
-MCP tools, actual enabled radius/age filters, executed SQL, nonempty live agent
-answers and two public manifest digest checks. It reports
-`fullAssignmentDemoPassed: false` and cannot promote publication or history.
+The [September 17 delivery](submission-handoff-20260917.md) identifies the exact
+hosted snapshot and recording. `record-preview.mjs` is a separate partial
+walkthrough: selected-run publication metadata, all-business conservation, ten
+MCP tools, actual radius/age filters, executed SQL, canonical agent answers
+independently replayed against hosted queries, and two public manifest digest
+checks. It also shows retained Clermont `ROOF/REROOF + ISSUED` observations
+with raw issued dates and a prominent not-currently-open caveat. When selected
+successful history contains a changed-record incremental run, it freshly checks
+both old/new manifests, raw directory root blocks and changed table bytes by CID
+through two public gateway hosts. This recording does not itself publish or
+rewrite history. It reports `fullAssignmentDemoPassed: false` while current-open
+duration and ten-year ownership conclusions remain unsupported.
 The strict full-demo contract below is unchanged and remains unpassed.
 
 ## Strict full-assignment demo
@@ -57,9 +62,10 @@ from public IPFS — visible on every subsequent frame, so no beat can quietly c
 curl -s "$U/api/meta/run" | jq '.run | {runId, rootCid, ipnsName, resolvedCid, propertyCount}'
 ```
 
-Normal deployments resolve IPNS. The current partial submission deliberately pins
-an explicit run/root and matching coverage; it does not follow the unreconciled
-successful-publication pointer or claim that a later local candidate was published.
+Normal deployments resolve IPNS. The submission deliberately pins an explicit
+run/root and matching coverage. Read the current exact identities and publication
+state from the hosted metadata and delivery receipt; neither a private candidate
+nor an older deployment may borrow a later successful publication's identity.
 
 ## 2. Aged roofs, by radius — the assignment's first question
 
@@ -107,6 +113,14 @@ Every displayed contractor count is therefore labelled Clermont-only, never coun
 Missing extraction, unavailable detail and an authoritatively established absence are
 different states. No missing contractor is promoted to proven absence. Source-listed
 names are not verified licensing or historical legal-company relationships.
+
+In the partial walkthrough, enable **Clermont ROOF/REROOF + source ISSUED
+(with issue date)**. The 266 dated historical source rows are actual retained
+records, not a replacement harvest. They can be inspected alongside their raw
+status/type/date and source-listed names. Neither issue-date age nor `ISSUED`
+is relabelled as current-open duration. The unfiltered table still retains all
+58,495 Clermont rows and the acquired CD Plus rows, including valid unlinked
+records.
 
 ## 4. Business coverage, including its own double count
 

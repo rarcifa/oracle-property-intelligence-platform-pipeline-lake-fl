@@ -46,6 +46,7 @@ import {
   type AnswerGrounding,
   type QueryEvidence,
 } from "./grounding.js";
+import { interpretSupportedRoofRadiusRequest, withinTurnDeadline } from "./supported-search.js";
 import {
   RetrievalUnavailableError,
   searchCorpus,
@@ -95,7 +96,9 @@ class CitationCollector {
     rowCount?: number,
   ): void {
     const parcelIds: string[] = [];
-    for (const row of rows) {
+    // Arbitrary SQL projections may manufacture identifier strings. Keep the
+    // replayable SQL citation, but never label its unvalidated aliases as folios.
+    for (const row of toolName === "runSql" ? [] : rows) {
       const id = row.request_identifier ?? row.parcel_identifier;
       if (typeof id === "string" && id.length > 0 && parcelIds.length < 25) parcelIds.push(id);
     }
@@ -494,7 +497,7 @@ export function createChatAgent(context: AppContext): ChatAgent {
       ) {
         return {
           answer:
-            "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. Captured status text is historical evidence, not current status; unknown does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Historical permit observations and low-confidence built-year roof proxies remain available in the data views.",
+            "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. This does not mean the historical permits are missing: retained permit records remain queryable in the Contractor view, including source-listed types (such as ROOF/REROOF), statuses, raw issued dates and contractor names where present. An ISSUED source record is not asserted to be currently open. Unknown current status does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Low-confidence built-year roof proxies also remain available in the data views.",
           citations: [],
           documents: [],
           model: chatModelId,
@@ -508,6 +511,71 @@ export function createChatAgent(context: AppContext): ChatAgent {
               openPermitDuration: "unsupported",
             },
           },
+        };
+      }
+      const supported = interpretSupportedRoofRadiusRequest(messages);
+      if (supported !== null) {
+        const centre = await withinTurnDeadline(
+          () => getCityCentre(context.store, runProvenance, supported.city),
+          abortSignal,
+        );
+        collector.record(
+          "resolveCityCentre",
+          centre.provenance.sql,
+          centre.provenance.sourceSystems,
+          [],
+          centre.parcelsWithCoordinates,
+        );
+        const location = propertyFiltersSchema.safeParse({
+          lat: centre.lat,
+          lon: centre.lon,
+          radiusMiles: supported.radiusMiles,
+          minRoofAge: supported.minRoofAge,
+        });
+        const centreValid =
+          typeof centre.lat === "number" &&
+          typeof centre.lon === "number" &&
+          location.success &&
+          Number.isSafeInteger(centre.parcelsWithCoordinates) &&
+          centre.parcelsWithCoordinates > 0 &&
+          centre.city.trim().toUpperCase() === supported.city &&
+          centre.provenance.runId === collector.runId &&
+          centre.provenance.rootCid === collector.rootCid;
+        if (centreValid && location.success) {
+          const result = await withinTurnDeadline(
+            () =>
+              searchProperties(context.store, runProvenance, {
+                ...location.data,
+                limit: 25,
+              }),
+            abortSignal,
+          );
+          if (
+            result.provenance.runId !== collector.runId ||
+            result.provenance.rootCid !== collector.rootCid
+          ) {
+            throw new Error("Canonical property search returned evidence for a different snapshot");
+          }
+          collector.record(
+            "searchProperties",
+            result.provenance.sql,
+            result.provenance.sourceSystems,
+            result.rows,
+            result.matched,
+          );
+        }
+        const grounded = finalizeRecordAnswer(collector.queryEvidence, true);
+        if (grounded === null) throw new ChatEmptyAnswerError();
+        const interpretation = centreValid
+          ? `Applied: within ${supported.radiusMiles} statute miles of ${supported.city}'s selected-snapshot parcel-centroid mean (${centre.lat}, ${centre.lon}); roof_age_years ${supported.comparison === "older-than" ? ">" : ">="} ${supported.roofAgeThreshold} (integer-year lower bound ${supported.minRoofAge}). The radius is not restricted to city boundaries.`
+          : `The selected snapshot did not return a valid, snapshot-bound parcel-centroid mean for ${supported.city}. No coordinates or city filter were substituted, and no property search was attempted.`;
+        return {
+          ...grounded,
+          answer: `${interpretation}\n\n${grounded.answer}`,
+          citations: collector.citations,
+          documents: collector.documents,
+          model: chatModelId,
+          runId: runProvenance.runId,
         };
       }
       const openai = createOpenAI({ apiKey: openaiApiKey });

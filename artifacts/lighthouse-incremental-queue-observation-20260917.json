@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "oracle.provider-dashboard-observation.v1",
+  "observedAt": "2026-09-17T18:09:53.000Z",
+  "provider": "lighthouse",
+  "observedUrl": "https://files.lighthouse.storage/dashboard/migration",
+  "observationMethod": "Read-only signed-in Chrome dashboard DOM, exact request-ID search",
+  "runId": "20260917T152549Z",
+  "attemptId": "sha256:8d5a00e72d4fd829697ad41ddf1be244f91c861ad74de2bf20dc469eb677452f",
+  "requestId": "adffbeec-3415-434e-8e7f-634d9930365d",
+  "requestedCid": "bafybeie2isprhs53basx5g7ti3dufip5buw4qnihysshswhgsij4yyalpa",
+  "displayedRequestStatus": "queued",
+  "requestDetailsObservedUrl": "https://files.lighthouse.storage/dashboard/migration",
+  "displayedArchiveFileName": "oracle-open-data-lake/20260917T152549Z/archive",
+  "displayedArchiveFileSize": "0.00 KB",
+  "displayedCidCount": 1,
+  "displayedRequestDate": "17-09-2026 8:40:08",
+  "displayedDateTimezone": null,
+  "displayedProviderNotice": "The CID migration process may require approximately 24 hours to fully complete",
+  "displayedStorageUsed": "975.69 MB",
+  "displayedStorageCapacity": "500.00 GB",
+  "displayedTotalMigrationRequests": 6,
+  "displayedIndexedFiles": 5,
+  "terminalFailureObserved": false,
+  "billingCauseEstablished": false,
+  "independentRetentionEstablishedForThisIncrementalArchive": false,
+  "publicationFinalized": false,
+  "mutationsPerformed": [],
+  "limitations": [
+    "Dashboard queue status is a point-in-time observation, not a completed retention receipt or a completion-time guarantee.",
+    "The existing accepted request must be reconciled; no duplicate request, new account, plan upgrade or approval consumption was performed."
+  ]
+}

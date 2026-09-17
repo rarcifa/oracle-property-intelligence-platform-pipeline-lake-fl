@@ -9,17 +9,26 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { PERMIT_TABLE_COLUMN_NAMES, QUERY_TABLE_COLUMN_COUNT } from "@oracle-lake/shared";
+import { readFile } from "node:fs/promises";
+import { z } from "zod";
+import { PERMIT_TABLE_COLUMN_NAMES, QUERY_TABLE_COLUMN_NAMES } from "@oracle-lake/shared";
 import { buildCorpus } from "../src/corpus/build.js";
+import { selectCorpusSource } from "../src/corpus/source.js";
 import {
   splitSections,
   windowBody,
   chunkMarkdown,
   MAX_SECTION_CHARS,
 } from "../src/corpus/markdown.js";
+import { buildCoverageDocs, coverageSchema } from "../src/corpus/artifacts.js";
 import type { CorpusChunk } from "../src/types.js";
 
 const corpusPromise = buildCorpus();
+const selectedPromise = selectCorpusSource();
+const selectedSchema = z.object({
+  columnCount: z.number().int().positive(),
+  columns: z.array(z.object({ name: z.string().min(1) })).min(1),
+});
 
 describe("markdown chunking", () => {
   it("splits on headings and carries the heading trail", () => {
@@ -90,6 +99,21 @@ describe("corpus construction", () => {
 
   it("describes every property and permit column exactly once", async () => {
     const { chunks } = await corpusPromise;
+    const selected = await selectedPromise;
+    const propertySchema = selectedSchema.parse(
+      JSON.parse(await readFile(selected.artifactPaths.get("schema.json")!, "utf8")),
+    );
+    const permitSchema = selectedSchema.parse(
+      JSON.parse(await readFile(selected.artifactPaths.get("permit-schema.json")!, "utf8")),
+    );
+    const propertyNames = propertySchema.columns.map((column) => column.name);
+    const permitNames = permitSchema.columns.map((column) => column.name);
+    expect(propertySchema.columnCount).toBe(propertyNames.length);
+    expect(permitSchema.columnCount).toBe(permitNames.length);
+    // Additional selected source-evidence columns are allowed, but the shared
+    // canonical query contract must still be present in both actual schemas.
+    for (const name of QUERY_TABLE_COLUMN_NAMES) expect(propertyNames).toContain(name);
+    for (const name of PERMIT_TABLE_COLUMN_NAMES) expect(permitNames).toContain(name);
     const columnDocs = chunks.filter((chunk) => chunk.docType === "column");
     const propertyColumns = columnDocs.filter(
       (chunk) => chunk.metadata.table !== "permit-table.parquet",
@@ -97,13 +121,19 @@ describe("corpus construction", () => {
     const permitColumns = columnDocs.filter(
       (chunk) => chunk.metadata.table === "permit-table.parquet",
     );
-    expect(propertyColumns).toHaveLength(QUERY_TABLE_COLUMN_COUNT);
+    expect(propertyColumns).toHaveLength(propertySchema.columnCount);
     expect(new Set(propertyColumns.map((chunk) => chunk.metadata.column)).size).toBe(
-      QUERY_TABLE_COLUMN_COUNT,
+      propertySchema.columnCount,
     );
-    expect(permitColumns).toHaveLength(PERMIT_TABLE_COLUMN_NAMES.length);
+    expect(propertyColumns.map((chunk) => chunk.metadata.column).sort()).toEqual(
+      [...propertyNames].sort(),
+    );
+    expect(permitColumns).toHaveLength(permitSchema.columnCount);
     expect(new Set(permitColumns.map((chunk) => chunk.metadata.column)).size).toBe(
-      PERMIT_TABLE_COLUMN_NAMES.length,
+      permitSchema.columnCount,
+    );
+    expect(permitColumns.map((chunk) => chunk.metadata.column).sort()).toEqual(
+      [...permitNames].sort(),
     );
   });
 
@@ -138,16 +168,26 @@ describe("corpus construction", () => {
     }
   });
 
-  it("does not borrow a public CID for local-candidate artifacts", async () => {
-    const { chunks, rootCid, releaseState } = await corpusPromise;
+  it("binds artifact provenance to the validated selected release without borrowing a CID", async () => {
+    const { chunks, rootCid, releaseState, runId } = await corpusPromise;
+    const { receipt } = await selectedPromise;
     const artifacts = chunks.filter((chunk) => chunk.provenance.artifact !== null);
     expect(artifacts.length).toBeGreaterThan(0);
-    expect(releaseState).toBe("local_candidate");
-    expect(rootCid).toBeNull();
+    expect(runId).toBe(receipt.runId);
+    expect(releaseState).toBe(receipt.releaseState);
+    expect(rootCid).toBe(receipt.rootCid);
     for (const chunk of artifacts) {
+      expect(chunk.provenance.runId).toBe(receipt.runId);
       expect(chunk.provenance.rootCid).toBe(rootCid);
-      expect(chunk.provenance.ipfsPath).toBeNull();
-      expect(chunk.provenance.releaseState).toBe("local_candidate");
+      expect(chunk.provenance.releaseState).toBe(receipt.releaseState);
+      if (receipt.releaseState === "local_candidate") {
+        expect(chunk.provenance.cid).toBeNull();
+        expect(chunk.provenance.ipfsPath).toBeNull();
+      } else {
+        expect(chunk.provenance.ipfsPath).toBe(
+          `ipfs://${receipt.rootCid}/${chunk.provenance.artifact}`,
+        );
+      }
     }
   });
 
@@ -195,6 +235,53 @@ describe("corpus construction", () => {
     expect(bbb?.textForContext).toContain("Current verified status");
     expect(bbb?.textForContext).toContain("Historical immutable wording");
     expect(bbb?.textForContext).toContain("must not be used as the current access conclusion");
+  });
+
+  it("preserves nullable source-only coverage signals as unknown rather than zero", () => {
+    const coverage = coverageSchema.parse({
+      county: "lake",
+      countyName: "Lake",
+      stateCode: "FL",
+      countyFips: "12069",
+      runId: "20260916T181000Z",
+      exportedAt: "2026-09-17T00:00:00.000Z",
+      denominator: {
+        basis: "assessed parcels",
+        source: "synthetic fixture",
+        assessedParcelCount: 2,
+      },
+      tables: {
+        properties: { rows: 2, source: "synthetic fixture" },
+      },
+      signals: {
+        roofAgeKnown: 1,
+        roofingPermitRecords: null,
+        propertiesWithOpenRoofingPermit: null,
+        propertiesWithAnyPermitOpenOverFiveYears: null,
+      },
+      limitations: ["Permit status fields are source-only unknowns in this synthetic fixture."],
+    });
+    const docs = buildCoverageDocs(coverage, {
+      sourceFile: "coverage.json",
+      artifact: "coverage.json",
+      runId: coverage.runId,
+      cid: null,
+      rootCid: null,
+      ipfsPath: null,
+      releaseState: "local_candidate",
+    });
+    const signals = docs.find((chunk) => chunk.docId === "coverage:signals");
+
+    expect(signals?.textForContext).toContain("roofAgeKnown: 1");
+    expect(signals?.textForContext).toContain("roofingPermitRecords: unknown/source-only");
+    expect(signals?.textForContext).toContain(
+      "propertiesWithOpenRoofingPermit: unknown/source-only",
+    );
+    expect(signals?.textForContext).toContain(
+      "propertiesWithAnyPermitOpenOverFiveYears: unknown/source-only",
+    );
+    expect(signals?.textForContext).toContain("must not be read as zero");
+    expect(signals?.textForContext).not.toContain("roofingPermitRecords: 0");
   });
 
   it("links every column document to the source that fills it", async () => {

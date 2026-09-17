@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadRegressionConfig } from "./fixture-config.js";
+import { loadConfig } from "../src/config.js";
+import { selectCorpusSource } from "../../rag/src/corpus/source.js";
 import { createContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
 import { Router, type HttpResponse } from "../src/http/router.js";
@@ -18,6 +19,7 @@ import { retrieve, loadIndex } from "@oracle-lake/rag";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 interface SearchBody {
   query: string;
@@ -38,22 +40,29 @@ interface SearchBody {
       sourceFile: string;
       artifact: string | null;
       cid: string | null;
+      rootCid: string | null;
       ipfsPath: string | null;
+      runId: string | null;
+      releaseState: "repository" | "local_candidate" | "published";
     };
   }[];
   index: { chunkCount: number; runId: string | null; embeddingModel: string };
 }
 
-function buildRouter(): Router {
+async function buildRouter(): Promise<Router> {
   // The config carries no model key and the store is never opened: retrieval
-  // depends on neither.
-  const config = loadRegressionConfig({
+  // depends on neither. Unlike accepted-decision table regressions, this suite
+  // follows the live documentation selector and validates its exact receipts.
+  const { receipt } = await selectCorpusSource();
+  const config = loadConfig({
     ...process.env,
     OPENAI_API_KEY: "",
-    ORACLE_DATA_RUN_ID: "",
-    ORACLE_DATA_ROOT_CID: "",
-    ORACLE_PARQUET_PATH: "",
+    ORACLE_RUN_DIR: "/tmp/oracle-document-only-never-opened-run",
+    ORACLE_DATA_RUN_ID: receipt.runId,
+    ORACLE_DATA_ROOT_CID: receipt.rootCid ?? "",
+    ORACLE_PARQUET_PATH: "/tmp/never-opened.parquet",
     ORACLE_PARQUET_URL: "",
+    ORACLE_IPNS_NAME: "",
   });
   const store = new OracleDataStore({ source: "/tmp/never-opened.parquet" });
   const router = new Router();
@@ -63,7 +72,7 @@ function buildRouter(): Router {
 
 async function call(method: string, path: string, body?: unknown): Promise<HttpResponse> {
   const url = new URL(path, "http://test.local");
-  return buildRouter().handle({
+  return (await buildRouter()).handle({
     method,
     path: url.pathname,
     query: url.searchParams,
@@ -94,7 +103,14 @@ describe("GET /api/search", () => {
     expect(body.chunks).toBeGreaterThan(100);
     expect(body.documents).toBeGreaterThan(90);
     expect(body.embedding.model).toBe("lsa-tfidf-svd");
-    expect(body.chunksByDocType.column).toBe(85);
+    const selected = await selectCorpusSource();
+    const schema = z
+      .object({ columnCount: z.number().int().positive() })
+      .parse(JSON.parse(readFileSync(selected.artifactPaths.get("schema.json")!, "utf8")));
+    const permitSchema = z
+      .object({ columnCount: z.number().int().positive() })
+      .parse(JSON.parse(readFileSync(selected.artifactPaths.get("permit-schema.json")!, "utf8")));
+    expect(body.chunksByDocType.column).toBe(schema.columnCount + permitSchema.columnCount);
     expect(body.chunksByDocType.jurisdiction).toBe(16);
   });
 });
@@ -113,7 +129,8 @@ describe("POST /api/search", () => {
     expect(body.index.embeddingModel).toBe("lsa-tfidf-svd");
   });
 
-  it("labels candidate artifact chunks without borrowing a published CID", async () => {
+  it("binds artifact chunks to the validated selected release without borrowing a CID", async () => {
+    const { receipt } = await selectCorpusSource();
     const response = await call("POST", "/api/search", {
       query: "what documented limitations does the coverage snapshot record",
       topK: 5,
@@ -121,7 +138,18 @@ describe("POST /api/search", () => {
     const body = json<SearchBody>(response);
     const artifacts = body.chunks.filter((chunk) => chunk.provenance.artifact !== null);
     expect(artifacts.length).toBeGreaterThan(0);
-    expect(artifacts[0]?.provenance.ipfsPath).toBeNull();
+    expect(body.index.runId).toBe(receipt.runId);
+    for (const { provenance } of artifacts) {
+      expect(provenance.runId).toBe(receipt.runId);
+      expect(provenance.releaseState).toBe(receipt.releaseState);
+      expect(provenance.cid).toBeNull();
+      expect(provenance.rootCid).toBe(receipt.rootCid);
+      expect(provenance.ipfsPath).toBe(
+        receipt.releaseState === "published"
+          ? `ipfs://${receipt.rootCid}/${provenance.artifact}`
+          : null,
+      );
+    }
   });
 
   it("honours topK", async () => {

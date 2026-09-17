@@ -2,9 +2,42 @@ import { describe, expect, it } from "vitest";
 import { assertIndexCompatibleWithRun } from "../src/compatibility.js";
 import { loadIndex } from "../src/index/load.js";
 import { suggestPaths } from "../src/paths.js";
-import type { RagIndex } from "../src/types.js";
+import { ragIndexSchema, type RagIndex } from "../src/types.js";
+import { selectCorpusSource } from "../src/corpus/source.js";
 
 const index = loadIndex();
+const selectedPromise = selectCorpusSource();
+
+/** Deliberately empty synthetic compatibility input; no actual selected
+ * chunks, identifiers, citations or source observations are relabeled. */
+function compatibilityFixture(
+  releaseState: "local_candidate" | "published",
+  rootCid: string | null,
+): RagIndex {
+  return ragIndexSchema.parse({
+    schemaVersion: "oracle.rag-index.v2",
+    county: "synthetic-compatibility-fixture",
+    builtFrom: {
+      runId: "synthetic-compatibility-run",
+      releaseState,
+      rootCid,
+      snapshotDigest: `sha256:${"0".repeat(64)}`,
+      sourceCount: 1,
+      sourceReceipt: "synthetic-compatibility-receipt",
+    },
+    sourceSnapshot: {
+      digest: `sha256:${"0".repeat(64)}`,
+      inputs: [{ path: "synthetic-fixture", sha256: "0".repeat(64) }],
+    },
+    embedding: { model: "lsa-tfidf-svd", dimension: 1, version: "synthetic-fixture" },
+    chunks: [],
+    links: [],
+    lexical: { lengths: [], averageLength: 0, postings: {} },
+    singularVectors: [],
+    singularValues: [],
+    chunkVectors: [],
+  });
+}
 
 describe("corpus contracts", () => {
   it("has deterministic unique chunk ids and resolvable typed links", () => {
@@ -68,46 +101,75 @@ describe("corpus contracts", () => {
 });
 
 describe("served-run compatibility", () => {
-  it("accepts the selected candidate only beside the same local run", () => {
+  it("accepts the actual validated selected release only beside its exact identity", async () => {
+    const { receipt } = await selectedPromise;
+    expect(index.raw.builtFrom).toMatchObject({
+      runId: receipt.runId,
+      rootCid: receipt.rootCid,
+      releaseState: receipt.releaseState,
+    });
     expect(() =>
       assertIndexCompatibleWithRun(index.raw, {
-        runId: "20260911T131000Z",
-        rootCid: null,
+        runId: receipt.runId,
+        rootCid: receipt.rootCid,
       }),
     ).not.toThrow();
   });
 
-  it("rejects a different run or a public root for a local candidate", () => {
+  it("rejects a different run beside the actual selected release", async () => {
+    const { receipt } = await selectedPromise;
     expect(() =>
       assertIndexCompatibleWithRun(index.raw, {
-        runId: "20260910T225242Z",
-        rootCid: null,
+        runId: "synthetic-different-served-run",
+        rootCid: receipt.rootCid,
       }),
     ).toThrow(/does not match served run/);
+  });
+
+  it("accepts a synthetic local candidate only beside its own unpublished run", () => {
+    const local = compatibilityFixture("local_candidate", null);
     expect(() =>
-      assertIndexCompatibleWithRun(index.raw, {
-        runId: "20260911T131000Z",
-        rootCid: "bafy-public",
+      assertIndexCompatibleWithRun(local, { runId: local.builtFrom.runId, rootCid: null }),
+    ).not.toThrow();
+    expect(() =>
+      assertIndexCompatibleWithRun(local, {
+        runId: local.builtFrom.runId,
+        rootCid: "synthetic-public-root",
       }),
     ).toThrow(/unpublished local candidate/);
   });
 
   it("requires both run id and root CID for a published corpus", () => {
-    const published = structuredClone(index.raw) as RagIndex;
-    published.builtFrom.releaseState = "published";
-    published.builtFrom.rootCid = "bafy-release";
+    const published = compatibilityFixture("published", "synthetic-published-root");
     expect(() =>
       assertIndexCompatibleWithRun(published, {
         runId: published.builtFrom.runId,
-        rootCid: "bafy-release",
+        rootCid: published.builtFrom.rootCid,
       }),
     ).not.toThrow();
     expect(() =>
       assertIndexCompatibleWithRun(published, {
         runId: published.builtFrom.runId,
-        rootCid: "bafy-other",
+        rootCid: "synthetic-other-root",
       }),
     ).toThrow(/does not match served root/);
+    expect(() =>
+      assertIndexCompatibleWithRun(published, { runId: published.builtFrom.runId, rootCid: null }),
+    ).toThrow(/does not match served root/);
+  });
+
+  it("refuses missing served run identity and published corpus missing its CID", () => {
+    const local = compatibilityFixture("local_candidate", null);
+    expect(() => assertIndexCompatibleWithRun(local, { runId: null, rootCid: null })).toThrow(
+      /no runId/,
+    );
+    const unbound = compatibilityFixture("published", null);
+    expect(() =>
+      assertIndexCompatibleWithRun(unbound, {
+        runId: unbound.builtFrom.runId,
+        rootCid: "synthetic-root",
+      }),
+    ).toThrow(/no rootCid/);
   });
 });
 

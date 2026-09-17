@@ -113,6 +113,32 @@ export interface SearchResponse {
   provenance: ResponseProvenance;
 }
 
+/** Exact-run public byte observations, separate from finalized/latest publication. */
+export type RunPublicationEvidence = {
+  runId: string;
+  rootCid: string;
+  manifestCid: string;
+  manifestSha256: string;
+  manifestBytes: number;
+  carCid: string;
+  carBytes: number;
+  carSha256: string;
+  artifactCount: number;
+  verifiedGateways: string[];
+  recordedAt: string;
+} & (
+  | {
+      scope: "standalone-public-gateway-observations";
+      retentionVerified: false;
+      publicationPromoted: false;
+    }
+  | {
+      scope: "finalized-publication-receipt";
+      retentionVerified: true;
+      publicationPromoted: true;
+    }
+);
+
 export interface PropertyDetailResponse {
   property: Record<string, unknown>;
   /** Full source permit rows linked to this parcel. */

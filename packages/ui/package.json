@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:design": "playwright test --config=playwright.design.config.ts",
+    "test:recorder": "playwright test --config=playwright.recorder.config.ts --project=chromium",
     "test:design:ui": "playwright test --config=playwright.design.config.ts --ui"
   },
   "dependencies": {

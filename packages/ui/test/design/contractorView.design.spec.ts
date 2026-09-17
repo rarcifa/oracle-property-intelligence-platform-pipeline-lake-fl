@@ -7,6 +7,8 @@
 import { expect, test } from "@playwright/test";
 import { BREAKPOINTS } from "./support/breakpoints.js";
 import {
+  DESIGN_FIXTURE_IDENTITY,
+  FIXTURES,
   ensureBox,
   expectNoClippedText,
   expectNoHorizontalOverflow,
@@ -54,6 +56,91 @@ for (const bp of BREAKPOINTS) {
       await expectTileGrid(bp, page.locator(".tile-grid").nth(1));
       await expect(page.getByText("Longest open permit (any type)", { exact: true })).toBeVisible();
       await expect(page.getByText("Longest open roofing permit", { exact: true })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    });
+
+    test("keeps historical source counts, filter and permit-type table usable", async ({
+      page,
+    }) => {
+      // Synthetic layout exercise only, never live permit or release evidence.
+      await page.route(/\/api\/meta\/run$/, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ...FIXTURES.run, sourceObservationsOnly: true }),
+        }),
+      );
+      await page.route(/\/api\/sql$/, async (route) => {
+        const { sql } = route.request().postDataJSON() as { sql: string };
+        const rows = sql.includes("count(*)")
+          ? [
+              {
+                retained_permits: 123,
+                clermont_permits: 99,
+                clermont_roof_reroof: 31,
+                clermont_source_issued: 12,
+                clermont_roof_reroof_source_issued: 9,
+                clermont_roof_reroof_source_issued_with_date: 7,
+              },
+            ]
+          : [
+              {
+                permit_number: "DESIGN_SYNTHETIC_PERMIT",
+                jurisdiction: "Clermont",
+                permit_type: "ROOF/REROOF",
+                permit_status: "ISSUED",
+                issued_date: "07/12/2020",
+                permit_description: "Synthetic work text for layout only",
+                contractor_name: "DESIGN_SOURCE_NAME",
+                parcel_identifier: "DESIGN_UNLINKED",
+                linkage_status: "valid_unlinked",
+                bbb_rating: null,
+                source_url: "https://source.example/layout-only",
+              },
+            ];
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            rows,
+            rowCount: 1,
+            sql,
+            truncated: false,
+            provenance: {
+              ...DESIGN_FIXTURE_IDENTITY,
+              sql,
+              dataSourceKind: "local",
+              sourceSystems: [],
+            },
+          }),
+        });
+      });
+      await page.reload();
+      await page.evaluate(() => document.fonts.ready);
+      const panel = page.locator(".panel").filter({
+        has: page.getByRole("heading", {
+          name: "Retained historical permit observations",
+          exact: true,
+        }),
+      });
+      const filter = panel.locator(".toggle");
+      await expect(filter).toBeVisible();
+      await expectWithinViewport(page, filter, "historical literal filter");
+      await expectTileGrid(bp, panel.locator(".tile-grid"));
+      await expectTableScrollsInItsOwnBox(
+        page,
+        panel.locator(".table-scroll"),
+        "historical permit table",
+      );
+      await expect(
+        panel.getByRole("columnheader", { name: "Historical permit type" }),
+      ).toBeVisible();
+      await expectWithinViewport(
+        page,
+        panel.locator(".table-foot"),
+        "historical matching-count pager",
+      );
+      await expectNoClippedText(page, ".app-main");
       await expectNoHorizontalOverflow(page);
     });
 

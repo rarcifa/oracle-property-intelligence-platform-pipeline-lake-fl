@@ -69,11 +69,25 @@ describe("contractor decision eligibility", () => {
     const html = renderToStaticMarkup(createElement(ContractorView));
     await Promise.all(mocks.loaders.map((loader) => loader()));
     expect(mocks.search).not.toHaveBeenCalled();
-    expect(mocks.runSql).toHaveBeenCalledOnce();
-    expect(mocks.runSql.mock.calls[0]?.[0]).toContain("FROM permits");
+    expect(mocks.runSql).toHaveBeenCalledTimes(2);
+    const counts = mocks.runSql.mock.calls.find(([sql]) => sql.includes("count(*)"));
+    const samples = mocks.runSql.mock.calls.find(([sql]) => !sql.includes("count(*)"));
+    expect(counts?.[1]).toBe(1);
+    expect(counts?.[0]).toContain("source_system = 'lake_clermont_etrakit_permits'");
+    expect(counts?.[0]).toContain("upper(trim(permit_type)) = 'ROOF/REROOF'");
+    expect(counts?.[0]).toContain("upper(trim(permit_status)) = 'ISSUED'");
+    expect(counts?.[0]).toContain("issued_date IS NOT NULL");
+    expect(samples?.[1]).toBe(50);
+    expect(samples?.[0]).toContain("permit_type");
+    expect(samples?.[0]).toContain("FROM permits");
+    expect(samples?.[0]).not.toContain("WHERE");
+    for (const [sql] of mocks.runSql.mock.calls) {
+      expect(sql).not.toMatch(/\b(?:is_open|days_open|is_roofing|contractor_license)\b/);
+    }
     expect(html).toContain("Retained historical permit observations");
     expect(html).toContain("not verified legal-company or license identities");
     expect(html).toContain("Current-open duration unavailable");
+    expect(html).toContain("historical source-listed status, not currently open");
   });
 
   it("retains the current-open request for a known decision-enabled dataset", async () => {

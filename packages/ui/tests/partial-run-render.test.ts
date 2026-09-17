@@ -42,7 +42,14 @@ describe("partial run rendering", () => {
     expect(html).toContain("20260916T181000Z");
     expect(html).toContain("No coverage snapshot matches the served run");
     expect(html).toContain("No verification report was found");
-    expect(html).toContain("not a county-complete, finalized pipeline release");
+    expect(html).toContain(
+      "does not establish county completeness or accepted permit lifecycle semantics",
+    );
+    expect(html).toContain("Missing evidence makes no verification or independent-retention claim");
+    expect(html).not.toContain("Finalized publication receipts bind this snapshot");
+    expect(html).not.toContain('aria-label="Copy Manifest CID"');
+    expect(html).not.toContain('aria-label="Copy CAR CID"');
+    expect(html).not.toContain('aria-label="Copy IPNS name"');
     expect(html).toContain("Building-year proxy bands");
     expect(html).toContain("at low confidence");
     expect(html).not.toContain("then valid issue dates from closed roofing permits");

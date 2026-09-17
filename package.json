@@ -13,16 +13,17 @@
     "dev": "pnpm --filter @oracle-lake/shared run build && pnpm --parallel --filter @oracle-lake/server --filter @oracle-lake/ui run dev",
     "start": "pnpm --filter @oracle-lake/server run start",
     "serve": "pnpm run build && pnpm run start",
-    "test": "pnpm run test:unit && pnpm run test:design",
-    "test:unit": "vitest run",
+    "test": "pnpm run test:unit && pnpm run test:design && pnpm run test:recorder",
+    "test:unit": "node packages/server/tests/materialize-historical-fixture.ts && vitest run",
     "test:design": "pnpm --filter @oracle-lake/ui run test:design",
+    "test:recorder": "pnpm --filter @oracle-lake/ui run test:recorder",
     "test:watch": "vitest",
     "typecheck": "turbo run typecheck",
     "lint": "eslint . && pnpm run lint:county",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:county": "eslint --no-ignore --no-warn-ignored pipeline/bin pipeline/infra pipeline/scripts/lake pipeline/src/batch pipeline/src/counties/lake pipeline/src/core/car.mjs pipeline/src/core/cid.mjs pipeline/src/core/artifact-manifest.mjs pipeline/src/core/gateway-verify.mjs pipeline/src/core/run-history.mjs pipeline/src/core/publish-gate.mjs pipeline/src/core/predecessor-recovery.mjs pipeline/src/core/secondary-pin.mjs"
+    "lint:county": "eslint --no-ignore --no-warn-ignored pipeline/bin pipeline/infra pipeline/scripts/lake pipeline/src/batch pipeline/src/counties/lake pipeline/src/core/car.mjs pipeline/src/core/cid.mjs pipeline/src/core/artifact-manifest.mjs pipeline/src/core/gateway-verify.mjs pipeline/src/core/run-history.mjs pipeline/src/core/publish-gate.mjs pipeline/src/core/predecessor-recovery.mjs pipeline/src/core/secondary-pin.mjs pipeline/src/core/finalize-consumed-publication.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

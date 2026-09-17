@@ -17,6 +17,7 @@ import type {
   PropertyDetailResponse,
   QueryTableColumn,
   ResponseProvenance,
+  RunPublicationEvidence,
   SearchOptions,
   SearchResponse,
 } from "@oracle-lake/shared";
@@ -187,6 +188,7 @@ export interface RunMetaResponse {
   run: ServedRunPointer | null;
   coverage: CoverageSnapshot | null;
   verification: VerificationReport | null;
+  publicationEvidence?: RunPublicationEvidence | null;
   runHistory: RunHistory | null;
   dataSource: string;
   dataSourceKind: "ipfs" | "local";

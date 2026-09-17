@@ -4,6 +4,34 @@ These dated attempts are retained evidence, not current submission claims.
 The [September 17 handoff](submission-handoff-20260917.md) and current README
 identify the selected preview, completed public GET proof and remaining holds.
 
+## Later normal publication supersedes the earlier retention hold
+
+On September 17, normal publication of `20260916T181000Z` established actual
+Lighthouse retention: the accepted request, authenticated exact-CID inventory
+and metadata, public manifest bytes and complete 341,012,658-byte CAR matched.
+The archive's 1,352 hash-validated blocks contain all three manifested directory
+roots. This is provider-local byte evidence, not registration alone or an
+assumption from a Filecoin deal list. All 40 objects plus the manifest have
+two-public-host size/digest matches in the normal publisher's verification report.
+
+The attempt from `4fc47a475bd01d483b81150b741914eec2f8bc32` advanced the owned
+IPNS name from sequence 13 to 14 and consumed its exact-target human approval.
+Its remote effects succeeded; a local history-schema mismatch then stopped
+finalization. The bounded local repair from `ac4dd3ff037172f6e1753c53234532650954b98d`
+accepted the genuine recorded candidate commit and completed at
+`2026-09-17T17:33:43.074Z`. It appended the actual successful run and thirteenth
+`FINALIZED` stage without another upload, pin request, IPNS write, approval
+consumption or signature. The original execution target and first twelve
+recorded stages remain unchanged.
+
+See [the normal verification](../artifacts/verification-20260916T181000Z.json),
+[append-only attempt ledger](../artifacts/publication-attempts.json) and
+[successful run history](../artifacts/run-history.json). The failed and limited
+attempts below remain historical facts; their earlier holds are not the outcome
+of this later normal publication.
+
+## Earlier attempts
+
 The owner-approved Pinata Free key has been created with pin creation/list/status
 permissions only and its JWT is configured locally. A read-only PSA request on
 2026-09-16 returned HTTP 403 with `PAID_FEATURE_ONLY`: "You must be on a paid plan

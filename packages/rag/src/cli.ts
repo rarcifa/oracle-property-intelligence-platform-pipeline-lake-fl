@@ -15,6 +15,7 @@ import { runEval } from "./eval/run-eval.js";
 import { suggestPaths } from "./paths.js";
 import { readFile } from "node:fs/promises";
 import { promotePublishedCorpus } from "./promote.js";
+import { selectCorpusSource } from "./corpus/source.js";
 
 const debug = process.env.RAG_DEBUG === "true";
 
@@ -97,7 +98,8 @@ async function main(): Promise<number> {
 
     case "build": {
       const runIdPosition = rest.indexOf("--run-id");
-      const runId = runIdPosition >= 0 ? rest[runIdPosition + 1] : undefined;
+      const runId =
+        runIdPosition >= 0 ? rest[runIdPosition + 1] : (await selectCorpusSource()).receipt.runId;
       if (!runId) {
         print({
           error: "missing_run_id",

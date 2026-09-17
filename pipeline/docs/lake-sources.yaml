@@ -151,9 +151,15 @@ permits:
       known_exclusions: >-
         Detail pages expose contractor names and inspection history, which the county layer
         does not, and this is the only open route to contractor of record anywhere in Lake
-        County. Harvested for permit year 26 only: 4,132 permits enumerated by prefix walk
-        over 2,656 parcels. Permit years 15 through 25 are reachable and are NOT in this
-        job. Routing by mailing city over-selects heavily - 50,447 seed parcels carry a
+        County. The September 11 pilot enumerated 4,132 year-26 permits over 2,656 parcels;
+        that pilot is historical, not the completed full harvest. The retained certified
+        baseline now contains 58,495 captured permits across all twelve 2015-2026 partitions,
+        with zero retryable pending and zero proven-dead records. Source detail HTML,
+        normalized records and export digests remain retained. The export contains 9,969
+        literal ROOF/REROOF records; this is a source permit-type count, not an accepted
+        primary-roof replacement count. Per-record successful capture timestamps were not
+        preserved, so sealing/certification times must not be used as current-status clocks.
+        Routing by mailing city over-selects heavily - 50,447 seed parcels carry a
         CLERMONT mailing city while the portal knows about 2,656 a year - so the portal's
         own answer, not the city string, decides membership. The prior year-26 capture
         classified 71 permits with no parcel key as dead. The repaired full harvester retains

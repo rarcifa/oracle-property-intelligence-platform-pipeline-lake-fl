@@ -76,6 +76,7 @@ const PROPERTY_FIELDS = [
   "address_zip",
   "latitude",
   "longitude",
+  "distance_miles",
   "built_year",
   "year_built",
   "roof_age_years",
@@ -96,10 +97,16 @@ export function finalizeRecordAnswer(
   if (records.length === 0 && !propertyList) return null;
   let remaining = MAX_ANSWER_ROWS;
   const bounded = records.map((entry) => {
+    // Read-only SQL can still manufacture IDs/addresses with aliases or
+    // literals. Only purpose-built property tools have the canonical contract;
+    // do not rename parcel_id or accept a projected request_identifier as proof.
     const eligible = propertyList
-      ? entry.rows.filter(
-          (row) => typeof row.request_identifier === "string" && row.request_identifier.length > 0,
-        )
+      ? entry.tool === "searchProperties" || entry.tool === "getProperty"
+        ? entry.rows.filter(
+            (row) =>
+              typeof row.request_identifier === "string" && row.request_identifier.length > 0,
+          )
+        : []
       : entry.rows;
     const rows = eligible.slice(0, remaining).map((row) => ({ ...row }));
     remaining -= rows.length;

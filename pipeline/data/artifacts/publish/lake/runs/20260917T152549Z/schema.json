@@ -1,0 +1,323 @@
+{
+  "schemaVersion": "elephant.query-table-schema.v1",
+  "county": "lake",
+  "table": "query-table.parquet",
+  "columnCount": 63,
+  "columns": [
+    {
+      "name": "property_id",
+      "type": "UTF8",
+      "optional": false
+    },
+    {
+      "name": "property_cid",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "request_identifier",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "parcel_identifier",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "alt_key",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "source_system",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "county_name",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "state_code",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "address_street",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "address_city",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "address_zip",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "lot_area_sqft",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "lot_size_acre",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "property_type",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "property_usage_type",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "dor_use_code",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "built_year",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "effective_built_year",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "livable_floor_area",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "building_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "residential_units",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "assessed_value",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "market_value",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "land_value",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "taxable_value",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "owner_name",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "owners_text",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "owner_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "owner_mailing_city",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "owner_mailing_state",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "owner_mailing_zip",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "owner_out_of_county",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "owner_out_of_state",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "last_sale_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "last_sale_price",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "prior_sale_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "prior_sale_price",
+      "type": "DOUBLE",
+      "optional": true
+    },
+    {
+      "name": "sale_records_in_window",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "no_recorded_sale_in_dor_window",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "roof_age_years",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "roof_age_basis",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "roof_last_permit_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "has_permits",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "permit_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "roofing_permit_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "open_permit_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "open_roofing_permit_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "longest_open_permit_days",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "longest_open_roofing_permit_days",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "latest_permit_date",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "contractor_name",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "bbb_rating",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "has_bbb_contractor",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "has_sunbiz_tenant",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "has_business_account",
+      "type": "BOOLEAN",
+      "optional": true
+    },
+    {
+      "name": "business_account_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "business_naics_codes",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "business_names",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "roofing_business_count",
+      "type": "INT32",
+      "optional": true
+    },
+    {
+      "name": "enrichment_status",
+      "type": "UTF8",
+      "optional": true
+    },
+    {
+      "name": "source_systems",
+      "type": "UTF8",
+      "optional": true
+    }
+  ]
+}

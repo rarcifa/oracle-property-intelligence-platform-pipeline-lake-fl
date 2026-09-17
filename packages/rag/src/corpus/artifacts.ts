@@ -26,7 +26,7 @@ export const coverageSchema = z.object({
   exportedAt: z.string(),
   denominator: z.object({ basis: z.string(), source: z.string(), assessedParcelCount: z.number() }),
   tables: z.record(z.object({ rows: z.number(), source: z.string() }).passthrough()),
-  signals: z.record(z.number()),
+  signals: z.record(z.number().nullable()),
   limitations: z.array(z.string()),
 });
 
@@ -59,6 +59,14 @@ const SIGNAL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   propertiesWithBusinessAccount: "parcels with a tangible-personal-property business account",
 });
 
+function signalLine(key: string, value: number | null): string {
+  const label = SIGNAL_LABELS[key] ?? key;
+  if (value === null) {
+    return `- ${key}: unknown/source-only — ${label}. The selected run preserves the key but coverage.json records null, so the value is not established and must not be read as zero.`;
+  }
+  return `- ${key}: ${count(value)} — ${label}.`;
+}
+
 /**
  * A limitation's own first clause, used as its title.
  *
@@ -76,7 +84,7 @@ function limitationKey(limitation: string): string {
   const keys: readonly [RegExp, string][] = [
     [/rolling 365-day/i, "permit-window"],
     [/covers unincorporated/i, "municipal-coverage"],
-    [/^Contractor of record/i, "contractor-coverage"],
+    [/^(?:Contractor of record|Retained source-listed contractor names)/i, "contractor-coverage"],
     [/^Clermont's permits/i, "clermont-history"],
     [/^BBB ratings/i, "bbb-gated"],
     [/^Ownership tenure/i, "ownership-tenure"],
@@ -146,11 +154,9 @@ export function buildCoverageDocs(coverage: Coverage, provenance: Provenance): C
       docType: "coverage",
       title: "Coverage: the derived lead signals and their countywide counts",
       lines: [
-        "Derived signals recorded in the selected run's coverage.json, each a countywide count:",
-        ...Object.entries(coverage.signals).map(
-          ([key, value]) => `- ${key}: ${count(value)} — ${SIGNAL_LABELS[key] ?? key}.`,
-        ),
-        "Each of these is reproducible with a single SQL predicate against the query table; the RAG corpus carries the definition, the SQL tools carry the live number.",
+        "Derived signals recorded in the selected run's coverage.json. Numeric values are countywide counts; null values preserve explicitly unsupported conclusions:",
+        ...Object.entries(coverage.signals).map(([key, value]) => signalLine(key, value)),
+        "Established numeric signals are reproducible with SQL against the query table. Unknown/source-only signals must not be converted into zero or accepted current-open conclusions. Retained historical permit rows and literal source facts remain queryable separately; the RAG corpus carries definitions and limitations, while SQL tools carry supported live counts.",
       ],
       aliases: [
         "signals",

@@ -58,6 +58,37 @@ const DURATION_BUCKETS: readonly { key: string; label: string }[] = [
   { key: "open_over_5_years", label: "over 5 years" },
 ];
 
+const CLERMONT = "source_system = 'lake_clermont_etrakit_permits'";
+const SOURCE_ROOF_TYPE = "upper(trim(permit_type)) = 'ROOF/REROOF'";
+const SOURCE_ISSUED = "upper(trim(permit_status)) = 'ISSUED'";
+const HAS_ISSUE_DATE = "issued_date IS NOT NULL AND trim(CAST(issued_date AS VARCHAR)) <> ''";
+const HISTORICAL_CANDIDATE = `${CLERMONT} AND ${SOURCE_ROOF_TYPE} AND ${SOURCE_ISSUED} AND ${HAS_ISSUE_DATE}`;
+const HISTORICAL_COUNTS_SQL = `SELECT count(*) AS retained_permits,
+  count(*) FILTER (WHERE ${CLERMONT}) AS clermont_permits,
+  count(*) FILTER (WHERE ${CLERMONT} AND ${SOURCE_ROOF_TYPE}) AS clermont_roof_reroof,
+  count(*) FILTER (WHERE ${CLERMONT} AND ${SOURCE_ISSUED}) AS clermont_source_issued,
+  count(*) FILTER (WHERE ${CLERMONT} AND ${SOURCE_ROOF_TYPE} AND ${SOURCE_ISSUED}) AS clermont_roof_reroof_source_issued,
+  count(*) FILTER (WHERE ${HISTORICAL_CANDIDATE}) AS clermont_roof_reroof_source_issued_with_date
+  FROM permits`;
+const HISTORICAL_TILES = [
+  { key: "clermont_permits", label: "Clermont retained permits" },
+  { key: "clermont_roof_reroof", label: "Clermont source type ROOF/REROOF" },
+  { key: "clermont_source_issued", label: "Clermont source-listed ISSUED" },
+  { key: "clermont_roof_reroof_source_issued", label: "Clermont ROOF/REROOF + source ISSUED" },
+  {
+    key: "clermont_roof_reroof_source_issued_with_date",
+    label: "Same historical intersection with issue date",
+  },
+] as const;
+
+/** Literal historical source screening only; never accepted current/open decisions. */
+export function historicalPermitSql(offset: number, candidatesOnly: boolean): string {
+  return `SELECT permit_number, jurisdiction, permit_type, permit_status, issued_date, permit_description,
+    contractor_name, bbb_rating, parcel_identifier, linkage_status, source_url FROM permits
+    ${candidatesOnly ? `WHERE ${HISTORICAL_CANDIDATE}` : ""}
+    ORDER BY permit_id LIMIT 50 OFFSET ${Math.max(0, Math.floor(offset))}`;
+}
+
 export function ContractorView(): JSX.Element {
   const { source, meta, metaError } = useDataSource();
   const metadataReady = meta !== null;
@@ -65,6 +96,7 @@ export function ContractorView(): JSX.Element {
   const view = useAsync(() => source.getContractorView(), [source]);
   const stats = useAsync(() => source.getStats(), [source]);
   const [offset, setOffset] = useState(0);
+  const [historicalCandidatesOnly, setHistoricalCandidatesOnly] = useState(false);
 
   const options = useMemo<SearchOptions>(
     () => ({
@@ -81,13 +113,20 @@ export function ContractorView(): JSX.Element {
     () => (!metadataReady || evidenceOnly ? Promise.resolve(null) : source.search(options)),
     [source, metadataReady, evidenceOnly, JSON.stringify(options)],
   );
-  const historicalSql = `SELECT permit_number, jurisdiction, permit_status, issued_date, permit_description,
-    contractor_name, parcel_identifier, linkage_status, source_url FROM permits
-    ORDER BY permit_id LIMIT 50 OFFSET ${offset}`;
+  const historicalCounts = useAsync(
+    () => (evidenceOnly ? source.runSql(HISTORICAL_COUNTS_SQL, 1) : Promise.resolve(null)),
+    [source, evidenceOnly],
+  );
+  const historicalSql = historicalPermitSql(offset, historicalCandidatesOnly);
   const historical = useAsync(
     () => (evidenceOnly ? source.runSql(historicalSql, 50) : Promise.resolve(null)),
     [source, evidenceOnly, historicalSql],
   );
+  const historicalSummary = historicalCounts.error ? null : historicalCounts.data?.rows[0];
+  const historicalMatched =
+    historicalSummary?.[
+      historicalCandidatesOnly ? "clermont_roof_reroof_source_issued_with_date" : "retained_permits"
+    ];
 
   const totalParcels = stats.data?.stats.properties;
   const contractorNames = view.data?.posture.contractor_names_present;
@@ -266,6 +305,21 @@ export function ContractorView(): JSX.Element {
               ? "All sources, including valid unlinked records. Status is retained source text, not current; names are source-listed, not verified legal identities."
               : "Ordered by the longest open roofing permit duration, descending."
         }
+        actions={
+          evidenceOnly ? (
+            <label className={`toggle ${historicalCandidatesOnly ? "on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={historicalCandidatesOnly}
+                onChange={(event) => {
+                  setHistoricalCandidatesOnly(event.target.checked);
+                  setOffset(0);
+                }}
+              />
+              Clermont ROOF/REROOF + source ISSUED (with issue date)
+            </label>
+          ) : undefined
+        }
       >
         {!metadataReady ? (
           metaError ? (
@@ -280,11 +334,42 @@ export function ContractorView(): JSX.Element {
               Historical source observations below are not proof of completion, current status, or a
               verified license. Building-year roof proxies remain available in property search.
             </p>
+            <p className="prose">
+              Results show historical source-listed status, not currently open permits. ROOF/REROOF
+              is literal source type text, not an accepted primary-roof classification; a nonblank
+              issue date is shown as recorded, not a completion date or duration-open signal. BBB
+              ratings are unknown when missing. Leave the filter off to explore all sources and
+              valid unlinked records.
+            </p>
+            {historicalCounts.error ? (
+              <ErrorPanel error={historicalCounts.error} onRetry={historicalCounts.reload} />
+            ) : null}
+            <div className="tile-grid" style={{ marginTop: 14 }}>
+              {HISTORICAL_TILES.map((tile) => (
+                <StatTile
+                  key={tile.key}
+                  label={tile.label}
+                  loading={historicalCounts.loading && !historicalCounts.data}
+                  value={
+                    typeof historicalSummary?.[tile.key] === "number"
+                      ? formatCount(historicalSummary[tile.key] as number)
+                      : "—"
+                  }
+                  note="Queried from this snapshot; historical source text only"
+                />
+              ))}
+            </div>
+            {!historicalCounts.error && historicalCounts.data ? (
+              <SqlBlock
+                provenance={historicalCounts.data.provenance}
+                label="SQL behind historical source counts"
+              />
+            ) : null}
             {historical.error ? (
               <ErrorPanel error={historical.error} onRetry={historical.reload} />
             ) : null}
             {historical.loading && !historical.data ? <SkeletonRows rows={5} height={24} /> : null}
-            {historical.data ? (
+            {!historical.error && historical.data ? (
               <>
                 <div className="table-scroll">
                   <table className="data" style={{ minWidth: 900 }}>
@@ -292,6 +377,7 @@ export function ContractorView(): JSX.Element {
                       <tr>
                         <th>Permit / jurisdiction</th>
                         <th>Historical status / source issue date</th>
+                        <th>Historical permit type</th>
                         <th>Source work text</th>
                         <th>Source-listed name</th>
                         <th>Property link</th>
@@ -311,8 +397,13 @@ export function ContractorView(): JSX.Element {
                             <br />
                             {String(row.issued_date ?? "unknown")}
                           </td>
+                          <td>{String(row.permit_type ?? "unknown")}</td>
                           <td>{String(row.permit_description ?? "—")}</td>
-                          <td>{String(row.contractor_name ?? "not captured; absence unproven")}</td>
+                          <td>
+                            {String(row.contractor_name ?? "not captured; absence unproven")}
+                            <br />
+                            BBB: {String(row.bbb_rating ?? "unknown")}
+                          </td>
                           <td>
                             {row.parcel_identifier &&
                             row.linkage_status === "linked_to_assessed_roll" ? (
@@ -344,11 +435,17 @@ export function ContractorView(): JSX.Element {
                     </tbody>
                   </table>
                 </div>
-                {typeof stats.data?.stats.permit_records_total === "number" ? (
+                {historical.data.rows.length === 0 ? (
+                  <p className="prose">
+                    No retained historical records match this source-text filter in this snapshot;
+                    this is not a conclusion about current permits.
+                  </p>
+                ) : null}
+                {typeof historicalMatched === "number" ? (
                   <Pager
                     offset={offset}
                     limit={50}
-                    matched={stats.data.stats.permit_records_total}
+                    matched={historicalMatched}
                     returned={historical.data.rows.length}
                     onOffset={setOffset}
                     busy={historical.loading}
@@ -356,8 +453,8 @@ export function ContractorView(): JSX.Element {
                   />
                 ) : (
                   <p>
-                    Total retained permit count is still loading or unavailable; this does not
-                    establish zero.
+                    Matching retained historical count is still loading or unavailable; this does
+                    not establish zero.
                   </p>
                 )}
                 <SqlBlock provenance={historical.data.provenance} />

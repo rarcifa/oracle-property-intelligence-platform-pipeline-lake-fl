@@ -1,5 +1,5 @@
 /**
- * The parcel half of `/api/search`, against the real published table.
+ * The parcel half of `/api/search`, against actual historical local bytes.
  *
  * Retrieval covered the dataset's metadata only, so a question about the
  * 215,806 parcels had nothing to retrieve from. BM25 over a per-parcel text
@@ -9,14 +9,58 @@
  * terms. These tests exist to pin the property that failure lacked — every row
  * returned actually satisfies every constraint in the question.
  *
- * Skips when no published Parquet is reachable, like the other query-layer
- * suites; CI sets ORACLE_PARQUET_URL so it cannot skip there.
+ * The materialized historical fixture is required; it is not a current public
+ * source-semantic claim. Current public source-only behavior is tested apart.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { RetrievalResult } from "@oracle-lake/rag";
+import type * as ChatRetrieval from "../src/chat/retrieval.js";
 import { hasParquet, getContext } from "./harness.js";
+import { ACCEPTED_REGRESSION_ROOT_CID, ACCEPTED_REGRESSION_RUN_ID } from "./fixture-config.js";
 import { Router, type HttpResponse } from "../src/http/router.js";
 import { registerSearchRoutes } from "../src/routes/search.js";
+
+// This suite isolates the structured half, running actual DuckDB filters over
+// the frozen legacy table. Its empty documentation fixture is explicitly
+// synthetic; it is not the current public corpus relabeled as historical data.
+// Live document/receipt compatibility remains tested in search.test.ts and RAG.
+vi.mock("../src/chat/retrieval.js", async (original) => {
+  const actual = await original<typeof ChatRetrieval>();
+  const { ACCEPTED_REGRESSION_RUN_ID: runId, ACCEPTED_REGRESSION_ROOT_CID: rootCid } =
+    await import("./fixture-config.js");
+  return {
+    ...actual,
+    searchCorpus: vi.fn(
+      (
+        input: { query: string },
+        served: { runId: string | null; rootCid: string | null },
+      ): RetrievalResult => {
+        expect(served).toEqual({ runId, rootCid });
+        return {
+          query: input.query,
+          expandedTerms: [],
+          queryGrounding: 0,
+          unknownTerms: [],
+          confidence: "none",
+          abstained: true,
+          note: "SYNTHETIC_LEGACY_DOCUMENT_FIXTURE: structured-half regression only; no document evidence.",
+          chunks: [],
+          consideredCount: 0,
+          index: {
+            chunkCount: 0,
+            runId,
+            rootCid,
+            releaseState: "local_candidate",
+            snapshotDigest: `sha256:${"0".repeat(64)}`,
+            embeddingModel: "synthetic-legacy-fixture",
+            embeddingDimension: 1,
+          },
+        };
+      },
+    ),
+  };
+});
 
 interface ParcelHalf {
   interpretation: { filter: string; value: unknown; phrase: string }[];
@@ -40,7 +84,17 @@ async function search(query: string, topK = 10): Promise<{ parcels: ParcelHalf |
   // The router serialises; the body is JSON text, as in the sibling suite.
   const text =
     typeof response.body === "string" ? response.body : Buffer.from(response.body).toString("utf8");
-  return JSON.parse(text) as { parcels: ParcelHalf | null };
+  const result = JSON.parse(text) as {
+    parcels: ParcelHalf | null;
+    note: string;
+    chunks: unknown[];
+    index: { runId: string; rootCid: string | null };
+  };
+  expect(result.note).toContain("SYNTHETIC_LEGACY_DOCUMENT_FIXTURE");
+  expect(result.chunks).toEqual([]);
+  expect(result.index.runId).toBe(ACCEPTED_REGRESSION_RUN_ID);
+  expect(result.index.rootCid).toBe(ACCEPTED_REGRESSION_ROOT_CID);
+  return result;
 }
 
 describe.skipIf(!hasParquet)("POST /api/search — retrieval over the parcels", () => {
