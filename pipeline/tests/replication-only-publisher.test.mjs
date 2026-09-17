@@ -16,6 +16,7 @@ const fixture = vi.hoisted(() => ({
   registered: true,
   getHook: null,
   predecessor: null,
+  badDagSizeKind: null,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -120,6 +121,7 @@ vi.mock("../src/core/secondary-pin.mjs", async (importOriginal) => {
 
 import { publishRun } from "../scripts/lake/publish-run.mjs";
 import { computeRawCid } from "../src/core/cid.mjs";
+import { validateCarArchive } from "../src/core/car.mjs";
 import {
   buildPublishAuthorizationPayload,
   readPublicationLedger,
@@ -158,6 +160,7 @@ const protectedPaths = [
 beforeEach(() => {
   fixture.getHook = null;
   fixture.predecessor = null;
+  fixture.badDagSizeKind = null;
   fixture.files.clear();
   fixture.objects.clear();
   fixture.registrations.length = 0;
@@ -231,11 +234,23 @@ beforeEach(() => {
         });
       if (url.pathname === "/api/lighthouse/pin" && options?.method === "POST") {
         const request = JSON.parse(options.body);
-        const size = request.fileName.endsWith("/manifest")
-          ? fixture.files.get(path.join(PUBLISH, "manifests", `${RUN}.json`)).length
+        const kind = request.fileName.endsWith("/manifest")
+          ? "manifest"
           : request.fileName.endsWith("/archive")
-            ? fixture.files.get(path.join(PUBLISH, "cars", `${RUN}-snapshot.car`)).length
-            : 0;
+            ? "archive"
+            : "root";
+        const transport =
+          kind === "root"
+            ? `${RUN}.car`
+            : kind === "archive"
+              ? `${RUN}-archive-transport.car`
+              : `${RUN}-manifest.car`;
+        // Independently model the observed provider semantics, not the production helper.
+        const size =
+          validateCarArchive(
+            fixture.files.get(path.join(PUBLISH, "cars", transport)),
+          ).blocks.reduce((sum, block) => sum + block.bytes.byteLength, 0) +
+          (fixture.badDagSizeKind === kind ? 1 : 0);
         fixture.registrations.push({
           id: `fixture-${fixture.registrations.length}`,
           cid:
@@ -299,6 +314,80 @@ async function signedFixture(scope = "replication-only") {
 }
 
 describe("real publisher replication-only control flow (offline)", () => {
+  it("checks directory/raw-manifest/multiblock-archive DAG sizes and preserves every frozen byte binding", async () => {
+    fixture.files.set(
+      path.join(PUBLISH, "runs", RUN, "query-table.parquet"),
+      Buffer.alloc(600_000, 7),
+    );
+    const { live, prepared } = await signedFixture();
+    const beforeRequest = Buffer.from(fixture.files.get(prepared.approvalRequestPath));
+    const beforeManifest = Buffer.from(
+      fixture.files.get(path.join(PUBLISH, "manifests", `${RUN}.json`)),
+    );
+    const result = await publishRun(live);
+    for (const [kind, transport] of [
+      ["root", `${RUN}.car`],
+      ["manifest", `${RUN}-manifest.car`],
+      ["archive", `${RUN}-archive-transport.car`],
+    ]) {
+      const car = validateCarArchive(fixture.files.get(path.join(PUBLISH, "cars", transport)));
+      const expected = car.blocks.reduce((sum, block) => sum + block.bytes.byteLength, 0);
+      expect(result.evidence[kind].metadata.fileSizeInBytes).toBe(expected);
+      expect(result.evidence[kind].retentionVerified).toBe(false);
+      if (kind === "archive") {
+        expect(car.blocks.length).toBeGreaterThan(1);
+        expect(expected).not.toBe(
+          fixture.files.get(path.join(PUBLISH, "cars", `${RUN}-snapshot.car`)).length,
+        );
+      }
+    }
+    expect(fixture.files.get(prepared.approvalRequestPath)).toEqual(beforeRequest);
+    expect(fixture.files.get(path.join(PUBLISH, "manifests", `${RUN}.json`))).toEqual(
+      beforeManifest,
+    );
+    expect(result).toMatchObject({
+      publicationState: "REPLICATION_REQUESTS_RECORDED",
+      promotionHeld: true,
+      retentionVerified: false,
+    });
+    expect(fixture.gateway).not.toHaveBeenCalled();
+    expect((await readPublicationLedger(LEDGER)).consumedApprovals).toEqual([]);
+  });
+
+  it.each(["root", "manifest", "archive"])(
+    "rejects equally wrong %s inventory and metadata DAG sizes",
+    async (kind) => {
+      fixture.badDagSizeKind = kind;
+      const { live } = await signedFixture();
+      await expect(publishRun(live)).rejects.toThrow(/does not match/);
+      const ledger = await readPublicationLedger(LEDGER);
+      expect(Object.values(ledger.attempts).at(-1).state).toBe("MANIFEST_UPLOAD_RECORDED");
+      expect(ledger.consumedApprovals).toEqual([]);
+      expect(fixture.gateway).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reconciles an accepted archive checkpoint after metadata repair without repeating POST or PUT", async () => {
+    fixture.badDagSizeKind = "archive";
+    const { live } = await signedFixture();
+    await expect(publishRun(live)).rejects.toThrow(/does not match/);
+    expect(fixture.registrations).toHaveLength(3);
+    const archive = fixture.registrations.find((entry) => entry.fileName.endsWith("/archive"));
+    archive.fileSizeInBytes -= 1;
+    fixture.badDagSizeKind = null;
+    fixture.puts.mockClear();
+    globalThis.fetch.mockClear();
+    const result = await publishRun(live);
+    expect(result.evidence.archive.status).toBe("registration-reconciled");
+    expect(result.evidence.archive.requestAccepted.httpStatus).toBe(202);
+    expect(fixture.puts).not.toHaveBeenCalled();
+    expect(globalThis.fetch.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(
+      true,
+    );
+    expect(fixture.gateway).not.toHaveBeenCalled();
+    expect((await readPublicationLedger(LEDGER)).consumedApprovals).toEqual([]);
+  });
+
   it.each([true, false])(
     "reconciles an existing root only when its bytes match (%s)",
     async (matches) => {

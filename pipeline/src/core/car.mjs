@@ -224,6 +224,38 @@ export function validateCarArchive(car) {
 }
 
 /**
+ * Sum unique CID-bound block bytes for one complete frozen DAG. This excludes
+ * CAR framing and differs from decoded UnixFS file bytes. Lighthouse reported
+ * this representation for the observed Lake imports; it is not a universal
+ * provider-size guarantee or proof of remote retention.
+ * @param {Uint8Array} car Frozen CARv1 transport.
+ * @param {string} expectedCid Exact single root CID.
+ * @returns {number} Unique root-reachable block bytes.
+ */
+export function computeCarDagBlockBytes(car, expectedCid) {
+  const validated = validateCarArchive(car);
+  if (validated.roots.length !== 1 || validated.roots[0] !== expectedCid)
+    throw new Error("DAG byte measurement requires the exact single frozen root");
+  const blocks = new Map(validated.blocks.map((block) => [block.cid, block.bytes]));
+  const pending = [expectedCid];
+  const seen = new Set();
+  let bytes = 0;
+  while (pending.length > 0) {
+    const cid = pending.pop();
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    const block = blocks.get(cid);
+    bytes += block.byteLength;
+    if (!Number.isSafeInteger(bytes)) throw new Error("DAG byte measurement exceeds safe range");
+    if (CID.parse(cid).code === 0x70)
+      for (const link of dagPB.decode(block).Links) pending.push(link.Hash.toString());
+  }
+  if (seen.size !== blocks.size)
+    throw new Error("DAG byte measurement rejects unreachable CAR blocks");
+  return bytes;
+}
+
+/**
  * Prove a complete imported DAG, independently of CAR record ordering.
  * Filebase imports CAR blocks; an IPFS export is not the original upload file.
  * Only one bounded block is allocated at a time; local blocks remain views.

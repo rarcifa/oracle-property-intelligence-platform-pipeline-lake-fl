@@ -220,6 +220,16 @@ and the byte-identical, 40-object
 [artifact manifest](artifacts/manifest-20260916T181000Z.json). Repository manifest
 delivery is complete; retention and every-object two-gateway proof remain open.
 
+The subsequent owner-approved local correction derives Lighthouse's expected
+registration size from each frozen CAR's unique, hash-validated, root-reachable
+DAG blocks. An explicit `expectedDagBytes` contract checks provider metadata
+against that value; legacy size checks and Pinata behavior remain unchanged.
+The [offline replay](artifacts/lighthouse-dag-size-replay-20260917T123212Z.json)
+matches all three recorded provider sizes, including the archive, with zero
+network calls or ledger writes. Manifest file sizes/digests, signed transport
+fields, receipt formats and retention/promotion guards are unchanged. This is
+local repair evidence, not a live retry or completed publication.
+
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root
 `bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,

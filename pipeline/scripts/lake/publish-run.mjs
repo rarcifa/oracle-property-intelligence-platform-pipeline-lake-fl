@@ -46,7 +46,12 @@ import {
   computeUnixfsFileCid,
   sha256Hex,
 } from "../../src/core/cid.mjs";
-import { validateCarArchive, verifyImportedCarStream, writeCarFile } from "../../src/core/car.mjs";
+import {
+  computeCarDagBlockBytes,
+  validateCarArchive,
+  verifyImportedCarStream,
+  writeCarFile,
+} from "../../src/core/car.mjs";
 import { buildArtifactManifest, writeArtifactManifest } from "../../src/core/artifact-manifest.mjs";
 import {
   DEFAULT_GATEWAYS,
@@ -974,6 +979,17 @@ export async function publishRun({
   const rootCarBody = await readFile(car.path);
   const manifestCarBody = await readFile(manifestCar.path);
   const archiveTransportBody = await readFile(archiveTransport.path);
+  // Provider registration size is unique DAG block bytes for these observed
+  // imports, never the manifest's logical file bytes or CAR transport framing.
+  // Derive from frozen, hash-validated rooted CARs; no new signed target field.
+  const lighthouseDagBytes =
+    secondaryPinProvider === "lighthouse"
+      ? {
+          root: computeCarDagBlockBytes(rootCarBody, dag.rootCid),
+          manifest: computeCarDagBlockBytes(manifestCarBody, manifestCid),
+          archive: computeCarDagBlockBytes(archiveTransportBody, archiveFile.cid),
+        }
+      : null;
   const primaryCars = {
     root: {
       key: `runs/${runId}/root.car`,
@@ -1305,12 +1321,7 @@ export async function publishRun({
           ...options,
           previousEvidence: acceptedEvidence,
           allowPendingEvidence: target.executionScope === "replication-only",
-          expectedBytes:
-            kind === "manifest"
-              ? manifestBytes.length
-              : kind === "archive"
-                ? snapshotBody.length
-                : null,
+          expectedDagBytes: lighthouseDagBytes[kind],
           onEvidence: (receipt) => writeLighthouseCheckpoint(receiptPath, receipt),
         });
       };

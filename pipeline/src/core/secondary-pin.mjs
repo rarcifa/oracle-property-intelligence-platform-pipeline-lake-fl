@@ -255,6 +255,9 @@ export async function findLighthouseRegistration({
 /**
  * Use the documented same-CID pin endpoint, then reconcile inventory/metadata.
  * HTTP success is accepted, NOT pinned. Registration is reconciled, NOT retained.
+ * expectedDagBytes explicitly checks the observed unique-block size representation;
+ * legacy expectedBytes retains its strict equality contract. Neither is fetched
+ * logical-file byte proof, and the two expectations cannot be mixed.
  * Preserve the response digest and actual provider identifiers without secrets.
  * https://docs.lighthouse.storage/how-to/pin-cid
  * https://docs.lighthouse.storage/how-to/file-info
@@ -265,6 +268,7 @@ export async function ensureLighthouseRegistration({
   cid,
   name,
   expectedBytes = null,
+  expectedDagBytes = null,
   fetchImpl = fetch,
   beforeCreate = () => {},
   previousEvidence = null,
@@ -285,6 +289,13 @@ export async function ensureLighthouseRegistration({
     throw new Error("Invalid Lighthouse polling bounds");
   }
   if (expectedBytes !== null) lighthouseSize(expectedBytes);
+  if (
+    expectedDagBytes !== null &&
+    (!Number.isSafeInteger(expectedDagBytes) || expectedDagBytes < 0)
+  )
+    throw new Error("Expected Lighthouse DAG bytes must be a non-negative safe integer");
+  if (expectedBytes !== null && expectedDagBytes !== null)
+    throw new Error("Choose exactly one Lighthouse size expectation: file bytes or DAG bytes");
   if (
     previousEvidence !== null &&
     (previousEvidence.provider !== "lighthouse" ||
@@ -365,7 +376,8 @@ export async function ensureLighthouseRegistration({
         canonicalCid(info?.cid) !== canonicalCid(cid) ||
         info?.encryption !== false ||
         size !== registration.fileSizeInBytes ||
-        (expectedBytes !== null && size !== expectedBytes)
+        (expectedBytes !== null && size !== expectedBytes) ||
+        (expectedDagBytes !== null && size !== expectedDagBytes)
       ) {
         throw new Error("Lighthouse metadata does not match the public CID/size registration");
       }

@@ -342,6 +342,26 @@ No cloud, billing, push or PR changes occurred. These observations establish
 Filebase repair and accepted replication requests, not completed publication
 or independently retained bytes.
 
+The approved local size correction now derives unique DAG-block bytes from each
+complete frozen root/manifest/archive CAR. The helper requires the exact single
+root, verifies block hashes and reachability, counts shared CIDs once, excludes
+CAR framing and rejects unreachable extras. Lighthouse's explicit
+`expectedDagBytes` checks the observed provider representation for these imports:
+inventory and public metadata must agree with each other and with the derived
+value. Zero is checked explicitly; invalid or simultaneous legacy/DAG contracts
+fail before any network call. Legacy `expectedBytes` behavior remains strict.
+
+The [recorded-data offline replay](../artifacts/lighthouse-dag-size-replay-20260917T123212Z.json)
+matches root 340,959,826, raw manifest 11,417 and archive DAG 341,078,214 bytes.
+It made zero network calls, uploads, pins or ledger writes. The separately
+manifested archive file remains 341,012,575 bytes with its original digest.
+No target/receipt format, provider endpoint, retry bound, creation guard or
+retention/promotion requirement changed. The failed `e91a76d` checkout and
+accepted-request checkpoints remain intact. A later authorized changed-candidate
+execution must reconcile those same CID/name inventory entries rather than
+repeat pin requests; its matching human signature is still required. This local
+fix did not resume the publisher or promote anything.
+
 The 2026-09-17 signed `b3d92c6` attempt and one unchanged resume both ended
 with a TLS abort before the first complete CAR readback. Its ledger remains
 `AUTHORIZED`: no upload receipt, Lighthouse request, gateway proof, successful

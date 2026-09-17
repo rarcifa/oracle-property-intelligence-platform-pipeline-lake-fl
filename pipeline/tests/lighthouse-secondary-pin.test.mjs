@@ -34,7 +34,10 @@ const info = (overrides = {}) => ({
 });
 const inventory = (entries = []) => ({ fileList: entries, totalFiles: entries.length });
 const reply = (body, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  new globalThis.Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -75,7 +78,7 @@ describe("Lighthouse same-CID registration (not retention proof)", () => {
       previousEvidence: receipt,
     });
     expect(resumed).toEqual(receipt);
-    expect(fetchImpl.mock.calls.every(([_url, options]) => options?.method !== "POST")).toBe(true);
+    expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
   });
 
   it("reports an interrupted POST as uncertain, never accepted or retained, and does not rePOST", async () => {
@@ -100,7 +103,7 @@ describe("Lighthouse same-CID registration (not retention proof)", () => {
       retentionVerified: false,
       requestAccepted: null,
     });
-    expect(fetchImpl.mock.calls.every(([_url, options]) => options?.method !== "POST")).toBe(true);
+    expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
     await expect(
       ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, attempts: 1, previousEvidence }),
     ).rejects.toThrow(/not reconciled/);
@@ -279,7 +282,7 @@ describe("Lighthouse same-CID registration (not retention proof)", () => {
   it.each(["inventory", "POST", "metadata"])(
     "bounds a hung %s request with an abort signal",
     async (step) => {
-      const aborted = AbortSignal.abort(new DOMException("deadline", "TimeoutError"));
+      const aborted = AbortSignal.abort(new globalThis.DOMException("deadline", "TimeoutError"));
       const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(aborted);
       let calls = 0;
       const onEvidence = vi.fn(async () => {});
@@ -373,6 +376,108 @@ describe("Lighthouse same-CID registration (not retention proof)", () => {
       ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, expectedBytes: 7 }),
     ).rejects.toThrow(/does not match/);
   });
+
+  it("checks unique DAG bytes for a multiblock file, without redefining logical file size", async () => {
+    const bytes = Buffer.alloc(700_000, 7);
+    const dag = computeUnixfsFileCid(bytes);
+    const dagBytes = [
+      ...new Map(dag.blocks.map((block) => [block.cid, block.bytes])).values(),
+    ].reduce((sum, block) => sum + block.byteLength, 0);
+    expect(dagBytes).not.toBe(bytes.length);
+    const fetchImpl = vi.fn(async (url) =>
+      String(url).includes("file_info")
+        ? reply(info({ cid: dag.cid, fileSizeInBytes: dagBytes }))
+        : reply(inventory([entry({ cid: dag.cid, fileSizeInBytes: dagBytes })])),
+    );
+    const receipt = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      cid: dag.cid,
+      fetchImpl,
+      expectedDagBytes: dagBytes,
+    });
+    expect(receipt).toMatchObject({
+      status: "registration-reconciled",
+      retentionVerified: false,
+      metadata: { cid: dag.cid, fileSizeInBytes: dagBytes },
+    });
+    expect(publicLighthouseReceipt(receipt).metadata.fileSizeInBytes).toBe(dagBytes);
+    expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+    await expect(
+      ensureLighthouseRegistration({
+        ...OPTIONS,
+        cid: dag.cid,
+        fetchImpl,
+        expectedBytes: bytes.length,
+      }),
+    ).rejects.toThrow(/does not match/);
+    expect(() => assertSecondaryRetention([receipt, receipt, receipt], "lighthouse")).toThrow(
+      /not verified IPFS retention/,
+    );
+  });
+
+  it.each([0, 7])(
+    "rejects two equally wrong provider sizes against expected DAG bytes %s",
+    async (expectedDagBytes) => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(reply(inventory([entry()])))
+        .mockResolvedValueOnce(reply(info()));
+      await expect(
+        ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, expectedDagBytes }),
+      ).rejects.toThrow(/does not match/);
+      expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+    },
+  );
+
+  it("reconciles an accepted DAG-size checkpoint without another POST", async () => {
+    const previousEvidence = {
+      provider: "lighthouse",
+      serviceHost: "api.lighthouse.storage",
+      cid: OBJECT,
+      name: NAME,
+      requestIntent: { state: "request-submitting" },
+      requestAccepted: {
+        state: "request-accepted",
+        httpStatus: 200,
+        responseDigest: `sha256:${"a".repeat(64)}`,
+      },
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(reply(inventory([entry()])))
+      .mockResolvedValueOnce(reply(info()));
+    const receipt = await ensureLighthouseRegistration({
+      ...OPTIONS,
+      expectedDagBytes: 6,
+      previousEvidence,
+      fetchImpl,
+    });
+    expect(receipt.requestAccepted).toEqual(previousEvidence.requestAccepted);
+    expect(receipt.status).toBe("registration-reconciled");
+    expect(fetchImpl.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+  });
+
+  it.each([-1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "6"])(
+    "rejects invalid DAG expectation %s before inventory or POST",
+    async (expectedDagBytes) => {
+      const fetchImpl = vi.fn();
+      await expect(
+        ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, expectedDagBytes }),
+      ).rejects.toThrow(/non-negative safe integer/);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([6, 7])(
+    "rejects simultaneous legacy and DAG size contracts %s before network",
+    async (expectedDagBytes) => {
+      const fetchImpl = vi.fn();
+      await expect(
+        ensureLighthouseRegistration({ ...OPTIONS, fetchImpl, expectedBytes: 6, expectedDagBytes }),
+      ).rejects.toThrow(/exactly one/);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
 
   it("recognizes CIDv0 notation of the exact same dag-pb DAG, not a different CID", async () => {
     const dag = computeUnixfsFileCid(Buffer.alloc(300_000));
