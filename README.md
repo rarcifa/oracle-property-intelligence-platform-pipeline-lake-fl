@@ -41,13 +41,13 @@ unknown rather than being described as inaccessible.
 
 ### Which dataset is being assessed?
 
-| Dataset / evidence boundary                                     | Properties |                                      Permits | Meaning                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------------------------- | ---------: | -------------------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recorded public release, `20260910T225242Z`                     |    215,806 | 17,671 CD Plus source permits; 17,457 linked | The committed [public pointer](artifacts/latest.json) names this release. It predates the Clermont contractor data and exposes property permit aggregates. Current hosted availability was not rechecked for this README.                                                                  |
-| Historical local candidate, `20260911T131000Z`                  |    215,806 |                                       21,732 | One-year Clermont candidate; not the full harvest or a public release. The documentation RAG's structured artifact selector still names this local candidate.                                                                                                                              |
-| Full private query repair, `lake-query-repair-20260916t105553z` |    215,806 |                                       76,166 | Real-data DuckDB/API/MCP checks are recorded in [the query repair](docs/lake-query-repair.md). This earlier query candidate is not an approval of the later conservative preview's permit decisions.                                                                                       |
-| Latest conservative private derivative / preview                |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | [Retained-evidence result](docs/lake-retained-evidence-repair.md). Original permit observations remain available, but current/open status, duration, primary-roof completion, and verified legal identity are not accepted conclusions.                                                    |
-| Separate source-only export, `20260916T181000Z`, local only     |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | Newly projected historical source facts, valid low-confidence built-year proxies and a separate 33,346-account business table. Not the private unaccepted derivative; unsupported current/open/completion/legal conclusions remain null. No public CID or hosted promotion is established. |
+| Dataset / evidence boundary                                                             | Properties |                                      Permits | Meaning                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------- | ---------: | -------------------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recorded public release, `20260910T225242Z`                                             |    215,806 | 17,671 CD Plus source permits; 17,457 linked | The committed [public pointer](artifacts/latest.json) names this release. It predates the Clermont contractor data and exposes property permit aggregates. Current hosted availability was not rechecked for this README.                                                                                                                                           |
+| Historical local candidate, `20260911T131000Z`                                          |    215,806 |                                       21,732 | One-year Clermont candidate; not the full harvest or a public release. The documentation RAG's structured artifact selector still names this local candidate.                                                                                                                                                                                                       |
+| Full private query repair, `lake-query-repair-20260916t105553z`                         |    215,806 |                                       76,166 | Real-data DuckDB/API/MCP checks are recorded in [the query repair](docs/lake-query-repair.md). This earlier query candidate is not an approval of the later conservative preview's permit decisions.                                                                                                                                                                |
+| Latest conservative private derivative / preview                                        |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | [Retained-evidence result](docs/lake-retained-evidence-repair.md). Original permit observations remain available, but current/open status, duration, primary-roof completion, and verified legal identity are not accepted conclusions.                                                                                                                             |
+| Frozen source-only export, `20260916T181000Z`; primary imports verified, promotion held |    215,806 |  76,166: 72,187 linked; 3,979 valid unlinked | Historical source facts, valid low-confidence built-year proxies and a separate 33,346-account business table. Not the private unaccepted derivative; unsupported current/open/completion/legal conclusions remain null. Public primary CID imports/readbacks are verified; no recorded successful publication, hosted promotion or every-object two-gateway proof. |
 
 Previously deployed UI, REST, MCP, and agent endpoint:
 [Lake County Oracle](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
@@ -146,7 +146,7 @@ The explicit `--secondary-provider lighthouse` branch uses Lighthouse's
 [same-CID pin API](https://docs.lighthouse.storage/how-to/pin-cid), not Pinata's PSA.
 Request acceptance, reconciled inventory/metadata and verified retention are
 separate states. Registration alone cannot advance gateway/history/IPNS promotion;
-no Lighthouse pin or upload has been executed. On 2026-09-17 the owner approved
+the live replication outcome is recorded below. On 2026-09-17 the owner approved
 the existing $12/month Lighthouse plan as a specific exception to the $5/month
 ceiling. The $25 cumulative one-time ceiling and all other constraints remain
 unchanged; this is not approval for a different paid tier or remote execution.
@@ -200,8 +200,25 @@ digests remain distinct from observed export digests. Omitted mode retains
 legacy transport GET behavior; there is no HTTP-500 fallback. Only definite
 HEAD absence permits freshly guarded creation. This diagnosis performed no
 uploads, pins, ledger advancement or IPNS/history/data promotion. The changed
-candidate needs its matching human signature before live effects; provider
+candidate required its matching human signature before live effects; provider
 gateway readback is not independent retention or two-gateway publication proof.
+
+The owner signed and authorized `e91a76d` for one replication-only invocation on
+2026-09-17. Filebase imports and complete DAG readbacks succeeded: the existing
+root was reconciled, and the archive and manifest were created and verified.
+Lighthouse acknowledged all three same-CID requests with HTTP 200; root and
+manifest registrations reconciled. The archive validation stopped the invocation
+with exit 1: Lighthouse's reported 341,078,214 bytes exactly equal the frozen
+archive DAG's block bytes, not the snapshot file's 341,012,575 bytes. Read-only
+postflight found all three expected CIDs/names in its account inventory, with public metadata.
+This identifies a size-semantics mismatch, not proof of verified retention or
+independent byte retrieval. The ledger remains `MANIFEST_UPLOAD_RECORDED`,
+revision 21; no retry, successful-history append, IPNS/latest/row-hash/RAG
+selection change, push or PR edit occurred. See the
+[sanitized execution evidence](artifacts/filebase-replication-20260917T122123Z.json)
+and the byte-identical, 40-object
+[artifact manifest](artifacts/manifest-20260916T181000Z.json). Repository manifest
+delivery is complete; retention and every-object two-gateway proof remain open.
 
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root

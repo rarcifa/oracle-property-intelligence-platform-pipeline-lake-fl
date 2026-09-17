@@ -233,7 +233,7 @@ manifest's raw directory-block size.
 
 Registration is **not** verified independent retention. This branch does not
 invent PSA `pinned` status, and both publisher and ledger reject promotion on
-registration-only evidence. No live Lighthouse pin has been tested. Real
+registration-only evidence. Live requests are recorded below. Real
 provider retention acknowledgement remains to be established under a separate
 exact-target signature; the plan-specific budget exception is recorded above.
 Two gateways alone can
@@ -279,7 +279,7 @@ promotion; never widen the limited signature to make that happen.
 
 ### Primary CAR readback repair
 
-Current outcome, 2026-09-17: the signed `9218ffc` GET-first invocation failed
+Earlier failure/diagnosis, 2026-09-17: the signed `9218ffc` GET-first invocation failed
 with HTTP 500 before body, with zero PUTs or Lighthouse requests. A bounded
 read-only comparison returned 500 both with and without the optional SDK
 checksum header. Do not change checksum settings or switch the IPFS `.com`
@@ -314,6 +314,33 @@ retains the legacy GET contract below. Never run changed code under the old
 signature; use the existing human approval helper for the new exact request.
 Arceus routed this through Oracle, engineering/use-oracle and the existing
 county-open-data-publish neighbour, without a new workflow or vendor.
+
+The owner-authorized `e91a76d` invocation began at 12:10:50 UTC on 2026-09-17.
+The existing root reconciled with 1,352 verified blocks; archive creation/readback
+verified 1,310 blocks, and manifest creation/readback verified its single block.
+All receipts retain the original outbound digests separately from observed CAR
+export digests. Lighthouse acknowledged root, manifest and archive requests with
+HTTP 200. Root and manifest registrations reconciled, but archive metadata
+comparison failed; the process exited 1 and the ledger remains
+`MANIFEST_UPLOAD_RECORDED`, revision 21. No second invocation was made.
+
+Read-only postflight at 12:21:23 UTC found all three exact CIDs and names in the
+account inventory, with public metadata. Lighthouse reports 341,078,214 bytes
+for the archive, exactly the sum of its 1,310 frozen DAG blocks; the separately
+manifested snapshot file is 341,012,575 bytes. The provider's DAG-block size and
+the artifact's logical file size must remain distinct. Do not change the
+manifest, fabricate a passed byte gate, hand-advance the ledger or rerun the
+failed attempt blindly. Any adapter correction must preserve exact artifact
+size/digest checks, retention and independent gateway gates; changed live code
+requires its own matching authorization.
+
+The [unchanged manifest](../artifacts/manifest-20260916T181000Z.json) and
+[sanitized execution evidence](../artifacts/filebase-replication-20260917T122123Z.json)
+are delivered in the repository. IPNS remains sequence 13 at the predecessor;
+successful history, latest, row hashes and the RAG selector remain unchanged.
+No cloud, billing, push or PR changes occurred. These observations establish
+Filebase repair and accepted replication requests, not completed publication
+or independently retained bytes.
 
 The 2026-09-17 signed `b3d92c6` attempt and one unchanged resume both ended
 with a TLS abort before the first complete CAR readback. Its ledger remains

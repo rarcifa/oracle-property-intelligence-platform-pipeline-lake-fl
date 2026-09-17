@@ -1,0 +1,236 @@
+{
+  "schemaVersion": "oracle.filebase-replication-observation.v1",
+  "observedAt": "2026-09-17T12:22:56.085Z",
+  "runId": "20260916T181000Z",
+  "candidateCommit": "e91a76d074dfe0f437678d66d35f349f0726fcef",
+  "provenanceDigest": "sha256:856d536c399d5ef5d0b4d0755dffdf3fce64496005eed9ca3f5ce7df233357b9",
+  "attemptId": "sha256:0c76ec35dff66d76ea83cadc3939ad153caadf1ace70b8370f80b965c7eedd2e",
+  "executionScope": "replication-only",
+  "primaryReadback": "imported-dag",
+  "invocation": {
+    "startedAt": "2026-09-17T12:10:50.534Z",
+    "exitObservedAt": "2026-09-17T12:20:51.000Z",
+    "exitCode": 1,
+    "error": "Lighthouse metadata does not match the public CID/size registration",
+    "invocations": 1,
+    "automaticReinvocations": 0,
+    "active": false
+  },
+  "ledger": {
+    "state": "MANIFEST_UPLOAD_RECORDED",
+    "revision": 21,
+    "consumedApprovals": 0,
+    "stages": [
+      {
+        "stage": "PREPARED",
+        "at": "2026-09-17T11:17:33.009Z"
+      },
+      {
+        "stage": "FROZEN",
+        "at": "2026-09-17T11:17:33.015Z"
+      },
+      {
+        "stage": "BUILT",
+        "at": "2026-09-17T11:17:33.017Z"
+      },
+      {
+        "stage": "AUTHORIZED",
+        "at": "2026-09-17T12:10:54.036Z"
+      },
+      {
+        "stage": "ROOT_UPLOAD_RECORDED",
+        "at": "2026-09-17T12:12:30.079Z"
+      },
+      {
+        "stage": "MANIFEST_UPLOAD_RECORDED",
+        "at": "2026-09-17T12:12:31.729Z"
+      }
+    ]
+  },
+  "primary": {
+    "root": {
+      "key": "runs/20260916T181000Z/root.car",
+      "bytes": 341012575,
+      "sha256": "sha256:3beb8e63f3515986ed125839d0a668779024fd284b15721243f9f82883d4b303",
+      "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "action": "reconciled-existing",
+      "computedCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "reportedCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "readback": {
+        "representation": "imported-dag",
+        "roots": ["bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"],
+        "verifiedBlocks": 1352,
+        "exportedBytes": 341012575,
+        "exportedSha256": "sha256:5e802de7eaccfcf2b6effb679a9b0478748b59309c82b0977b102434110ea282"
+      },
+      "transportVerified": false
+    },
+    "archive": {
+      "key": "runs/20260916T181000Z/archive.car",
+      "bytes": 341129354,
+      "sha256": "sha256:635efc6fe36012e9c1089c8fd174af61d9c1e95c10ca15122da5c543358ee673",
+      "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "action": "created",
+      "reportedCid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "readback": {
+        "representation": "imported-dag",
+        "roots": ["bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq"],
+        "verifiedBlocks": 1310,
+        "exportedBytes": 341129354,
+        "exportedSha256": "sha256:40abb7118c5116ba560bdba1e2a29f24e43b953e44f1f2cecf57ba9c28265386"
+      },
+      "transportVerified": false
+    },
+    "manifest": {
+      "key": "runs/20260916T181000Z/manifest.car",
+      "bytes": 11514,
+      "sha256": "sha256:0173a6fa1b48b3bcc7e4801fd834f341f2a9c0849131f77c2dcff8de73f674eb",
+      "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "action": "created",
+      "computedCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "reportedCid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "readback": {
+        "representation": "imported-dag",
+        "roots": ["bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm"],
+        "verifiedBlocks": 1,
+        "exportedBytes": 11514,
+        "exportedSha256": "sha256:0173a6fa1b48b3bcc7e4801fd834f341f2a9c0849131f77c2dcff8de73f674eb"
+      },
+      "transportVerified": false
+    }
+  },
+  "secondary": {
+    "root": {
+      "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "name": "oracle-open-data-lake/20260916T181000Z/root",
+      "status": "registration-reconciled",
+      "retentionVerified": false,
+      "requestAccepted": {
+        "state": "request-accepted",
+        "httpStatus": 200,
+        "responseDigest": "sha256:94ab12d64bf68dd722aa7477dcd79b604a2465c82e186b3e1f789dd19e14b4a3"
+      },
+      "registration": {
+        "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "fileSizeInBytes": 340959826,
+        "encryption": false
+      },
+      "metadata": {
+        "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "fileSizeInBytes": 340959826,
+        "encryption": false
+      }
+    },
+    "manifest": {
+      "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "name": "oracle-open-data-lake/20260916T181000Z/manifest",
+      "status": "registration-reconciled",
+      "retentionVerified": false,
+      "requestAccepted": {
+        "state": "request-accepted",
+        "httpStatus": 200,
+        "responseDigest": "sha256:b4ad32921b6021621396e6cdd5960195836e7b790758209918ae47efa1004ae6"
+      },
+      "registration": {
+        "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+        "fileSizeInBytes": 11417,
+        "encryption": false
+      },
+      "metadata": {
+        "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+        "fileSizeInBytes": 11417,
+        "encryption": false
+      }
+    },
+    "archive": {
+      "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "name": "oracle-open-data-lake/20260916T181000Z/archive",
+      "status": "request-accepted",
+      "retentionVerified": false,
+      "requestAccepted": {
+        "state": "request-accepted",
+        "httpStatus": 200,
+        "responseDigest": "sha256:770508d664fdc25b132f104987dcd23b5c556719e86bdb6b8e8893d4dd33d471"
+      }
+    }
+  },
+  "readonlyPostflight": {
+    "observedAt": "2026-09-17T12:21:23.610Z",
+    "providerInventoryFiles": 3,
+    "allExpectedCidsAndNamesFound": true,
+    "allMetadataPublic": true,
+    "dagSizeComparison": [
+      {
+        "artifact": "root",
+        "expectedDagBlocks": 1352,
+        "expectedDagBlockBytes": 340959826,
+        "providerMetadataBytes": 340959826
+      },
+      {
+        "artifact": "manifest",
+        "expectedDagBlocks": 1,
+        "expectedDagBlockBytes": 11417,
+        "providerMetadataBytes": 11417,
+        "expectedLogicalFileBytes": 11417
+      },
+      {
+        "artifact": "archive",
+        "expectedDagBlocks": 1310,
+        "expectedDagBlockBytes": 341078214,
+        "providerMetadataBytes": 341078214,
+        "expectedLogicalFileBytes": 341012575,
+        "logicalFileByteGatePassed": false
+      }
+    ],
+    "ipns": {
+      "networkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+      "cid": "bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y",
+      "sequence": 13,
+      "unchanged": true
+    }
+  },
+  "manifest": {
+    "repositoryPath": "artifacts/manifest-20260916T181000Z.json",
+    "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+    "bytes": 11417,
+    "sha256": "sha256:99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b",
+    "listedArtifacts": 40,
+    "exactFrozenBytes": true
+  },
+  "dataset": {
+    "geography": "Lake County, FL",
+    "sourceBoundary": "Frozen conservative source-only snapshot; Clermont 2015–2026 plus CD Plus, DOR and coordinate sources. Later CD Plus refresh outside this snapshot.",
+    "capturedLoaded": {
+      "properties": 215806,
+      "permits": 76166,
+      "businessAccounts": 33346,
+      "linkedPermits": 72187,
+      "validUnlinkedPermits": 3979
+    },
+    "countyCompletenessEstablished": false,
+    "loadedWatermarkNewerThanSelectedPublishedWatermark": true
+  },
+  "publication": {
+    "primaryImportsVerified": true,
+    "secondaryRequestsAccepted": 3,
+    "secondaryRegistrationsValidated": 2,
+    "archiveRegistrationValidationHeld": true,
+    "retentionVerified": false,
+    "everyArtifactTwoGatewayProof": false,
+    "successfulRunHistoryAppended": false,
+    "ipnsUpdated": false,
+    "latestChanged": false,
+    "rowHashesChanged": false,
+    "ragSelectorChanged": false,
+    "promotionHeld": true,
+    "finalized": false,
+    "publicationScope": "partial"
+  },
+  "protectedMainHashes": {
+    "artifacts/run-history.json": "07ac5ead6c71124adc3c901892fca05741c1ece932e7d3746f8d0973c9bc9172",
+    "artifacts/latest.json": "f49ef74fc077e16e931858ad6ba1f425faca4ef43cc4d8ef82fd0ebe2702706f",
+    "artifacts/row-hashes.json": "5c70e3fe01b0f63855d9de986c87c897478400d46fb5b354df2b34a829cff7f5",
+    "packages/rag/corpus-source.json": "e96b54e68cffd9e4eb893dd08cc0a40c6ef94dbd07abac1111f7b0f9bd296591"
+  },
+  "nextAction": "Separate provider DAG-block size from logical file-byte size in a bounded local adapter repair; preserve exact artifact size/digest and retention/two-gateway gates. No unchanged retry or promotion."
+}
