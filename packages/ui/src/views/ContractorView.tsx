@@ -124,9 +124,11 @@ export function ContractorView(): JSX.Element {
               {notice.field ? (
                 <span className="micro">
                   column {notice.field} ·{" "}
-                  {notice.field in PARTIALLY_POPULATED_COLUMNS
-                    ? "null outside Clermont"
-                    : "stays null"}
+                  {notice.token === "primary_roof_completion_needs_review"
+                    ? "low-confidence built-year proxy only"
+                    : notice.field in PARTIALLY_POPULATED_COLUMNS
+                      ? "null outside Clermont"
+                      : "stays null"}
                 </span>
               ) : null}
             </div>

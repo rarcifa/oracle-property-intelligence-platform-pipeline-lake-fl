@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { gatedFieldNotices } from "@oracle-lake/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContractorView } from "../src/views/ContractorView.js";
 
@@ -8,17 +9,20 @@ const mocks = vi.hoisted(() => ({
   loaders: [] as (() => Promise<unknown>)[],
   search: vi.fn(),
   runSql: vi.fn(),
+  viewData: null as unknown,
 }));
 vi.mock("../src/data/DataSourceProvider.js", () => ({ useDataSource: mocks.useDataSource }));
 vi.mock("../src/hooks/useAsync.js", () => ({
   useAsync: (loader: () => Promise<unknown>) => {
+    const data = mocks.loaders.length === 0 ? mocks.viewData : null;
     mocks.loaders.push(loader);
-    return { data: null, loading: false, error: null, reload: () => undefined };
+    return { data, loading: false, error: null, reload: () => undefined };
   },
 }));
 
 beforeEach(() => {
   mocks.loaders.length = 0;
+  mocks.viewData = null;
   mocks.search.mockReset().mockResolvedValue(null);
   mocks.runSql.mockReset().mockResolvedValue(null);
   mocks.useDataSource.mockReturnValue({
@@ -34,6 +38,19 @@ beforeEach(() => {
 });
 
 describe("contractor decision eligibility", () => {
+  it("labels roof age as a low-confidence proxy without changing permanently null field badges", () => {
+    mocks.viewData = {
+      posture: {},
+      gating: gatedFieldNotices("primary_roof_completion_needs_review;bbb_policy_api_gated"),
+      note: "Source observations only",
+      provenance: null,
+    };
+    const html = renderToStaticMarkup(createElement(ContractorView));
+    expect(html).toContain("column roof_age_years · low-confidence built-year proxy only");
+    expect(html).not.toContain("column roof_age_years · stays null");
+    expect(html).toContain("column bbb_rating · stays null");
+  });
+
   it("waits for metadata instead of issuing an unsupported current-open query at boot", async () => {
     const html = renderToStaticMarkup(createElement(ContractorView));
     await Promise.all(mocks.loaders.map((loader) => loader()));
