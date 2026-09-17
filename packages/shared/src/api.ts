@@ -228,16 +228,28 @@ export interface ChatResponse {
   runId: string | null;
 }
 
-export const chatRequestSchema = z.object({
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().min(1).max(8000),
-      }),
-    )
-    .min(1)
-    .max(30),
-});
+export const chatRequestSchema = z
+  .object({
+    messages: z
+      .array(
+        z.discriminatedUnion("role", [
+          z.object({ role: z.literal("user"), content: z.string().min(1).max(8000) }),
+          // Complete canonical query-row answers can exceed a user prompt's
+          // budget. Preserve that displayed evidence when sending follow-ups.
+          z.object({ role: z.literal("assistant"), content: z.string().min(1).max(32000) }),
+        ]),
+      )
+      .min(1)
+      .max(30),
+  })
+  .superRefine(({ messages }, context) => {
+    // Preserve the old overall ceiling: thirty messages ×8000 characters.
+    if (messages.reduce((characters, message) => characters + message.content.length, 0) > 240000)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["messages"],
+        message: "Conversation must contain at most 240000 characters in total",
+      });
+  });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
