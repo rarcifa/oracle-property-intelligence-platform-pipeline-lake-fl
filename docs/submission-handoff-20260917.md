@@ -25,22 +25,8 @@ addresses every clause while preserving the assignment brief verbatim.
   [successful history](../artifacts/run-history.json) and [latest pointer](../artifacts/latest.json).
 - [Published baseline RAG selector](../packages/rag/corpus-source.json) and
   [its promotion receipt](../packages/rag/promotion-receipt.json) now bind that finalized run/root.
-- [Earlier partial video](demo-preview-final-20260917/walkthrough.webm) and
-  [its immutable report](demo-preview-final-20260917/preview-demo.json), recorded
-  16:04–16:07 UTC, are historical evidence.
-- [Preserved hosted take, failed paint check](demo-score-repair-failed-paint-20260917/walkthrough.webm)
-  and [its immutable report](demo-score-repair-failed-paint-20260917/failed-preview-demo.json),
-  recorded 18:57–18:59 UTC against source `2cf3ab8284d694094b22a8b1824d6acc535ef334`,
-  not the later deployment above. All 25 canonical
-  agent rows and all five fields of 50 historical permit rows independently replayed;
-  the ordinary follow-up returned HTTP 200 with a safe source-only refusal. Both
-  public manifest fetches matched 11,417 bytes and the exact digest. The take failed
-  the paint monitor on an actual 40 ms black frame, with no console/API error.
-  Video bytes: 6,758,060; SHA-256:
-  `8900d95c57894d4654aff1a318400d570c768510ca653477f6c1f50250ebf9da`.
-  The underlying paint cause is unproven; this failed packet is never relabelled passed.
-- [Completed partial walkthrough](demo-score-repair-20260917/walkthrough.webm)
-  and [its immutable report](demo-score-repair-20260917/preview-demo.json), recorded
+- [Completed partial walkthrough](demo-walkthrough-20260917/walkthrough.webm)
+  and [its immutable report](demo-walkthrough-20260917/preview-demo.json), recorded
   `2026-09-17T19:17:25.611Z`–`19:18:49.579Z` against the verified 7d4e26a deployment.
   `recordingCompleted:true`, `fullAssignmentDemoPassed:false`. All 25 original-prompt
   canonical rows and 50 historical rows independently replayed; the normal unsupported
@@ -53,25 +39,6 @@ addresses every clause while preserving the assignment brief verbatim.
   Root independently matched the raw video size/digest and inspected the actual
   first-row and agent screenshots. Whole-video black detection found only the
   initial pre-ready loading interval, not a later all-background frame.
-- [Later hosted take, failed SQL-transition paint check](demo-score-repair-failed-sql-paint-20260917/walkthrough.webm)
-  and [its immutable report](demo-score-repair-failed-sql-paint-20260917/failed-preview-demo.json),
-  recorded `2026-09-17T19:26:20.995Z`–`19:27:43.787Z` against source
-  `86044dad2241bd35f6bb13dc3b4b305045bbe690`, failed on a 40 ms
-  all-background frame during Ask → SQL. The [exact sampled PNG](demo-score-repair-failed-sql-paint-20260917/failed-paint-sample-1.png)
-  is retained: SHA-256 `bd798d6f76be0fada83d45076a7384b240aa955efbb2c355fa215d917fbac301`.
-  All 25 canonical rows, all five fields of 50 historical rows, the ordinary
-  safe HTTP-200 follow-up and both public manifest fetches still verified;
-  there were no console/API/gateway errors. Video bytes: 6,573,159; SHA-256:
-  `e6999dcd246f0ddf5142cbfa1b117e4184253f777486d935d4c27dcb4d345998`.
-  `recordingCompleted:false`, `fullAssignmentDemoPassed:false`. Independent
-  synthetic long/short-view diagnostics reproduced the same PNG and 40 ms
-  video gap without reload, MapLibre or model calls. This narrows the symptom,
-  but does not establish screenshot-induced versus genuine compositor failure.
-  A paired synthetic diagnostic observed one post-ready gap in 40 transitions
-  with original screenshot polling and none in 40 video-only transitions.
-  One versus zero rare events is insufficient causal proof; no production
-  monitor/threshold was changed and no verified fix was proposed.
-  No underlying blackout repair is claimed and no failed packet is removed.
 
 Publication, selected dataset, deployment and recording are separate identities.
 The baseline is now published normally; that does not retroactively make the

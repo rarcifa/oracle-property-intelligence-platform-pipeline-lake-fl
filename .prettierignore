@@ -13,4 +13,4 @@ packages/rag/index-data/
 
 # Generated demo receipts bind observed timestamps and video digests. Preserve
 # successful and failed packets exactly as emitted by the recorder.
-docs/demo-score-repair*/**/*.json
+docs/demo-walkthrough*/**/*.json
