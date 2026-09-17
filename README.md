@@ -186,6 +186,23 @@ that safety contract, not repaired live transport or publication. The old signed
 checkout/object remain preserved; a changed candidate needs a matching human
 go/signature before live execution.
 
+On 2026-09-17 the signed `9218ffc` retry returned S3 GET HTTP 500 before
+receiving bytes, with zero PUTs or pins. Read-only diagnosis ruled out optional
+SDK checksum headers: both request variants returned 500. Filebase's public
+CAR export succeeded, but serializes blocks differently from the original
+upload CAR. The repaired helper verified every one of the 1,352 frozen DAG
+blocks in a complete streamed readback; see the
+[diagnostic](artifacts/filebase-readback-20260917T110926Z.json).
+The explicitly signed `primaryReadback: imported-dag` contract binds the
+existing key through authenticated HEAD and verifies all remote roots, block
+bytes and hashes before recording an effect. Original upload transport
+digests remain distinct from observed export digests. Omitted mode retains
+legacy transport GET behavior; there is no HTTP-500 fallback. Only definite
+HEAD absence permits freshly guarded creation. This diagnosis performed no
+uploads, pins, ledger advancement or IPNS/history/data promotion. The changed
+candidate needs its matching human signature before live effects; provider
+gateway readback is not independent retention or two-gateway publication proof.
+
 Authenticated Filebase readback also found the existing IPNS
 pointer at sequence 13, root
 `bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y`,

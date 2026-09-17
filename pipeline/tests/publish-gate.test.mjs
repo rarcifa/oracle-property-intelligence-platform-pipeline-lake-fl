@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { parseApprovalArgs, runApprovalCommand } from "../scripts/lake/publish-approve.mjs";
 import {
-  assertSecondaryPinRuntimeTarget,
   loadLivePublicationCapabilities,
   mayAttemptLivePublication,
   secondaryPinTarget,
@@ -316,11 +315,11 @@ describe("signed replication-only terminal boundary", () => {
           1;
       },
     ]) {
-      const ledger = structuredClone(original);
+      const ledger = globalThis.structuredClone(original);
       mutate(ledger.attempts[attemptId]);
       expect(() => validatePublicationLedger(ledger)).toThrow();
     }
-    const consumed = structuredClone(original);
+    const consumed = globalThis.structuredClone(original);
     consumed.consumedApprovals.push({
       nonce: consumed.attempts[attemptId].authorization.nonce,
       attemptId,
@@ -583,6 +582,28 @@ afterEach(async () => {
 });
 
 describe("exact-target Ed25519 authorization", () => {
+  it("binds the imported-DAG contract and preserves omitted legacy targets", () => {
+    const legacy = target();
+    const imported = { ...legacy, primaryReadback: "imported-dag" };
+    const keyPair = keys();
+    expect(validatePublicationTarget(legacy)).not.toHaveProperty("primaryReadback");
+    expect(publicationAttemptId(imported)).not.toBe(publicationAttemptId(legacy));
+    const signed = approval(imported, keyPair);
+    expect(verifyPublishAuthorization(signed, keyPair.publicKey, imported, { now: NOW })).toEqual(
+      signed,
+    );
+    expect(() =>
+      verifyPublishAuthorization(signed, keyPair.publicKey, legacy, { now: NOW }),
+    ).toThrow(/exact target/);
+    expect(() =>
+      verifyPublishAuthorization(approval(legacy, keyPair), keyPair.publicKey, imported, {
+        now: NOW,
+      }),
+    ).toThrow(/exact target/);
+    expect(() =>
+      validatePublicationTarget({ ...legacy, primaryReadback: "metadata-only" }),
+    ).toThrow(/primaryReadback/);
+  });
   it("binds the separately signed recovery receipt digest into the new publication authorization", () => {
     const exactTarget = { ...target(), predecessorRecoveryDigest: `sha256:${"a".repeat(64)}` };
     const keyPair = keys();
@@ -945,6 +966,70 @@ describe("exact-target Ed25519 authorization", () => {
 });
 
 describe("transactional publication ledger", () => {
+  it("requires explicit imported-DAG evidence before recording primary effects", async () => {
+    const exactTarget = { ...replicaTarget(), primaryReadback: "imported-dag" };
+    const keyPair = keys();
+    const ledgerPath = await scratchLedger();
+    const attemptId = await prepare(ledgerPath, exactTarget);
+    await authorizePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      approval(exactTarget, keyPair),
+      keyPair.publicKey,
+      { now: NOW, at: NOW },
+    );
+    const uploaded = (kind) => ({
+      ...exactTarget.primaryCars[kind],
+      action: "reconciled-existing",
+      reportedCid: exactTarget.primaryCars[kind].cid,
+      transportVerified: false,
+      readback: {
+        representation: "imported-dag",
+        roots: [exactTarget.primaryCars[kind].cid],
+        verifiedBlocks: 1,
+        exportedBytes: 123,
+        exportedSha256: `sha256:${"7".repeat(64)}`,
+      },
+    });
+    const receipt = { ...uploaded("root"), archive: uploaded("archive") };
+    for (const invalid of [
+      null,
+      false,
+      0,
+      "",
+      { ...receipt, readback: undefined },
+      { ...receipt, archive: undefined },
+      { ...receipt, transportVerified: true },
+      {
+        ...receipt,
+        readback: { ...receipt.readback, roots: [exactTarget.primaryCars.manifest.cid] },
+      },
+    ]) {
+      await expect(
+        advancePublicationAttempt(ledgerPath, attemptId, "ROOT_UPLOAD_RECORDED", invalid, {
+          at: NOW,
+        }),
+      ).rejects.toThrow(/imported DAG/);
+    }
+    await expect(
+      advancePublicationAttempt(ledgerPath, attemptId, "ROOT_UPLOAD_RECORDED", receipt, {
+        at: NOW,
+      }),
+    ).resolves.toMatchObject({ state: "ROOT_UPLOAD_RECORDED" });
+    for (const stage of ["ROOT_UPLOAD_RECORDED", "MANIFEST_UPLOAD_RECORDED"]) {
+      if (stage === "MANIFEST_UPLOAD_RECORDED")
+        await advancePublicationAttempt(ledgerPath, attemptId, stage, uploaded("manifest"), {
+          at: NOW,
+        });
+      const original = await readPublicationLedger(ledgerPath);
+      for (const receipt of [null, false, 0, ""]) {
+        const tampered = globalThis.structuredClone(original);
+        tampered.attempts[attemptId].transitions.find((entry) => entry.stage === stage).receipt =
+          receipt;
+        expect(() => validatePublicationLedger(tampered)).toThrow(/imported DAG/);
+      }
+    }
+  });
   it("verifies same consumed-attempt local finalization retries without reauthorizing or rewriting authority", async () => {
     const ledgerPath = await scratchLedger();
     const exactTarget = target();

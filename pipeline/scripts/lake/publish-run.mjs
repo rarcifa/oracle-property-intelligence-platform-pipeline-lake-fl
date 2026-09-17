@@ -32,7 +32,13 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import {
   buildUnixfsDirectory,
@@ -40,7 +46,7 @@ import {
   computeUnixfsFileCid,
   sha256Hex,
 } from "../../src/core/cid.mjs";
-import { validateCarArchive, writeCarFile } from "../../src/core/car.mjs";
+import { validateCarArchive, verifyImportedCarStream, writeCarFile } from "../../src/core/car.mjs";
 import { buildArtifactManifest, writeArtifactManifest } from "../../src/core/artifact-manifest.mjs";
 import {
   DEFAULT_GATEWAYS,
@@ -542,6 +548,8 @@ function isMissingObject(error) {
  * @param {string} [options.expectedCid] - Locally computed CAR root CID.
  * @param {() => Promise<void>} options.beforeCreate - Fresh authorization and predecessor guard.
  * @param {number} [options.deadlineMs] - Bounded per-request deadline (offline fixtures may shorten it).
+ * @param {"imported-dag"} [options.primaryReadback] - Explicit signed imported-DAG contract; omission retains legacy transport GET.
+ * @param {typeof fetch} [options.fetchImpl] - Injected gateway transport for offline tests.
  * @returns {Promise<{action: "created" | "reconciled-existing", key: string, bytes: number, sha256: string, reportedCid: string | null}>}
  */
 export async function uploadImmutableCar({
@@ -552,6 +560,8 @@ export async function uploadImmutableCar({
   expectedCid,
   beforeCreate,
   deadlineMs = IMMUTABLE_CAR_DEADLINE_MS,
+  primaryReadback = undefined,
+  fetchImpl = fetch,
 }) {
   if (!Buffer.isBuffer(body) || body.length === 0) {
     throw new Error("Immutable CAR upload requires non-empty Buffer bytes");
@@ -562,8 +572,66 @@ export async function uploadImmutableCar({
     deadlineMs > IMMUTABLE_CAR_DEADLINE_MS
   )
     throw new Error("Immutable CAR deadline must be positive and at most ten minutes");
+  if (primaryReadback !== undefined && primaryReadback !== "imported-dag")
+    throw new Error("Unsupported primary CAR readback contract");
+  if (
+    primaryReadback === "imported-dag" &&
+    (typeof expectedCid !== "string" ||
+      !/^b[a-z2-7]{20,}$/.test(expectedCid) ||
+      JSON.stringify(validateCarArchive(body).roots) !== JSON.stringify([expectedCid]))
+  )
+    throw new Error("Imported CAR requires the exact single frozen root CID");
   const expectedSha256 = sha256Digest(body);
+  const importedReadback = async () => {
+    const signal = AbortSignal.timeout(deadlineMs);
+    let head;
+    try {
+      head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }), {
+        abortSignal: signal,
+      });
+    } catch (error) {
+      if (!signal.aborted && isMissingObject(error)) return null;
+      const status = error?.$metadata?.httpStatusCode;
+      throw new Error(
+        `Imported CAR HEAD failed: status=${Number.isInteger(status) ? status : "unknown"} code=${signal.aborted ? "CAR_DAG_TIMEOUT" : "CAR_DAG_HEAD_FAILED"}`,
+      );
+    }
+    // HEAD binds the immutable key to the expected imported root, not bytes.
+    // Only the subsequent complete block verification produces a receipt.
+    if (
+      head.ContentLength !== body.length ||
+      head.Metadata?.cid?.trim() !== expectedCid ||
+      head.Metadata?.import !== "car"
+    )
+      throw new Error("Imported CAR key metadata differs from the frozen target");
+    let response;
+    let stream;
+    try {
+      response = await fetchImpl(`https://ipfs.filebase.io/ipfs/${expectedCid}?format=car`, {
+        redirect: "error",
+        headers: { Accept: "application/vnd.ipld.car;version=1;order=dfs;dups=n" },
+        signal,
+      });
+      if (
+        response.status !== 200 ||
+        !/^application\/vnd\.ipld\.car(?:;|$)/i.test(response.headers.get("content-type") ?? "")
+      )
+        throw new Error("CAR_DAG_GATEWAY_RESPONSE");
+      stream = Readable.fromWeb(response.body);
+      const readback = await verifyImportedCarStream({ body: stream, expected: body, signal });
+      return { reportedCid: expectedCid, readback };
+    } catch (error) {
+      if (stream) stream.destroy();
+      else await response?.body?.cancel().catch(() => {});
+      if (error?.message?.startsWith("Imported CAR DAG readback failed:")) throw error;
+      throw new Error(
+        `Imported CAR gateway readback failed: code=${signal.aborted ? "CAR_DAG_TIMEOUT" : "CAR_DAG_GATEWAY_FAILED"}`,
+      );
+    }
+  };
   const readback = async () => {
+    // Not a fallback on HTTP500: the new representation is signed explicitly.
+    if (primaryReadback === "imported-dag") return importedReadback();
     const readbackCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
     let headerCid = null;
     readbackCommand.middlewareStack.add(
@@ -603,15 +671,16 @@ export async function uploadImmutableCar({
       throw error;
     }
   };
-  const receipt = (action, reportedCid) => ({
+  const receipt = (action, verified) => ({
     action,
     key,
     bytes: body.length,
     sha256: expectedSha256,
-    reportedCid,
+    reportedCid: verified.reportedCid,
+    ...(verified.readback ? { readback: verified.readback, transportVerified: false } : {}),
   });
   const existing = await readback();
-  if (existing !== null) return receipt("reconciled-existing", existing.reportedCid);
+  if (existing !== null) return receipt("reconciled-existing", existing);
   if (typeof beforeCreate !== "function")
     throw new Error("Immutable CAR creation requires a fresh authorization/predecessor guard");
   if (typeof client.config?.maxAttempts !== "function" || (await client.config.maxAttempts()) !== 1)
@@ -653,7 +722,7 @@ export async function uploadImmutableCar({
     throw new Error("Immutable CAR missing after create; no upload receipt recorded");
   if (expectedCid !== undefined && reportedCid !== null && reportedCid !== expectedCid)
     throw new Error("Filebase reported CAR root different from the frozen target");
-  return receipt(action, verified.reportedCid ?? reportedCid);
+  return receipt(action, { ...verified, reportedCid: verified.reportedCid ?? reportedCid });
 }
 
 /**
@@ -689,6 +758,7 @@ export async function publishRun({
   recoveryPublicKeyPath = null,
   secondaryPinProvider = "pinata",
   executionScope = undefined,
+  primaryReadback = undefined,
 }) {
   if (mode !== "full" && mode !== "incremental") {
     throw new Error("Publication mode must be full or incremental");
@@ -696,6 +766,8 @@ export async function publishRun({
   if (executionScope !== undefined && executionScope !== "replication-only") {
     throw new Error("Unsupported publication execution scope");
   }
+  if (primaryReadback !== undefined && primaryReadback !== "imported-dag")
+    throw new Error("Unsupported primary CAR readback contract");
   const selectedSecondaryTarget = secondaryPinTarget(runId, secondaryPinProvider);
   // This is deliberately the first asynchronous boundary. Source/runtime
   // drift is rejected before run artifacts, approvals, credentials, or any
@@ -731,6 +803,7 @@ export async function publishRun({
     (entry) =>
       ["APPROVAL_CONSUMED", "FINALIZED", REPLICATION_TERMINAL_STAGE].includes(entry.state) &&
       entry.target.executionScope === executionScope &&
+      entry.target.primaryReadback === primaryReadback &&
       entry.target.runId === runId &&
       entry.target.candidateCommit === candidateCommit &&
       entry.target.provenanceDigest === provenanceDigest &&
@@ -934,6 +1007,7 @@ export async function publishRun({
     provenanceDigest,
     bucket: LAKE_BUCKET,
     primaryCars,
+    ...(primaryReadback ? { primaryReadback } : {}),
     secondaryPin: {
       ...selectedSecondaryTarget,
       archivePinName: `${LAKE_IPNS_LABEL}/${runId}/archive`,
@@ -1094,6 +1168,7 @@ export async function publishRun({
         body: rootCarBody,
         expectedCid: target.primaryCars.root.cid,
         beforeCreate: beforeCarCreate,
+        primaryReadback: target.primaryReadback,
       });
       const rootReported = rootUpload.reportedCid;
       if (rootReported !== null && rootReported !== dag.rootCid) {
@@ -1122,6 +1197,7 @@ export async function publishRun({
         body: archiveTransportBody,
         expectedCid: archiveFile.cid,
         beforeCreate: beforeCarCreate,
+        primaryReadback: target.primaryReadback,
       });
       if (archiveUpload.reportedCid !== null && archiveUpload.reportedCid !== archiveFile.cid) {
         throw new Error("Filebase reported an archive CID different from the signed target");
@@ -1135,10 +1211,16 @@ export async function publishRun({
           action: rootUpload.action,
           computedCid: dag.rootCid,
           reportedCid: rootReported,
+          ...(rootUpload.readback
+            ? { readback: rootUpload.readback, transportVerified: false }
+            : {}),
           archive: {
             ...target.primaryCars.archive,
             action: archiveUpload.action,
             reportedCid: archiveUpload.reportedCid,
+            ...(archiveUpload.readback
+              ? { readback: archiveUpload.readback, transportVerified: false }
+              : {}),
           },
         },
       );
@@ -1160,6 +1242,7 @@ export async function publishRun({
         body: manifestCarBody,
         expectedCid: target.primaryCars.manifest.cid,
         beforeCreate: beforeCarCreate,
+        primaryReadback: target.primaryReadback,
       });
       const manifestReported = manifestUpload.reportedCid;
       if (manifestReported !== null && manifestReported !== manifestCid) {
@@ -1176,6 +1259,9 @@ export async function publishRun({
           action: manifestUpload.action,
           computedCid: manifestCid,
           reportedCid: manifestReported,
+          ...(manifestUpload.readback
+            ? { readback: manifestUpload.readback, transportVerified: false }
+            : {}),
         },
       );
     }
@@ -1828,6 +1914,7 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
       typeof flags["recovery-public-key"] === "string" ? flags["recovery-public-key"] : null,
     secondaryPinProvider: String(flags["secondary-provider"] ?? "pinata"),
     executionScope: flags["execution-scope"],
+    primaryReadback: flags["primary-readback"],
     expectedIpnsPredecessorSequence:
       typeof predecessorSequenceFlag === "string" &&
       /^(?:0|[1-9][0-9]*)$/.test(predecessorSequenceFlag)

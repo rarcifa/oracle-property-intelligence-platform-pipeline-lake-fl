@@ -279,6 +279,42 @@ promotion; never widen the limited signature to make that happen.
 
 ### Primary CAR readback repair
 
+Current outcome, 2026-09-17: the signed `9218ffc` GET-first invocation failed
+with HTTP 500 before body, with zero PUTs or Lighthouse requests. A bounded
+read-only comparison returned 500 both with and without the optional SDK
+checksum header. Do not change checksum settings or switch the IPFS `.com`
+endpoint to the object-storage `.io` endpoint to address this failure; see
+[Filebase's endpoint distinction](https://filebase.com/docs/ipfs/overview).
+
+The exact root is retrievable as a complete public CAR export. All 1,352
+expected blocks match, but export ordering changes the CAR transport digest.
+The repaired helper's complete streamed readback succeeded in 17.5 seconds;
+[the diagnostic](../artifacts/filebase-readback-20260917T110926Z.json) is not a
+successful-publication receipt. No ledger, pins, IPNS, successful history or
+dataset selection was advanced.
+
+For a newly reviewed request, `--primary-readback imported-dag` adds the
+explicit signed `primaryReadback` field. Authenticated HEAD must bind the
+immutable key's size, import metadata and CID to the frozen target, then the
+fixed Filebase gateway's CAR export must pass complete root/block-set equality,
+block bytes/hashes and reachability. Reject duplicate, missing, extra,
+substituted and truncated blocks. Verification allocates only a bounded block,
+not another whole-object buffer. Only definite HEAD 404 permits creation after
+the unchanged fresh authorization/predecessor guard; conditional PUT has one
+SDK attempt. An uncertain create exits; the next authorized invocation must
+HEAD and completely reconcile, never blindly PUT again.
+
+Receipts label `readback.representation: imported-dag` and
+`transportVerified: false`: the original signed upload sizes/digests are not
+claimed as downloaded original-encoding proof. The separately addressed
+archive-file artifact remains the original snapshot CAR bytes and must pass
+its manifest digest/size checks during final publication. Provider export is
+not two-independent-gateway proof or independent retention. Omitted mode
+retains the legacy GET contract below. Never run changed code under the old
+signature; use the existing human approval helper for the new exact request.
+Arceus routed this through Oracle, engineering/use-oracle and the existing
+county-open-data-publish neighbour, without a new workflow or vendor.
+
 The 2026-09-17 signed `b3d92c6` attempt and one unchanged resume both ended
 with a TLS abort before the first complete CAR readback. Its ledger remains
 `AUTHORIZED`: no upload receipt, Lighthouse request, gateway proof, successful

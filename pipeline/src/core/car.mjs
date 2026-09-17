@@ -222,3 +222,141 @@ export function validateCarArchive(car) {
   for (const root of roots) visit(root);
   return { roots, blocks: [...blocks.values()] };
 }
+
+/**
+ * Prove a complete imported DAG, independently of CAR record ordering.
+ * Filebase imports CAR blocks; an IPFS export is not the original upload file.
+ * Only one bounded block is allocated at a time; local blocks remain views.
+ * @param {{body: AsyncIterable<Uint8Array> & {destroy: () => void}, expected: Buffer, signal: AbortSignal}} options
+ * @returns {Promise<{representation: "imported-dag", roots: string[], verifiedBlocks: number, exportedBytes: number, exportedSha256: string}>}
+ */
+export async function verifyImportedCarStream({ body, expected, signal }) {
+  const local = validateCarArchive(expected);
+  const blocks = new Map(local.blocks.map((block) => [block.cid, block.bytes]));
+  const seen = new Set();
+  const maxFrame = local.blocks.reduce(
+    (maximum, block) => Math.max(maximum, CID.parse(block.cid).bytes.length + block.bytes.length),
+    65536,
+  );
+  const maxBytes = expected.length + (blocks.size + 1) * 9 + 4096;
+  const hash = createHash("sha256");
+  const iterator = body[Symbol.asyncIterator]();
+  let chunk = Buffer.alloc(0);
+  let offset = 0;
+  let received = 0;
+  const fail = (code) => {
+    throw Object.assign(new Error(code), { code });
+  };
+  const destroy = () => body.destroy();
+  const refill = async () => {
+    signal.throwIfAborted();
+    while (offset === chunk.length) {
+      const next = await iterator.next();
+      signal.throwIfAborted();
+      if (next.done) return false;
+      if (!(next.value instanceof Uint8Array)) fail("CAR_DAG_UNREADABLE");
+      chunk = Buffer.from(next.value.buffer, next.value.byteOffset, next.value.byteLength);
+      offset = 0;
+      received += chunk.length;
+      if (received > maxBytes) fail("CAR_DAG_OVERSIZED");
+      hash.update(chunk);
+    }
+    return true;
+  };
+  const readByte = async (allowEnd = false) => {
+    if (!(await refill())) {
+      if (allowEnd) return null;
+      fail("CAR_DAG_TRUNCATED");
+    }
+    return chunk[offset++];
+  };
+  const readLength = async (allowEnd = false) => {
+    let value = 0;
+    let scale = 1;
+    for (let index = 0; index < 9; index++) {
+      const byte = await readByte(allowEnd && index === 0);
+      if (byte === null) return null;
+      value += (byte & 0x7f) * scale;
+      if (!Number.isSafeInteger(value) || value > maxFrame) fail("CAR_DAG_FRAME_LIMIT");
+      if ((byte & 0x80) === 0) {
+        if (value === 0) fail("CAR_DAG_EMPTY_FRAME");
+        return value;
+      }
+      scale *= 128;
+    }
+    fail("CAR_DAG_FRAME_LIMIT");
+  };
+  const readFrame = async (length) => {
+    const frame = Buffer.allocUnsafe(length);
+    let written = 0;
+    while (written < length) {
+      if (!(await refill())) fail("CAR_DAG_TRUNCATED");
+      const count = Math.min(length - written, chunk.length - offset);
+      chunk.copy(frame, written, offset, offset + count);
+      offset += count;
+      written += count;
+    }
+    return frame;
+  };
+  signal.addEventListener("abort", destroy, { once: true });
+  try {
+    signal.throwIfAborted();
+    const header = dagCbor.decode(await readFrame(await readLength()));
+    const roots = normalizeRoots(header?.roots);
+    if (
+      header?.version !== CAR_VERSION ||
+      Object.keys(header).sort().join(",") !== "roots,version" ||
+      JSON.stringify(roots) !== JSON.stringify(local.roots)
+    )
+      fail("CAR_DAG_ROOT_MISMATCH");
+    for (;;) {
+      const length = await readLength(true);
+      if (length === null) break;
+      const [cid, bytes] = CID.decodeFirst(await readFrame(length));
+      const name = cid.toString();
+      const frozen = blocks.get(name);
+      if (seen.has(name)) fail("CAR_DAG_DUPLICATE_BLOCK");
+      if (!frozen) fail("CAR_DAG_UNEXPECTED_BLOCK");
+      if (
+        !Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).equals(frozen) ||
+        !createHash("sha256").update(bytes).digest().equals(Buffer.from(cid.multihash.digest))
+      )
+        fail("CAR_DAG_BLOCK_MISMATCH");
+      seen.add(name);
+    }
+    if (seen.size !== blocks.size) fail("CAR_DAG_MISSING_BLOCK");
+    signal.throwIfAborted();
+    // The local archive already proved reachability; identical roots and every
+    // identical block prove the same complete graph, not merely a root node.
+    return {
+      representation: "imported-dag",
+      roots: local.roots,
+      verifiedBlocks: seen.size,
+      exportedBytes: received,
+      exportedSha256: `sha256:${hash.digest("hex")}`,
+    };
+  } catch (error) {
+    destroy();
+    const code = signal.aborted
+      ? "CAR_DAG_TIMEOUT"
+      : [
+            "CAR_DAG_UNREADABLE",
+            "CAR_DAG_OVERSIZED",
+            "CAR_DAG_TRUNCATED",
+            "CAR_DAG_FRAME_LIMIT",
+            "CAR_DAG_EMPTY_FRAME",
+            "CAR_DAG_ROOT_MISMATCH",
+            "CAR_DAG_DUPLICATE_BLOCK",
+            "CAR_DAG_UNEXPECTED_BLOCK",
+            "CAR_DAG_BLOCK_MISMATCH",
+            "CAR_DAG_MISSING_BLOCK",
+          ].includes(error?.code)
+        ? error.code
+        : "CAR_DAG_READ_FAILED";
+    throw new Error(
+      `Imported CAR DAG readback failed: received=${received} verifiedBlocks=${seen.size}/${blocks.size} code=${code}`,
+    );
+  } finally {
+    signal.removeEventListener("abort", destroy);
+  }
+}

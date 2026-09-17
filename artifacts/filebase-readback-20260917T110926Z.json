@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "oracle.filebase-readback-diagnostic.v1",
+  "runId": "20260916T181000Z",
+  "observedAt": "2026-09-17T11:09:26.011Z",
+  "status": "complete-imported-dag-readback",
+  "operation": "read-only-diagnostic",
+  "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+  "key": "runs/20260916T181000Z/root.car",
+  "uploadTransport": {
+    "bytes": 341012575,
+    "sha256": "sha256:3beb8e63f3515986ed125839d0a668779024fd284b15721243f9f82883d4b303",
+    "remoteOriginalEncodingVerified": false
+  },
+  "readback": {
+    "representation": "imported-dag",
+    "verifiedBlocks": 1352,
+    "exportedBytes": 341012575,
+    "exportedSha256": "sha256:5e802de7eaccfcf2b6effb679a9b0478748b59309c82b0977b102434110ea282",
+    "allRootsAndBlocksMatch": true,
+    "gateway": "https://ipfs.filebase.io",
+    "elapsedMs": 17518
+  },
+  "s3ChecksumComparison": {
+    "defaultGetHttpStatus": 500,
+    "whenRequiredGetHttpStatus": 500,
+    "checksumHypothesisConfirmed": false
+  },
+  "remoteWrites": 0,
+  "lighthouseRequests": 0,
+  "ledgerAdvanced": false,
+  "independentGatewayProof": false,
+  "retentionVerified": false,
+  "publicationComplete": false
+}

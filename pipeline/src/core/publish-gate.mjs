@@ -112,6 +112,16 @@ const immutablePrimaryCarSchema = z
   })
   .strict();
 
+const importedDagReadbackSchema = z
+  .object({
+    representation: z.literal("imported-dag"),
+    roots: z.array(z.string().regex(CID_PATTERN)).length(1),
+    verifiedBlocks: z.number().int().positive(),
+    exportedBytes: z.number().int().positive(),
+    exportedSha256: digest,
+  })
+  .strict();
+
 const secondaryPinNames = {
   rootPinName: z.string().min(1),
   manifestPinName: z.string().min(1),
@@ -165,6 +175,7 @@ export const publicationTargetSchema = z
       })
       .strict(),
     secondaryPin: secondaryPinTargetSchema,
+    primaryReadback: z.literal("imported-dag").optional(),
     ipnsLabel: z.string().trim().min(1),
     ipnsNetworkKey: z.string().regex(IPNS_PATTERN),
     ipnsPredecessor: ipnsPredecessorSchema,
@@ -742,6 +753,41 @@ export function validatePublicationLedger(value) {
       throw new Error(
         `Invalid publication ledger: ${attemptId} authorization receipt is inconsistent`,
       );
+    }
+    if (attempt.target.primaryReadback === "imported-dag") {
+      const rootStage = attempt.transitions.find((entry) => entry.stage === "ROOT_UPLOAD_RECORDED");
+      const manifestStage = attempt.transitions.find(
+        (entry) => entry.stage === "MANIFEST_UPLOAD_RECORDED",
+      );
+      const rootUpload = rootStage?.receipt;
+      const manifestUpload = manifestStage?.receipt;
+      for (const [kind, uploaded, reached] of [
+        ["root", rootUpload, Boolean(rootStage)],
+        [
+          "archive",
+          rootUpload?.archive,
+          Boolean(rootStage) && Boolean(attempt.target.primaryCars.archive),
+        ],
+        ["manifest", manifestUpload, Boolean(manifestStage)],
+      ]) {
+        if (!reached) continue;
+        const binding = attempt.target.primaryCars[kind];
+        const readback = importedDagReadbackSchema.safeParse(uploaded?.readback);
+        if (
+          !readback.success ||
+          uploaded.transportVerified !== false ||
+          readback.data.roots[0] !== binding.cid ||
+          uploaded.reportedCid !== binding.cid ||
+          uploaded.key !== binding.key ||
+          uploaded.bytes !== binding.bytes ||
+          uploaded.sha256 !== binding.sha256 ||
+          uploaded.cid !== binding.cid ||
+          !["created", "reconciled-existing"].includes(uploaded.action)
+        )
+          throw new Error(
+            "Invalid publication ledger: imported DAG readback does not match signed upload transport/root",
+          );
+      }
     }
     if (attempt.state === REPLICATION_TERMINAL_STAGE) {
       assertReplicationReceipt(attempt.target, attempt.transitions.at(-1).receipt);
