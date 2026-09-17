@@ -1,0 +1,38 @@
+{
+  "scope": "failed_semantic_validation",
+  "recording": "preserved failed semantic take; superseded if repaired recording succeeds",
+  "agentClaim": {
+    "requestIdentifier": "8152046971",
+    "addressStreet": "840 DEER RUN"
+  },
+  "validation": {
+    "observedAt": "2026-09-17T15:54:51.687Z",
+    "status": 200,
+    "rows": [],
+    "rowCount": 0,
+    "truncated": false,
+    "sql": "SELECT request_identifier,address_street,address_city,roof_age_years,latitude,longitude FROM properties WHERE request_identifier = '8152046971' OR upper(address_street) = '840 DEER RUN'",
+    "provenance": {
+      "sql": "SELECT request_identifier,address_street,address_city,roof_age_years,latitude,longitude FROM properties WHERE request_identifier = '8152046971' OR upper(address_street) = '840 DEER RUN'",
+      "dataSource": "https://ipfs.filebase.io/ipfs/bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u/query-table.parquet",
+      "dataSourceKind": "ipfs",
+      "sourceSystems": [
+        "BBB policy/API gate (default route HTTP 403)",
+        "Clermont eTRAKiT permits; null elsewhere",
+        "FL DOR NAL 2026P",
+        "FL DOR SDF 2026P",
+        "FL DOR TPP 2026P",
+        "FL GIO parcel centroids 2025",
+        "Lake County CD Plus permit layer + Clermont eTRAKiT permits",
+        "derived by the pipeline",
+        "not ingested for this run"
+      ],
+      "runId": "20260916T181000Z",
+      "rootCid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "sourceObservationsOnly": true,
+      "decisionCaveat": "Unaccepted historical observations. Current/open status, primary-roof completion and legal-company/license identity remain unknown; built year is only a low-confidence proxy with incomplete permit history."
+    },
+    "isError": false
+  },
+  "sourceBackedSampleAccepted": false
+}

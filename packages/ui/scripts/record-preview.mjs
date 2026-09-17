@@ -146,7 +146,14 @@ try {
     ]) {
       const count = await page.locator(".message.assistant").count();
       await page.getByLabel("Your question", { exact: true }).fill(prompt);
+      const pendingChat = page.waitForResponse(
+        (response) => response.url() === base + "/api/chat",
+        { timeout: 135000 },
+      );
       await page.getByRole("button", { name: "Send", exact: true }).click();
+      const chatResponse = await pendingChat;
+      if (chatResponse.status() !== 200) throw new Error("Actual agent request failed");
+      const chat = await chatResponse.json();
       await page.waitForFunction(
         (previous) => document.querySelectorAll(".message.assistant").length > previous,
         count,
@@ -156,9 +163,121 @@ try {
       await page.waitForTimeout(4500);
       const answer = await page.locator(".message.assistant .message-body").last().innerText();
       if (!answer.trim()) throw new Error("Agent returned citations but no actual answer text");
+      const verificationQueries = [];
+      if (agentAnswers.length === 0) {
+        if (
+          chat.grounding?.mode !== "canonical-query-rows" ||
+          !chat.grounding.evidence.some((item) =>
+            item.rows.some((row) => typeof row.request_identifier === "string"),
+          )
+        )
+          throw new Error("Property answer has no canonical query-row grounding");
+        const centreReplay = await get("/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 3,
+            method: "tools/call",
+            params: {
+              name: "queryProperties",
+              arguments: {
+                sql: "SELECT avg(latitude) AS lat, avg(longitude) AS lon FROM properties WHERE upper(coalesce(address_city, '')) = 'CLERMONT' AND latitude IS NOT NULL AND longitude IS NOT NULL",
+              },
+            },
+          }),
+        });
+        const centreResult = centreReplay.result?.structuredContent;
+        const centre = centreResult?.rows?.[0];
+        if (
+          centreReplay.result?.isError ||
+          centreResult?.provenance?.runId !== runId ||
+          centreResult?.provenance?.rootCid !== rootCid ||
+          typeof centre?.lat !== "number" ||
+          typeof centre?.lon !== "number"
+        )
+          throw new Error("Independent named-city centre query failed");
+        verificationQueries.push({ namedCityCentre: centre, sql: centreResult.sql });
+        for (const evidence of chat.grounding.evidence) {
+          if (evidence.runId !== runId || evidence.rootCid !== rootCid || !evidence.sql)
+            throw new Error("Agent grounding identity or actual query is missing");
+          const replay = await get("/mcp", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              method: "tools/call",
+              params: { name: "queryProperties", arguments: { sql: evidence.sql, limit: 200 } },
+            }),
+          });
+          const result = replay.result?.structuredContent;
+          if (
+            replay.result?.isError ||
+            result?.provenance?.runId !== runId ||
+            result?.provenance?.rootCid !== rootCid
+          )
+            throw new Error("Independent agent-evidence replay failed");
+          const fingerprint = (row) =>
+            JSON.stringify(
+              Object.fromEntries(Object.entries(row).sort(([a], [b]) => a.localeCompare(b))),
+            );
+          for (const row of evidence.rows) {
+            if (!result.rows.some((actual) => fingerprint(actual) === fingerprint(row)))
+              throw new Error("Agent sample differs from exact hosted query rows");
+            if (row.request_identifier) {
+              if (
+                typeof row.latitude !== "number" ||
+                typeof row.longitude !== "number" ||
+                !(row.roof_age_years >= 16) ||
+                !row.roof_age_basis
+              )
+                throw new Error("Agent sample omits the requested age/coordinate evidence");
+              const radians = (value) => (value * Math.PI) / 180;
+              const distance =
+                3958.7613 *
+                2 *
+                Math.asin(
+                  Math.sqrt(
+                    Math.sin(radians(row.latitude - centre.lat) / 2) ** 2 +
+                      Math.cos(radians(centre.lat)) *
+                        Math.cos(radians(row.latitude)) *
+                        Math.sin(radians(row.longitude - centre.lon) / 2) ** 2,
+                  ),
+                );
+              if (distance > 5 + 1e-8)
+                throw new Error("Agent sample is outside the requested named-city radius");
+            }
+            for (const field of [
+              "request_identifier",
+              "address_street",
+              "latitude",
+              "longitude",
+              "roof_age_years",
+              "roof_age_basis",
+            ]) {
+              if (
+                row.request_identifier &&
+                row[field] !== null &&
+                row[field] !== undefined &&
+                !answer.includes(String(row[field]))
+              )
+                throw new Error(`Displayed agent ${field} differs from canonical evidence`);
+            }
+          }
+          verificationQueries.push({ sql: evidence.sql, verifiedRows: evidence.rows.length });
+        }
+      } else if (chat.grounding?.mode !== "source-only-refusal") {
+        throw new Error(
+          "Source-only open-permit prompt did not explicitly refuse unsupported decisions",
+        );
+      }
       agentAnswers.push({
         prompt,
         observedText: await page.locator(".message.assistant").last().innerText(),
+        grounding: chat.grounding,
+        groundingVerified: true,
+        verificationQueries,
       });
       beats.push({ name: prompt, observedAt: new Date().toISOString(), liveAgentAnswered: true });
     }

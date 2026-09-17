@@ -39,6 +39,14 @@ import {
 } from "../data/queries.js";
 import { readCoverage } from "../data/run.js";
 import {
+  finalizeRecordAnswer,
+  RECORD_TOOLS,
+  requestsPropertyList,
+  requestsUnsupportedOpenPermits,
+  type AnswerGrounding,
+  type QueryEvidence,
+} from "./grounding.js";
+import {
   RetrievalUnavailableError,
   searchCorpus,
   toDocumentCitations,
@@ -71,6 +79,7 @@ export class ChatEmptyAnswerError extends Error {
 /** Collects the evidence behind one turn. */
 class CitationCollector {
   readonly citations: ChatCitation[] = [];
+  readonly queryEvidence: QueryEvidence[] = [];
 
   /** Documents retrieved this turn, cited alongside the SQL evidence. */
   readonly documents: DocumentCitation[] = [];
@@ -99,6 +108,17 @@ class CitationCollector {
       runId: this.runId,
       rootCid: this.rootCid,
     });
+    if (RECORD_TOOLS.has(toolName)) {
+      this.queryEvidence.push({
+        tool: toolName,
+        sql,
+        sourceSystems: [...sourceSystems],
+        rows: rows.slice(0, 25).map((row) => ({ ...row })),
+        rowCount: rowCount ?? rows.length,
+        runId: this.runId,
+        rootCid: this.rootCid,
+      });
+    }
   }
 
   /** Record retrieved documents as evidence in their own right. */
@@ -434,6 +454,7 @@ export function sanitizeProviderError(raw: string): string {
  */
 export interface ChatResponseWithDocuments extends ChatResponse {
   documents: DocumentCitation[];
+  grounding?: AnswerGrounding;
 }
 
 export interface ChatAgent {
@@ -467,6 +488,28 @@ export function createChatAgent(context: AppContext): ChatAgent {
       const runProvenance = await context.provenance();
       collector.runId = runProvenance.runId ?? null;
       collector.rootCid = runProvenance.rootCid ?? null;
+      if (
+        runProvenance.sourceObservationsOnly === true &&
+        requestsUnsupportedOpenPermits(messages)
+      ) {
+        return {
+          answer:
+            "Current/open roofing permit status and duration-open are unsupported in this source-only snapshot. I cannot identify properties with long-open roofing permits or promise that query after a days/years clarification. Captured status text is historical evidence, not current status; unknown does not mean no open permits exist. Source-listed contractor names do not establish verified legal/license identity, and unavailable BBB ratings are not zero scores. Historical permit observations and low-confidence built-year roof proxies remain available in the data views.",
+          citations: [],
+          documents: [],
+          model: chatModelId,
+          runId: runProvenance.runId,
+          grounding: {
+            mode: "source-only-refusal",
+            runId: collector.runId,
+            rootCid: collector.rootCid,
+            capabilities: {
+              currentOpenPermitStatus: "unsupported",
+              openPermitDuration: "unsupported",
+            },
+          },
+        };
+      }
       const openai = createOpenAI({ apiKey: openaiApiKey });
       const model = openai(chatModelId);
       const turnMessages = messages.map((message) => ({
@@ -484,6 +527,19 @@ export function createChatAgent(context: AppContext): ChatAgent {
       });
       abortSignal.throwIfAborted();
       const result = await agent.generate({ messages: turnMessages, abortSignal });
+      const grounded = finalizeRecordAnswer(
+        collector.queryEvidence,
+        requestsPropertyList(messages),
+      );
+      if (grounded !== null) {
+        return {
+          ...grounded,
+          citations: collector.citations,
+          documents: collector.documents,
+          model: chatModelId,
+          runId: runProvenance.runId,
+        };
+      }
       let answer = result.text.trim();
       if (answer.length === 0) {
         abortSignal.throwIfAborted();

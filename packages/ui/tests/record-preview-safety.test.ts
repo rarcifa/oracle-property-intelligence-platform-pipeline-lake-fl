@@ -31,6 +31,10 @@ describe("partial preview recorder, not a full acceptance demo", () => {
     expect(script).toContain("observed.location.url === `${gateway}/favicon.ico`");
     expect(script).toContain("else failures.push(observed)");
     expect(script).toContain('complete ? "preview-demo.json" : "failed-preview-demo.json"');
+    expect(script).toContain("Agent sample differs from exact hosted query rows");
+    expect(script).toContain("Property answer has no canonical query-row grounding");
+    expect(script).toContain('chat.grounding?.mode !== "source-only-refusal"');
+    expect(script).toContain("groundingVerified: true");
   });
   it("does not change the strict full-demo release contract", async () => {
     const script = await readFile("packages/ui/scripts/record-demo.mjs", "utf8");

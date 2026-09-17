@@ -11,6 +11,7 @@ No new harvest, provider, paid upgrade or signature round is introduced here.
 - Selected run: `20260916T181000Z`; immutable root `bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u`.
 - Complete [40-object manifest](../artifacts/manifest-20260916T181000Z.json); manifest CID `bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm`.
 - Final partial walkthrough: [video](demo-preview-final-20260917/walkthrough.webm) and [machine-readable recording report](demo-preview-final-20260917/preview-demo.json).
+- [Final hosted-runtime readback](../artifacts/hosted-runtime-readback-20260917.json) binds the deployed application source, CDK asset, run/root, MCP counts and explicit unsupported-filter refusal.
 - [Every-object two-gateway inventory](../artifacts/submission-gateway-inventory-20260917.json), assembled from immutable live observation receipts. It is not a new publisher transition.
 
 The explicitly pinned runtime does not move IPNS or claim `FINALIZED`. Its run,
@@ -111,6 +112,15 @@ projection do not prove zero source deletions outside that window.
    are conditional and unavailable. Official identity baseline ordering/adequate
    Sunbiz/DBPR temporal relationships remain a separate kit-conformance limitation.
 
+A clean console is not proof of grounded model output. The earlier September 17
+take produced a sample identifier/address absent from the selected dataset; the
+[negative lookup](../artifacts/agent-answer-failed-sample-check-20260917.json) and
+[failed semantic report](../artifacts/failed-semantic-preview-20260917.json) remain
+separate failed evidence. The corrected agent renders query-derived sample fields
+server-side and refuses unsupported open/long-open decisions before generation.
+The final recorder independently replays each sample's hosted query and compares
+every displayed canonical row rather than trusting citation presence alone.
+
 The replication ledger's actual terminal scope is `REPLICATION_REQUESTS_RECORDED`,
 revision 22, not `FINALIZED`. Its [sanitized receipt](../artifacts/replication-reconciliation-20260917T134256Z.json)
 preserves the original immutable target and sequence-13 predecessor. No active
@@ -137,7 +147,7 @@ with no co-authorship or AI/session trailers.
 ## Verification and evaluation boundary
 
 The ingestion suite passed **1,094 tests across 86 files plus four transform tests**;
-the application suite passed **534 tests across 57 files**, seven typecheck tasks,
+the application suite passed **554 tests across 58 files**, seven typecheck tasks,
 four build tasks, repository/county lint and formatting checks on September 17.
 The final deployment identity, recording
 digest and review head are recorded with the final submission artifacts.
