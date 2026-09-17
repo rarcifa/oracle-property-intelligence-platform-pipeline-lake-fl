@@ -44,6 +44,11 @@ jobs:
       - name: Install
         run: just setup
 
+      # Workspace exports resolve to dist/, which is absent in a clean checkout.
+      # Build the normal recipe before any real-table or application test imports.
+      - name: Build
+        run: just build
+
       # Fetch the selected submission by the exact served-run receipt and verify every downloaded
       # artifact against its immutable manifest before testing the real tables.
       - name: Fetch the selected submission snapshot
@@ -53,7 +58,7 @@ jobs:
 
       - name: Assert the selected snapshot suite actually ran
         run: |
-          ORACLE_SELECTED_RUN_DIR=/tmp/oracle-selected pnpm vitest run packages/server/tests/selected-snapshot.test.ts --reporter=json --outputFile=/tmp/selected-snapshot-tests.json
+          ORACLE_SELECTED_RUN_DIR=/tmp/oracle-selected pnpm vitest run packages/server/tests/selected-snapshot.test.ts --reporter=default --reporter=json --outputFile=/tmp/selected-snapshot-tests.json
           jq -e '[.testResults[].assertionResults[] | select(.status != "passed")] | length == 0' /tmp/selected-snapshot-tests.json
           jq -e '[.testResults[].assertionResults[] | select(.status == "passed")] | length >= 5' /tmp/selected-snapshot-tests.json
 
@@ -97,15 +102,12 @@ jobs:
       - name: Assert the query-layer suites actually ran
         run: |
           pnpm vitest run packages/server/tests/api.test.ts packages/server/tests/queries.test.ts \
-            packages/server/tests/mcp.test.ts --reporter=json --outputFile=/tmp/query-layer.json
+            packages/server/tests/mcp.test.ts --reporter=default --reporter=json --outputFile=/tmp/query-layer.json
           SKIPPED=$(jq '[.testResults[].assertionResults[] | select(.status == "skipped" or .status == "pending")] | length' /tmp/query-layer.json)
           PASSED=$(jq '[.testResults[].assertionResults[] | select(.status == "passed")] | length' /tmp/query-layer.json)
           echo "query-layer tests: passed=$PASSED skipped=$SKIPPED"
           test "$SKIPPED" -eq 0
           test "$PASSED" -ge 50
-
-      - name: Build
-        run: just build
 
       # The county source catalog is fail-closed. A change that breaks the
       # readiness gate must not merge, because every ingestion stage downstream
