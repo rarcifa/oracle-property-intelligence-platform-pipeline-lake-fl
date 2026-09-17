@@ -1,0 +1,159 @@
+{
+  "schemaVersion": "oracle.lighthouse-retention-observation.v1",
+  "observedAt": "2026-09-17T15:17:51.405Z",
+  "runId": "20260916T181000Z",
+  "documentedReadOnlyRequests": [
+    {
+      "name": "root",
+      "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "operation": "file_info",
+      "url": "https://api.lighthouse.storage/api/lighthouse/file_info?cid=bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "startedAt": "2026-09-17T15:17:36.366Z",
+      "observedAt": "2026-09-17T15:17:37.076Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:e6e89eb0388be7c825dcad9055b4506c9577056bc8054175bc2ca59255d5036b",
+      "responseJsonType": "object",
+      "responseTopLevelKeys": [
+        "fileSizeInBytes",
+        "cid",
+        "encryption",
+        "fileName",
+        "mimeType"
+      ],
+      "returnedDeals": null,
+      "sanitizedResponse": {
+        "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+        "fileSizeInBytes": 340959826,
+        "encryption": false
+      }
+    },
+    {
+      "name": "root",
+      "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "operation": "deal_status",
+      "url": "https://api.lighthouse.storage/api/lighthouse/deal_status?cid=bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "startedAt": "2026-09-17T15:17:39.078Z",
+      "observedAt": "2026-09-17T15:17:39.734Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "responseJsonType": "array",
+      "responseTopLevelKeys": null,
+      "returnedDeals": 0,
+      "sanitizedResponse": []
+    },
+    {
+      "name": "manifest",
+      "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "operation": "file_info",
+      "url": "https://api.lighthouse.storage/api/lighthouse/file_info?cid=bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "startedAt": "2026-09-17T15:17:41.733Z",
+      "observedAt": "2026-09-17T15:17:41.938Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:f5e8dc46617ccb008ecd66af16683bf9407eb3093dc99ba266081066e38f7d3f",
+      "responseJsonType": "object",
+      "responseTopLevelKeys": [
+        "fileSizeInBytes",
+        "cid",
+        "encryption",
+        "fileName",
+        "mimeType"
+      ],
+      "returnedDeals": null,
+      "sanitizedResponse": {
+        "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+        "fileSizeInBytes": 11417,
+        "encryption": false
+      }
+    },
+    {
+      "name": "manifest",
+      "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "operation": "deal_status",
+      "url": "https://api.lighthouse.storage/api/lighthouse/deal_status?cid=bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "startedAt": "2026-09-17T15:17:43.940Z",
+      "observedAt": "2026-09-17T15:17:44.562Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "responseJsonType": "array",
+      "responseTopLevelKeys": null,
+      "returnedDeals": 0,
+      "sanitizedResponse": []
+    },
+    {
+      "name": "archive",
+      "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "operation": "file_info",
+      "url": "https://api.lighthouse.storage/api/lighthouse/file_info?cid=bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "startedAt": "2026-09-17T15:17:46.564Z",
+      "observedAt": "2026-09-17T15:17:46.770Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:40974e4c07eb5af63c407219b29ef64c651ff98ef442e186e4ae7dd00118cc81",
+      "responseJsonType": "object",
+      "responseTopLevelKeys": [
+        "fileSizeInBytes",
+        "cid",
+        "encryption",
+        "fileName",
+        "mimeType"
+      ],
+      "returnedDeals": null,
+      "sanitizedResponse": {
+        "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+        "fileSizeInBytes": 341078214,
+        "encryption": false
+      }
+    },
+    {
+      "name": "archive",
+      "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "operation": "deal_status",
+      "url": "https://api.lighthouse.storage/api/lighthouse/deal_status?cid=bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "startedAt": "2026-09-17T15:17:48.771Z",
+      "observedAt": "2026-09-17T15:17:49.404Z",
+      "httpStatus": 200,
+      "responseDigest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "responseJsonType": "array",
+      "responseTopLevelKeys": null,
+      "returnedDeals": 0,
+      "sanitizedResponse": []
+    }
+  ],
+  "providerMutations": false,
+  "credentialsUsed": false,
+  "documentation": [
+    {
+      "title": "Pin CID",
+      "url": "https://docs.lighthouse.storage/how-to/pin-cid",
+      "interpretation": "Documents requesting an additional IPFS copy. The reviewed page does not specify a separate CID-specific completed-pin status response."
+    },
+    {
+      "title": "File Info",
+      "url": "https://docs.lighthouse.storage/how-to/file-info",
+      "interpretation": "Describes file metadata; metadata presence and size are not a completed independent-retention acknowledgement."
+    },
+    {
+      "title": "Check for Filecoin Deals",
+      "url": "https://docs.lighthouse.storage/how-to/check-for-filecoin-deals",
+      "interpretation": "Documents a CID-specific read-only deal_status endpoint. Deals can provide supplementary storage evidence; this check does not add a mandatory Filecoin requirement."
+    },
+    {
+      "title": "Retrieve File",
+      "url": "https://docs.lighthouse.storage/how-to/retrieve-file",
+      "interpretation": "Documents public gateway retrieval. Gateway retrieval alone does not establish that the vendor independently retains every block rather than retrieving it from the network."
+    }
+  ],
+  "conclusion": {
+    "status": "retention-unverified",
+    "allThreePublicMetadataRecordsPresent": true,
+    "dealStatusReturnedAnyDeals": false,
+    "completedIndependentIpfsRetentionAcknowledgementObserved": false,
+    "registrationIsRetentionProof": false,
+    "mandatoryFilecoinDealsAdded": false,
+    "unchangedPublisherRetentionGate": "Lighthouse registration does not satisfy assertSecondaryRetention",
+    "promotionEligible": false,
+    "caveat": "Empty deal responses are current observations, not proof that Lighthouse has no IPFS copy or can never create a deal. No documented completed-pin status was established by this bounded review.",
+    "nextAction": "Document the retention hold in the partial handoff. Preserve registrations and immutable CIDs; no automatic provider retry, new vendor, new certification, or publication promotion."
+  },
+  "secretsAccessed": false,
+  "publicationPromotion": false
+}

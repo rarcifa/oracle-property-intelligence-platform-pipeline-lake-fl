@@ -19,6 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -31,6 +32,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertRuntimeBundleIdentity,
+  pinnedRuntimeSelection,
+} from "../../packages/shared/dist/runtime-selection.js";
 
 const INFRA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(INFRA_DIR, "..");
@@ -99,11 +104,34 @@ const RUN_FILES = ["coverage.json", "schema.json", "index.json"];
 const latestPointer = JSON.parse(
   readFileSync(path.join(REPO_ROOT, "artifacts", "latest.json"), "utf8"),
 );
-const runSource = path.join(
-  REPO_ROOT,
-  "pipeline/data/artifacts/publish/lake/runs",
-  String(latestPointer.runId),
-);
+const selected = pinnedRuntimeSelection(process.env);
+if (Boolean(selected) !== Boolean(process.env.ORACLE_BUNDLE_RUN_DIR)) {
+  throw new Error("An explicit pinned runtime requires ORACLE_BUNDLE_RUN_DIR, and vice versa");
+}
+const runSource = process.env.ORACLE_BUNDLE_RUN_DIR
+  ? path.resolve(process.env.ORACLE_BUNDLE_RUN_DIR)
+  : path.join(REPO_ROOT, "pipeline/data/artifacts/publish/lake/runs", String(latestPointer.runId));
+if (selected) {
+  const manifest = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, "artifacts", `manifest-${selected.runId}.json`), "utf8"),
+  );
+  assertRuntimeBundleIdentity(
+    selected,
+    JSON.parse(readFileSync(path.join(runSource, "coverage.json"), "utf8")),
+    JSON.parse(readFileSync(path.join(runSource, "index.json"), "utf8")),
+    manifest,
+  );
+  for (const name of RUN_FILES) {
+    const entry = manifest.artifacts.find((artifact) => artifact.name === name);
+    const bytes = readFileSync(path.join(runSource, name));
+    if (
+      !entry ||
+      entry.size !== bytes.length ||
+      entry.sha256 !== `sha256:${createHash("sha256").update(bytes).digest("hex")}`
+    )
+      throw new Error(`Selected runtime metadata ${name} differs from its immutable manifest`);
+  }
+}
 mkdirSync(path.join(BUNDLE, "run"), { recursive: true });
 for (const name of RUN_FILES) {
   const from = path.join(runSource, name);
@@ -112,7 +140,12 @@ for (const name of RUN_FILES) {
   }
   cpSync(from, path.join(BUNDLE, "run", name));
 }
-log("bundled_run_record", { runId: latestPointer.runId, files: RUN_FILES.length });
+log("bundled_run_record", {
+  runId: selected?.runId ?? latestPointer.runId,
+  files: RUN_FILES.length,
+  explicitlyPinned: selected !== null,
+  publicationPointerChanged: false,
+});
 
 // The bundle declares only what the function actually loads at runtime, so the
 // zip stays small and the cold start stays short.

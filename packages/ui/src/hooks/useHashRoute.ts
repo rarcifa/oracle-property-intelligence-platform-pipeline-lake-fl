@@ -23,13 +23,22 @@ function currentPath(): string {
   return raw.length > 0 ? raw : DEFAULT_PATH;
 }
 
-function toRoute(path: string): Route {
+/** Treat a malformed fragment as literal input, never a render exception. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+export function toRoute(path: string): Route {
   return {
     path,
     segments: path
       .split("/")
       .filter((segment) => segment.length > 0)
-      .map(decodeURIComponent),
+      .map(decodeSegment),
   };
 }
 

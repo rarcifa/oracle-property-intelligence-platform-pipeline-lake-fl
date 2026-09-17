@@ -63,7 +63,10 @@ export interface RunIdentity {
 }
 
 /** Best-effort run identity, preferring the published pointer. */
-export async function readRunIdentity(config: ServerConfig): Promise<RunIdentity> {
+export async function readRunIdentity(
+  config: ServerConfig,
+  servedRootCid: string | null,
+): Promise<RunIdentity> {
   if (config.localEvidencePreview) return { runId: config.dataRunId, rootCid: null };
   if (config.dataRunId !== null) {
     return { runId: config.dataRunId, rootCid: config.dataRootCid };
@@ -71,14 +74,16 @@ export async function readRunIdentity(config: ServerConfig): Promise<RunIdentity
   // A local Parquet and its sibling coverage snapshot are one candidate. A
   // previously published `latest.json` may describe different bytes and must
   // never donate its run id or root CID to the local table.
-  if (config.parquetSourceKind === "local") {
+  if (config.parquetSourceKind === "local" && servedRootCid === null) {
     const coverage = await readCoverage(config);
     if (coverage) return { runId: coverage.runId, rootCid: null };
+    return { runId: null, rootCid: null };
   }
   const latest = await readLatest(config);
-  if (latest) return { runId: latest.runId, rootCid: latest.rootCid };
-  const coverage = await readCoverage(config);
-  return { runId: coverage?.runId ?? null, rootCid: null };
+  if (servedRootCid !== null && latest?.rootCid === servedRootCid) {
+    return { runId: latest.runId, rootCid: latest.rootCid };
+  }
+  return { runId: null, rootCid: servedRootCid };
 }
 
 /** One artifact's cross-gateway verification result. */
@@ -136,4 +141,27 @@ export async function readVerification(
 export async function readRunHistory(config: ServerConfig): Promise<RunHistory | null> {
   if (config.localEvidencePreview) return null;
   return readJson<RunHistory>(resolve(artifactsDir(config), "run-history.json"));
+}
+
+/** Never attach a bundled publication or coverage from different served bytes. */
+export async function readServedMetadata(config: ServerConfig, identity: RunIdentity) {
+  const [coverage, latest, verification] = await Promise.all([
+    readCoverage(config),
+    readLatest(config),
+    readVerification(config, identity.runId),
+  ]);
+  const hasPublicRoot = identity.rootCid !== null;
+  return {
+    coverage: identity.runId !== null && coverage?.runId === identity.runId ? coverage : null,
+    latest:
+      hasPublicRoot && latest?.runId === identity.runId && latest.rootCid === identity.rootCid
+        ? latest
+        : null,
+    verification:
+      hasPublicRoot &&
+      verification?.runId === identity.runId &&
+      verification.rootCid === identity.rootCid
+        ? verification
+        : null,
+  };
 }

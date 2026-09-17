@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "oracle.public-gateway-archive-observation.v1",
+  "startedAt": "2026-09-17T15:16:44.404Z",
+  "observedAt": "2026-09-17T15:17:03.606Z",
+  "runId": "20260916T181000Z",
+  "artifact": {
+    "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+    "name": "snapshot.car",
+    "size": 341012658,
+    "codec": "file",
+    "sha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f"
+  },
+  "helper": "verifyArtifactAcrossGateways",
+  "invocations": 1,
+  "automaticReinvocations": 0,
+  "timeoutMs": 150000,
+  "delayMs": 2000,
+  "verification": {
+    "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+    "verified": true,
+    "matchedGateways": [
+      "https://ipfs.filebase.io",
+      "https://gateway.pinata.cloud"
+    ],
+    "minimumIndependentGateways": 2,
+    "results": [
+      {
+        "gateway": "https://ipfs.filebase.io",
+        "ok": true,
+        "status": 200,
+        "bytes": 341012658,
+        "sha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f",
+        "error": null,
+        "responseUrl": "https://ipfs.filebase.io/ipfs/bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq"
+      },
+      {
+        "gateway": "https://gateway.pinata.cloud",
+        "ok": true,
+        "status": 200,
+        "bytes": 341012658,
+        "sha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f",
+        "error": null,
+        "responseUrl": "https://gateway.pinata.cloud/ipfs/bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq"
+      }
+    ]
+  },
+  "providerMutations": false,
+  "publicationPromotion": false
+}

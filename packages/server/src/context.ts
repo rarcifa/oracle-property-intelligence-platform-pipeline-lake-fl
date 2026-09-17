@@ -92,7 +92,7 @@ export function createContext(
       ) {
         return cached.value;
       }
-      const identity = await readRunIdentity(config);
+      const identity = await readRunIdentity(config, servedCid);
       const value: ProvenanceContext = {
         runId: dataset.pointer?.runId ?? identity.runId,
         // The CID actually being read wins over any recorded one.

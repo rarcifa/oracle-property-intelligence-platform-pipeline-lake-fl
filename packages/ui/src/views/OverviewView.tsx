@@ -75,15 +75,23 @@ export function OverviewView(): JSX.Element {
   const stats = useAsync(() => source.getStats(), [source]);
 
   const run = meta?.run ?? null;
+  const rootCid = run?.rootCid ?? null;
   const coverage = meta?.coverage ?? null;
   const verification = meta?.verification ?? null;
   const runHistory = meta?.runHistory ?? null;
+  const verifiedGateways = run?.verifiedGateways ?? [];
   const total = stats.data?.stats.properties ?? 0;
 
   return (
     <div className="stack">
       <Panel
-        title="Published run"
+        title={
+          meta?.localEvidencePreview
+            ? "Local unaccepted preview"
+            : meta?.sourceObservationsOnly
+              ? "Source-only partial run"
+              : "Published run"
+        }
         subtitle="One immutable columnar table, addressed by CID. Every figure below is a query against it."
       >
         {metaError ? <ErrorPanel error={metaError} /> : null}
@@ -104,9 +112,9 @@ export function OverviewView(): JSX.Element {
             />
             <Kv
               label="Verified gateways"
-              value={run.verifiedGateways.length > 0 ? run.verifiedGateways.join(", ") : null}
+              value={verifiedGateways.length > 0 ? verifiedGateways.join(", ") : null}
               note={
-                run.verifiedGateways.some((gateway) => /ipfs\.io|dweb\.link/.test(gateway))
+                verifiedGateways.some((gateway) => /ipfs\.io|dweb\.link/.test(gateway))
                   ? "ipfs.io and dweb.link rate-limit datacenter egress, so a reviewer on cloud infrastructure typically reproduces the first three, not all five."
                   : undefined
               }
@@ -338,7 +346,13 @@ export function OverviewView(): JSX.Element {
           subtitle="Row counts and the upstream system each table came from, as published."
         >
           {!coverage ? (
-            <SkeletonRows rows={5} />
+            !meta && !metaError ? (
+              <SkeletonRows rows={5} />
+            ) : (
+              <EmptyState>
+                No coverage snapshot matches the served run. Missing coverage is not zero records.
+              </EmptyState>
+            )
           ) : (
             <>
               <div className="table-scroll">
@@ -402,8 +416,10 @@ export function OverviewView(): JSX.Element {
           title="Gateways"
           subtitle="Where the published bytes can be fetched, and which gateways this app refuses to use."
         >
-          {!meta || !run ? (
+          {!meta ? (
             <SkeletonRows rows={4} />
+          ) : !run || !rootCid ? (
+            <EmptyState>No public root CID is recorded for these served bytes.</EmptyState>
           ) : (
             <div className="gateway-list">
               {meta.gateways.map((gateway) => (
@@ -419,24 +435,26 @@ export function OverviewView(): JSX.Element {
                       </Badge>
                     </div>
                     <a
-                      href={gatewayUrl(gateway, run.rootCid, "query-table.parquet")}
+                      href={gatewayUrl(gateway, rootCid, "query-table.parquet")}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      {gatewayUrl(gateway, run.rootCid, "query-table.parquet")}
+                      {gatewayUrl(gateway, rootCid, "query-table.parquet")}
                     </a>
                     <span className="dim" style={{ fontSize: 11 }}>
                       {gateway.note}
                     </span>
                   </div>
-                  <a
-                    href={gatewayUrl(gateway, run.manifestCid)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn small ghost"
-                  >
-                    manifest
-                  </a>
+                  {run.manifestCid ? (
+                    <a
+                      href={gatewayUrl(gateway, run.manifestCid)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn small ghost"
+                    >
+                      manifest
+                    </a>
+                  ) : null}
                 </div>
               ))}
               <div className="notice" style={{ marginTop: 4 }}>
@@ -470,14 +488,14 @@ function Kv({
   note,
 }: {
   label: string;
-  value: string | null;
+  value: string | null | undefined;
   mono?: boolean;
   onCopy?: (text: string) => void;
   copied?: string | null;
   /** Caveat shown under the value, for a figure that needs one to be honest. */
   note?: string;
 }): JSX.Element {
-  const display = value === null ? "—" : mono ? shortCid(value, 14, 8) : value;
+  const display = value == null ? "—" : mono ? shortCid(value, 14, 8) : value;
   return (
     <div className="kv">
       <span>{label}</span>

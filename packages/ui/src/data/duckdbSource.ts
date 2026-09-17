@@ -185,7 +185,14 @@ export function warmDuckDbRuntime(): Promise<{
     const worker = new Worker(workerUrl);
     const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
     const db = new duckdb.AsyncDuckDB(logger, worker);
-    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    try {
+      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    } catch (error) {
+      await db.terminate().catch(() => undefined);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      throw error;
+    }
     return { db, worker, workerUrl };
   })();
   const guarded = pending.catch((error: unknown) => {
@@ -223,7 +230,22 @@ export async function createDuckDbSource(options: {
   // every one of them out and the page silently fell back to the server path.
   // Only attaching the file and reading its footer is per-gateway, and that is
   // cheap.
-  const runtime = await withTimeout(takeDuckDbRuntime(), timeoutMs, "DuckDB-WASM initialisation");
+  const pendingRuntime = takeDuckDbRuntime();
+  let runtime: Awaited<typeof pendingRuntime>;
+  try {
+    runtime = await withTimeout(pendingRuntime, timeoutMs, "DuckDB-WASM initialisation");
+  } catch (error) {
+    // A timeout does not cancel WASM instantiation. Dispose a late successful
+    // boot instead of leaving an unclaimed worker alive after server failover.
+    void pendingRuntime
+      .then(async (late) => {
+        await late.db.terminate().catch(() => undefined);
+        late.worker.terminate();
+        URL.revokeObjectURL(late.workerUrl);
+      })
+      .catch(() => undefined);
+    throw error;
+  }
   const { db, worker, workerUrl } = runtime;
 
   /** Point the instantiated runtime at one gateway and prove it reads. */

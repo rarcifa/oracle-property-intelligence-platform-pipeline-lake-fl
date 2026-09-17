@@ -36,7 +36,7 @@ import {
   searchProperties,
   searchBusinessAccounts,
 } from "../data/queries.js";
-import { readCoverage, readLatest } from "../data/run.js";
+import { readServedMetadata } from "../data/run.js";
 
 /** JSON Schema fragment, kept as a plain structure for the wire. */
 export type JsonSchema = Record<string, unknown>;
@@ -391,7 +391,16 @@ export async function callTool(
         countyComplete: false,
         derivativeAsOfYear: context.store.localEvidenceAsOfYear,
       }
-    : {};
+    : context.store.sourceObservationsOnly
+      ? {
+          sourceObservationsOnly: true,
+          sourceProfileAccepted: false,
+          currentPermitStatusAccepted: false,
+          completionAccepted: false,
+          legalIdentityVerified: false,
+          countyComplete: false,
+        }
+      : {};
 
   switch (name) {
     case "listOracleBusinessAccounts": {
@@ -437,15 +446,18 @@ export async function callTool(
     case "getOracleDatasetInfo": {
       const parsed = noArgsSchema.safeParse(args);
       if (!parsed.success) return invalid(parsed.error.issues.map((i) => i.message).join("; "));
-      const [stats, coverage, latest] = await Promise.all([
+      const [stats, metadata] = await Promise.all([
         getDatasetStats(context.store, provenance),
-        readCoverage(context.config),
-        readLatest(context.config),
+        readServedMetadata(context.config, provenance),
       ]);
+      const { coverage, latest } = metadata;
       return {
         payload: {
           county: COUNTY,
-          run: latest,
+          run:
+            provenance.rootCid === null
+              ? null
+              : { ...latest, runId: provenance.runId, rootCid: provenance.rootCid },
           ...previewMetadata,
           runId: provenance.runId,
           dataSource: provenance.dataSource,

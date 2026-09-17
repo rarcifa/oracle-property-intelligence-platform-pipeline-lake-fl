@@ -175,10 +175,16 @@ export interface RunHistory {
 }
 
 /** `GET /api/meta/run`. */
+export type ServedRunPointer = Partial<Omit<LatestRunPointer, "runId" | "rootCid">> & {
+  runId: string | null;
+  rootCid: string | null;
+};
+
 export interface RunMetaResponse {
   localEvidencePreview?: boolean;
   sourceObservationsOnly?: boolean;
-  run: LatestRunPointer | null;
+  /** Identity is known independently of optional finalized-publication fields. */
+  run: ServedRunPointer | null;
   coverage: CoverageSnapshot | null;
   verification: VerificationReport | null;
   runHistory: RunHistory | null;

@@ -34,6 +34,7 @@ import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Construct } from "constructs";
+import { pinnedRuntimeSelection } from "../packages/shared/src/runtime-selection.js";
 
 /**
  * Default Secrets Manager secret holding the OpenAI API key.
@@ -157,6 +158,13 @@ function publishedIpnsName(): string {
 
 /** An explicitly pinned Parquet URL, when the operator set one. */
 function parquetOverride(): Record<string, string> {
+  const selected = pinnedRuntimeSelection(process.env);
+  if (selected)
+    return {
+      ORACLE_PARQUET_URL: selected.parquetUrl,
+      ORACLE_DATA_RUN_ID: selected.runId,
+      ORACLE_DATA_ROOT_CID: selected.rootCid,
+    };
   const override = process.env.ORACLE_PARQUET_URL;
   return override ? { ORACLE_PARQUET_URL: override } : {};
 }

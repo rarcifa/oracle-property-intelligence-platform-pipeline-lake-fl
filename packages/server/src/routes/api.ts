@@ -35,7 +35,7 @@ import {
   searchProperties,
   searchBusinessAccounts,
 } from "../data/queries.js";
-import { readCoverage, readLatest, readRunHistory, readVerification } from "../data/run.js";
+import { readRunHistory, readServedMetadata } from "../data/run.js";
 import { callerOf, createRateLimiter, DEFAULT_QUERY_RATE_LIMIT } from "../chat/rate-limit.js";
 import { fail, json, type Router } from "../http/router.js";
 import { registerSearchRoutes } from "./search.js";
@@ -77,10 +77,10 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
   });
 
   router.get("/api/meta/run", async () => {
-    const [provenance, coverage, bundled] = await Promise.all([
-      context.provenance(),
-      readCoverage(context.config),
-      readLatest(context.config),
+    const provenance = await context.provenance();
+    const [{ coverage, latest, verification }, runHistory] = await Promise.all([
+      readServedMetadata(context.config, provenance),
+      readRunHistory(context.config),
     ]);
     // `latest.json` is bundled at deploy time, so it names whichever run was
     // current when the Lambda was built. The dataset itself is resolved from
@@ -92,23 +92,17 @@ export function registerApiRoutes(router: Router, context: AppContext): void {
     // does not carry (manifest and CAR CIDs, publication time, verified
     // gateways) only while it describes that same run; once it is behind, those
     // fields are dropped rather than shown against the wrong run.
-    const servedRunId = provenance.runId ?? bundled?.runId ?? null;
-    const bundledDescribesServed = bundled !== null && bundled.runId === servedRunId;
     const run =
-      bundled === null && provenance.runId === null
+      provenance.runId === null && provenance.rootCid === null
         ? null
         : {
-            ...(bundledDescribesServed ? bundled : {}),
-            runId: servedRunId,
+            ...latest,
+            runId: provenance.runId,
             // A different bundled pointer must never donate a CID to local or
             // newly resolved bytes. `null` is the honest identity for an
             // unpublished local candidate.
             rootCid: provenance.rootCid,
           };
-    const [verification, runHistory] = await Promise.all([
-      readVerification(context.config, run?.runId ?? provenance.runId),
-      readRunHistory(context.config),
-    ]);
     return json(200, {
       run,
       coverage,

@@ -60,20 +60,22 @@ export function Header({ activePath }: { activePath: string }): JSX.Element {
                 <button
                   type="button"
                   className="run-chip"
-                  onClick={() => copy(run.runId)}
+                  onClick={() => run.runId && copy(run.runId)}
+                  disabled={!run.runId}
                   aria-label={`Copy run id ${run.runId}`}
-                  title={run.runId}
+                  title={run.runId ?? undefined}
                 >
                   <span className="micro">run</span>
-                  {run.runId}
+                  {run.runId ?? "unidentified"}
                   <span className="dim">{copied === run.runId ? "copied" : "⧉"}</span>
                 </button>
                 <button
                   type="button"
                   className="run-chip"
-                  onClick={() => copy(run.rootCid)}
+                  onClick={() => run.rootCid && copy(run.rootCid)}
+                  disabled={!run.rootCid}
                   aria-label={`Copy root CID ${run.rootCid}`}
-                  title={run.rootCid}
+                  title={run.rootCid ?? undefined}
                 >
                   <span className="micro">root cid</span>
                   {shortCid(run.rootCid)}
