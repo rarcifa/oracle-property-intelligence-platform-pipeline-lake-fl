@@ -7,13 +7,13 @@ addresses every clause while preserving the assignment brief verbatim.
 ## Evaluate the actual release
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
-  Consumer repairs are pushed at `96a3749b11ad847615745080004ada6bb0d36007`;
+  Consumer repairs are pushed at `7d4e26ae621cd751862b87ece22c8bfb53bd1b4d`;
   final evidence and current-head CI remain pending.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
   [Repaired live readback](../artifacts/hosted-runtime-readback-20260917.json) was observed
-  at `2026-09-17T18:57:44.083Z`. App source is
-  `2cf3ab8284d694094b22a8b1824d6acc535ef334`; the CDK code asset is
-  `e10a265860900a495d0e2792c9aef7376d9161b268ce22f4e72957d649ba5248`.
+  at `2026-09-17T19:17:33.767Z`. App source is
+  `7d4e26ae621cd751862b87ece22c8bfb53bd1b4d`; the CDK code asset is
+  `5514c8643a5be7d35138bedd2b17b38f97cc502b5f50989441114a27073026aa`.
   The [16:02 receipt](../artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
   is preserved separately and is not proof of the repaired app.
 - Finalized dataset baseline: `20260916T181000Z`,
@@ -27,16 +27,31 @@ addresses every clause while preserving the assignment brief verbatim.
 - [Earlier partial video](demo-preview-final-20260917/walkthrough.webm) and
   [its immutable report](demo-preview-final-20260917/preview-demo.json), recorded
   16:04–16:07 UTC, are historical evidence.
-- [Latest hosted take, failed paint check](demo-score-repair-failed-paint-20260917/walkthrough.webm)
+- [Preserved hosted take, failed paint check](demo-score-repair-failed-paint-20260917/walkthrough.webm)
   and [its immutable report](demo-score-repair-failed-paint-20260917/failed-preview-demo.json),
-  recorded 18:57–18:59 UTC against the actual deployed source above. All 25 canonical
+  recorded 18:57–18:59 UTC against source `2cf3ab8284d694094b22a8b1824d6acc535ef334`,
+  not the later deployment above. All 25 canonical
   agent rows and all five fields of 50 historical permit rows independently replayed;
   the ordinary follow-up returned HTTP 200 with a safe source-only refusal. Both
   public manifest fetches matched 11,417 bytes and the exact digest. The take failed
   the paint monitor on an actual 40 ms black frame, with no console/API error.
   Video bytes: 6,758,060; SHA-256:
   `8900d95c57894d4654aff1a318400d570c768510ca653477f6c1f50250ebf9da`.
-  A completed replacement take remains pending; the underlying paint cause is unproven.
+  The underlying paint cause is unproven; this failed packet is never relabelled passed.
+- [Completed partial walkthrough](demo-score-repair-20260917/walkthrough.webm)
+  and [its immutable report](demo-score-repair-20260917/preview-demo.json), recorded
+  `2026-09-17T19:17:25.611Z`–`19:18:49.579Z` against the verified 7d4e26a deployment.
+  `recordingCompleted:true`, `fullAssignmentDemoPassed:false`. All 25 original-prompt
+  canonical rows and 50 historical rows independently replayed; the normal unsupported
+  follow-up safely refused with HTTP 200. Both public manifest fetches matched.
+  There were no console/API/external-gateway failures and no failures in 3,758 DOM
+  checks or 105 pixel samples. Those samples are not exhaustive frame certification
+  or proof that the underlying intermittent-blackout cause was repaired.
+  Video bytes: 6,465,110; SHA-256:
+  `c22296e08dba5708d8f378530857cc35c9e59bf35f4e1ed36fb565964ec71563`.
+  Root independently matched the raw video size/digest and inspected the actual
+  first-row and agent screenshots. Whole-video black detection found only the
+  initial pre-ready loading interval, not a later all-background frame.
 
 Publication, selected dataset, deployment and recording are separate identities.
 The baseline is now published normally; that does not retroactively make the
@@ -194,13 +209,13 @@ retention/all-object verification and normal publisher completion.
 3. **Countywide completeness is not established.** Full assessed coverage does
    not prove complete jurisdictional/predecessor permit history. Conditional
    BBB/contact enrichment is unavailable; source limits are visible.
-4. **Supported NL/runtime proof exists; complete recording remains pending.**
+4. **Supported NL/runtime proof and completed partial recording exist.**
    The canonical aged-roof/radius route is deployed and independently replayed:
    strictly over 15 uses minimum 16,
    actual selected-data centre and query rows supply every ID/address/coordinate/proxy
    field. Arbitrary model aliases/prose are not accepted as canonical records.
-   The latest exact-prompt take verified all 25 rows but failed the paint check;
-   this is not a passed recording or proof that intermittent blackouts are eliminated.
+   The completed exact-prompt take verified all 25 rows with no sampled paint failure;
+   this is not a full-assignment demo pass or proof that all blackouts are eliminated.
 5. **Incremental public completion is pending**, although actual changed records,
    primary imports and partial public-byte proof exist. Baseline independent
    retention is now established and must not be described as still unproved.
@@ -260,17 +275,24 @@ pipeline assertions because the clean runner lacked the ignored deployment bundl
 The bounded test-only correction stages an explicit synthetic asset with real CDK
 while preserving stack-path, subscriber/IAM/alarm and incomplete-pin assertions;
 it does not prove deployment bytes or change production code. New exact-head CI
-is required after that repair, not a substitution of the local pass. The current
+is required after that repair, not a substitution of the local pass. Actual
+[CI for pushed repair 7d4e26a](https://github.com/rarcifa/oracle-property-intelligence-platform-pipeline-lake-fl/actions/runs/35263762631)
+is **completed/success**: build, selected public-byte download, both no-skip
+query-suite guards, format, lint, types, all app/browser/pipeline/transform tests
+and the county-readiness validator passed. Validator PASS confirms its catalog
+and destination checks, not county-complete ingestion or a full-demo pass.
+Later evidence-only/indexed-documentation commits still require their own CI.
+The current
 normal CLI index rebuild records **312 chunks / 141 documents / 50 source inputs**,
-snapshot `sha256:22d310a2986086523ce6e05cd82bf13df0d3097826fb2c71a14fa36072730595`.
+snapshot `sha256:19161f1faf2024e4064ed0941f8fa79bc7e0508cfcc3a0119b665c189c0a2f43`.
 It recognizes retained acquisition separately from catalog certification and
 visibly names both coverage and catalog authority. The unchanged benchmark still
 has all 24 positives hit in the top three and all five negative controls abstain;
 no ranking weights, thresholds or expected labels were edited.
 Historical 554-app/1,094-pipeline/four-transform reports remain historical.
-None of these local results establishes a current-head CI pass, completed
-replacement video or final new Slowking score. Those evidence links remain
-pending; assignment speed is not inferred.
+None of these local results establishes a current-head CI pass or final new
+Slowking score. Those evidence links remain pending; the completed partial
+recording above is separate actual hosted evidence. Assignment speed is not inferred.
 
 Before presenting the repaired delivery as final, add only actual evidence:
 

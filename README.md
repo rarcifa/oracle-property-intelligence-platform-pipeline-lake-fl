@@ -25,7 +25,7 @@ The baseline documentation RAG selector is now **published** and bound to that
 finalized root. The [actual hosted readback](artifacts/hosted-runtime-readback-20260917.json)
 records the deployed app-source identity, selected run, counts, finalized
 publication and ten MCP tools; [delivery handoff](docs/submission-handoff-20260917.md)
-separates that identity from the PR head. The latest hosted take independently
+separates that identity from the PR head. The preserved 18:57 UTC take independently
 replayed all 25 displayed canonical agent rows, a normal safe-refusal follow-up
 and 50 historical permit rows. It failed the strict paint check on one actual
 40 ms black frame. Replacement-take outcome, exact-head CI and fresh Slowking
@@ -50,7 +50,7 @@ are not claimed.
 - [Earlier partial walkthrough](docs/demo-preview-final-20260917/walkthrough.webm)
   and [its immutable report](docs/demo-preview-final-20260917/preview-demo.json).
   Despite the historical directory name, this is not the pending replacement take.
-- [Latest hosted take, failed paint check](docs/demo-score-repair-failed-paint-20260917/walkthrough.webm)
+- [Preserved hosted take, failed paint check](docs/demo-score-repair-failed-paint-20260917/walkthrough.webm)
   and [its immutable report](docs/demo-score-repair-failed-paint-20260917/failed-preview-demo.json).
   Its canonical-row and historical-table replay succeeded; the recording did not.
 
@@ -237,15 +237,15 @@ constraints remain documented rather than bypassed.
 
 ### Roofing CRM–supporting queries
 
-| ID  | Brief requirement                                  | Evidence / achieved result                                                                                                              | Remaining boundary                                                                                                                                     |
-| --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Q1  | Radius around GPS/map point                        | Actual coordinate-backed five-mile queries with SQL/run provenance                                                                      | UI map/GPS interaction design is out of pipeline scope.                                                                                                |
-| Q2  | Roofs over 15/configurable threshold               | At fixed pin 28.5494,-81.7729, integer threshold 16 returns 23,696 building-age proxies                                                 | Natural-language Clermont uses a labelled selected-data parcel-centroid centre; results depend on centre. LOW-confidence proxy, not measured roof age. |
-| Q3  | Open roofing, especially long-open                 | Raw historical ROOF/REROOF, ISSUED/date observations retained                                                                           | Current-open and duration unknown; initial and follow-up requests safely refused, not fulfilled by an empty list.                                      |
-| Q4  | Permit details, contractor and BBB where available | Historical permit details and source-listed Clermont names                                                                              | BBB/license/legal identity unknown; no inferred verified contractor.                                                                                   |
-| Q5  | Ownership unchanged for over ten years             | Available owner/sales evidence preserved                                                                                                | Unmet: 2025–2026 sales cannot establish ten-year tenure.                                                                                               |
-| Q6  | Regional/out-of-area owners                        | NAL owner-mailing geography query and Tenant view                                                                                       | Labelled locality proxy, not verified residency.                                                                                                       |
-| Q7  | Source-backed answers                              | Canonical property answers from actual this-turn query rows; latest hosted take independently replayed all 25 displayed rows and fields | Recording failed paint, not row grounding. Historical wrong-prose/citation and abstention failures remain preserved.                                   |
+| ID  | Brief requirement                                  | Evidence / achieved result                                                                                                       | Remaining boundary                                                                                                                                     |
+| --- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q1  | Radius around GPS/map point                        | Actual coordinate-backed five-mile queries with SQL/run provenance                                                               | UI map/GPS interaction design is out of pipeline scope.                                                                                                |
+| Q2  | Roofs over 15/configurable threshold               | At fixed pin 28.5494,-81.7729, integer threshold 16 returns 23,696 building-age proxies                                          | Natural-language Clermont uses a labelled selected-data parcel-centroid centre; results depend on centre. LOW-confidence proxy, not measured roof age. |
+| Q3  | Open roofing, especially long-open                 | Raw historical ROOF/REROOF, ISSUED/date observations retained                                                                    | Current-open and duration unknown; initial and follow-up requests safely refused, not fulfilled by an empty list.                                      |
+| Q4  | Permit details, contractor and BBB where available | Historical permit details and source-listed Clermont names                                                                       | BBB/license/legal identity unknown; no inferred verified contractor.                                                                                   |
+| Q5  | Ownership unchanged for over ten years             | Available owner/sales evidence preserved                                                                                         | Unmet: 2025–2026 sales cannot establish ten-year tenure.                                                                                               |
+| Q6  | Regional/out-of-area owners                        | NAL owner-mailing geography query and Tenant view                                                                                | Labelled locality proxy, not verified residency.                                                                                                       |
+| Q7  | Source-backed answers                              | Canonical property answers from actual this-turn query rows; hosted take independently replayed all 25 displayed rows and fields | Preserved failed take failed paint, not row grounding. Historical wrong-prose/citation and abstention failures remain preserved.                       |
 
 ### Demonstration
 
