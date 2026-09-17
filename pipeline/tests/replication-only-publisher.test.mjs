@@ -124,6 +124,7 @@ import { computeRawCid } from "../src/core/cid.mjs";
 import { validateCarArchive } from "../src/core/car.mjs";
 import {
   buildPublishAuthorizationPayload,
+  buildHumanPublishApproval,
   readPublicationLedger,
   signPublishAuthorization,
 } from "../src/core/publish-gate.mjs";
@@ -283,7 +284,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function signedFixture(scope = "replication-only") {
+async function signedFixture(scope = "replication-only", human = false) {
   const prepared = await publishRun(OPTIONS);
   const request = JSON.parse(fixture.files.get(prepared.approvalRequestPath).toString());
   const target = globalThis.structuredClone(request.target);
@@ -293,15 +294,23 @@ async function signedFixture(scope = "replication-only") {
   }
   // Ephemeral test keys only; never the owner's signing key.
   const pair = generateKeyPairSync("ed25519");
-  const authorization = signPublishAuthorization(
-    buildPublishAuthorizationPayload(target, {
-      issuedAt: "2026-09-16T20:00:00.000Z",
-      expiresAt: "2026-09-16T22:00:00.000Z",
-      nonce: "offline_fixture_nonce_12345",
-      approver: "offline-test",
-    }),
-    pair.privateKey.export({ type: "pkcs8", format: "pem" }),
-  );
+  const authorization = human
+    ? buildHumanPublishApproval(target, {
+        approvedBy: "offline-test",
+        approvedAt: "2026-09-16T20:00:00.000Z",
+        expiresAt: "2026-09-16T22:00:00.000Z",
+        nonce: "offline_fixture_nonce_12345",
+        approvalSource: "owner-conversation",
+      })
+    : signPublishAuthorization(
+        buildPublishAuthorizationPayload(target, {
+          issuedAt: "2026-09-16T20:00:00.000Z",
+          expiresAt: "2026-09-16T22:00:00.000Z",
+          nonce: "offline_fixture_nonce_12345",
+          approver: "offline-test",
+        }),
+        pair.privateKey.export({ type: "pkcs8", format: "pem" }),
+      );
   setJson(APPROVAL, authorization);
   fixture.files.set(
     PUBLIC_KEY,
@@ -309,11 +318,39 @@ async function signedFixture(scope = "replication-only") {
   );
   return {
     prepared,
-    live: { ...OPTIONS, dryRun: false, approvalPath: APPROVAL, approvalPublicKeyPath: PUBLIC_KEY },
+    live: {
+      ...OPTIONS,
+      dryRun: false,
+      approvalPath: APPROVAL,
+      approvalPublicKeyPath: human ? null : PUBLIC_KEY,
+    },
   };
 }
 
 describe("real publisher replication-only control flow (offline)", () => {
+  it("executes recorded human approval without any publication key, then resumes locally with zero remote effects", async () => {
+    const { live } = await signedFixture("replication-only", true);
+    fixture.files.delete(PUBLIC_KEY);
+    const before = protectedPaths.map((name) => Buffer.from(fixture.files.get(name)));
+    const result = await publishRun(live);
+    expect(result).toMatchObject({
+      publicationState: "REPLICATION_REQUESTS_RECORDED",
+      retentionVerified: false,
+      promotionHeld: true,
+    });
+    expect(
+      (await readPublicationLedger(LEDGER)).attempts[result.attemptId].authorization,
+    ).toMatchObject({ method: "human-approval", keyId: null });
+    protectedPaths.forEach((name, index) => expect(fixture.files.get(name)).toEqual(before[index]));
+    globalThis.fetch.mockClear();
+    fixture.puts.mockClear();
+    fixture.writes.length = 0;
+    vi.setSystemTime(new Date("2026-09-17T21:00:00.000Z"));
+    expect(await publishRun({ ...live, envFile: "/must-not-read.env" })).toEqual(result);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(fixture.puts).not.toHaveBeenCalled();
+    expect(fixture.writes).toEqual([]);
+  });
   it("checks directory/raw-manifest/multiblock-archive DAG sizes and preserves every frozen byte binding", async () => {
     fixture.files.set(
       path.join(PUBLISH, "runs", RUN, "query-table.parquet"),

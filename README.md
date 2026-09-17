@@ -160,7 +160,7 @@ rejection of unsupported retention receipts. Arceus confirmed this bounded
 Oracle-adapter route and reviewed the independent scope boundaries; this is
 code verification, not live publication proof.
 
-The existing publisher also supports a separately signed
+The existing publisher also supports a separately approved
 `--execution-scope replication-only` target: the three immutable CAR uploads and
 root/manifest/archive pin requests, with actual accepted/registered/uncertain
 evidence. Its terminal ledger branch is `REPLICATION_REQUESTS_RECORDED`, with
@@ -169,7 +169,18 @@ append successful history, repoint IPNS or change latest/row hashes/RAG selectio
 terminal retries return evidence locally without repeating remote effects.
 Omitted scope keeps old full-publication signatures unchanged. This local repair
 does not execute uploads or pins and does not satisfy public publication by
-itself; see [the scoped handoff](docs/runbook.md#signed-replication-only-scope).
+itself; see [the scoped handoff](docs/runbook.md#replication-only-human-approval).
+
+On 2026-09-17 the owner removed our added per-commit personal-signing requirement
+for this replication-only continuation. The publisher now accepts an external,
+exact-target human approval manifest recording the owner's actual consent; no
+private key or repeated signing command is required. This follows the official
+kit's human-approval manifest pattern, not cryptographic authentication. Target
+bytes/digests/CIDs, destinations, active window, nonce reservation, current
+runtime provenance and predecessor checks remain enforced. Legacy signed
+approvals and the existing signed recovery evidence remain valid; official
+coverage-only signing and full-publication gates are unchanged. Plain approval
+cannot authorize full publication. This change alone is not completed publication.
 
 The signed `b3d92c6` live attempt on 2026-09-17 stopped twice on a TLS abort
 before complete primary CAR readback. The root object's size/CID metadata was
@@ -183,8 +194,8 @@ authorization/predecessor immediately before creation, and disables SDK PUT
 retries. Ten-minute request/body deadlines produce sanitized byte-count errors;
 there is no Range or sampled-byte fallback. Offline regression checks establish
 that safety contract, not repaired live transport or publication. The old signed
-checkout/object remain preserved; a changed candidate needs a matching human
-go/signature before live execution.
+checkout/object remain preserved; a changed candidate needs exact recorded human
+approval before live execution. Replication-only approval no longer needs signing.
 
 On 2026-09-17 the signed `9218ffc` retry returned S3 GET HTTP 500 before
 receiving bytes, with zero PUTs or pins. Read-only diagnosis ruled out optional

@@ -240,22 +240,41 @@ Two gateways alone can
 still retrieve blocks from Filebase. Do not demand sealed Filecoin deals or add
 a new certification workflow merely to replace the provider's acknowledgement.
 
-### Signed replication-only scope
+### Replication-only human approval
 
 For a separately approved upload-and-pin request, add
 `--execution-scope replication-only --secondary-provider lighthouse` to both
 the existing preparation and live commands. Keep `--dry-run` during preparation;
 local code approval is not live execution authority. The unsigned request is
-`<run-id>.replication-only.publication-request.json`; do not sign the older
-all-action request. The existing human-only approval helper signs that request's
-exact target with its candidate commit, byte bindings, provider, predecessor,
-expiry and nonce. No new workflow or certificate is introduced.
+`<run-id>.replication-only.publication-request.json`; do not substitute the older
+all-action request. The owner explicitly removed our added personal-signing step
+on 2026-09-17 and approved continuing the existing limited run. Record that actual
+consent in a private handoff, then use the existing approval utility without keys:
 
-The signed actions are exactly `upload-root-car`, `upload-manifest-car`, and
+```bash
+node scripts/lake/publish-approve.mjs --record-approval \
+  --request <run-id>.replication-only.publication-request.json \
+  --output <external-owner-approval.json> --approver rarcifa \
+  --approval-source owner-conversation --expires-at <approved-window-end>
+```
+
+This records consent already given by the human; an agent must not invent consent
+or treat credentials, a name or a boolean as new owner approval. The versioned
+plain manifest contains `approved: true`, `approvedBy`, `approvedAt`, expiry,
+nonce and the exact target. It is not cryptographic authentication and records
+no key identity. Live execution supplies `--approve` without a publication public
+key. Candidate/provenance, artifact bytes/digests, provider/destination and
+predecessor checks still run. Existing recovery requires its trusted public key
+for verification only, not another signing action. Keep all evidence external;
+the approval utility refuses overwrite. No new workflow or certificate is introduced.
+
+The approved actions are exactly `upload-root-car`, `upload-manifest-car`, and
 `pin-secondary-copy`. The first action includes the bound archive CAR upload;
 the third includes the root, manifest and archive pin requests. Omitting the
 scope preserves existing full-publication targets and signatures without adding
-a parsing default. Neither signature can authorize the other scope.
+a parsing default. Plain human approval is supported only for replication-only;
+legacy signed approvals remain valid and invalid signatures never fall back.
+Neither limited approval can authorize the full scope.
 
 After the three byte-verified immutable uploads and actual provider evidence,
 the ledger stops at `REPLICATION_REQUESTS_RECORDED`, a separate terminal branch
@@ -271,11 +290,12 @@ Ledger validation, transitions and dispatch forbid two-gateway verification,
 successful run history, IPNS mutation, full-success approval consumption and
 `FINALIZED` under that scope. Latest, row hashes and the RAG data selector stay
 unchanged. The nonce remains reserved to the same attempt. A terminal retry
-verifies the original signature locally, including after expiry, then returns
+verifies the original approval evidence locally, including after expiry, then returns
 the recorded evidence with zero repeated remote effects. This is not the
 assignment's completed public-publication proof. Provider retention evidence
 and a separate exact full-publication go/signature are still required for
-promotion; never widen the limited signature to make that happen.
+promotion; never widen the limited approval to make that happen. Official
+coverage-only cryptographic signing remains untouched.
 
 ### Primary CAR readback repair
 
@@ -359,7 +379,8 @@ No target/receipt format, provider endpoint, retry bound, creation guard or
 retention/promotion requirement changed. The failed `e91a76d` checkout and
 accepted-request checkpoints remain intact. A later authorized changed-candidate
 execution must reconcile those same CID/name inventory entries rather than
-repeat pin requests; its matching human signature is still required. This local
+repeat pin requests; its exact recorded human approval is still required, but
+the later replication-only consent route no longer requires signing. This local
 fix did not resume the publisher or promote anything.
 
 The 2026-09-17 signed `b3d92c6` attempt and one unchanged resume both ended

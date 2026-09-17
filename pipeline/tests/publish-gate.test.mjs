@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -20,6 +20,7 @@ import {
   authorizePublicationAttempt,
   beginPublicationAttempt,
   buildPublishAuthorizationPayload,
+  buildHumanPublishApproval,
   consumePublicationAuthorization,
   nextPublicationRecoveryAction,
   publicationAttemptId,
@@ -136,6 +137,221 @@ function replicaTarget() {
     },
   };
 }
+
+function humanApproval(exactTarget = replicaTarget(), overrides = {}) {
+  return buildHumanPublishApproval(exactTarget, {
+    approvedBy: "rarcifa",
+    approvedAt: NOW,
+    expiresAt: LATER,
+    nonce: "plain_fixture_nonce_12345",
+    approvalSource: "owner-conversation",
+    ...overrides,
+  });
+}
+
+describe("recorded human replication approval without signing", () => {
+  it("accepts exact owner approval without a key and records no cryptographic identity", async () => {
+    const exactTarget = replicaTarget();
+    const manifest = humanApproval(exactTarget);
+    expect(
+      verifyPublishAuthorization(manifest, null, exactTarget, { now: NOW }).humanApproval,
+    ).toEqual(manifest);
+    const ledgerPath = await scratchLedger();
+    const attemptId = await prepare(ledgerPath, exactTarget);
+    const authorized = await authorizePublicationAttempt(ledgerPath, attemptId, manifest, null, {
+      now: NOW,
+      at: NOW,
+    });
+    expect(authorized.authorization).toMatchObject({
+      approver: "rarcifa",
+      keyId: null,
+      method: "human-approval",
+    });
+    const before = await readFile(ledgerPath);
+    await authorizePublicationAttempt(ledgerPath, attemptId, manifest, null, { now: NOW });
+    expect(await readFile(ledgerPath)).toEqual(before);
+    const uploaded = (kind) => ({
+      ...exactTarget.primaryCars[kind],
+      action: "created",
+      reportedCid: null,
+    });
+    await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      "ROOT_UPLOAD_RECORDED",
+      {
+        ...uploaded("root"),
+        archive: uploaded("archive"),
+      },
+      { at: NOW },
+    );
+    await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      "MANIFEST_UPLOAD_RECORDED",
+      uploaded("manifest"),
+      { at: NOW },
+    );
+    await advancePublicationAttempt(
+      ledgerPath,
+      attemptId,
+      REPLICATION_TERMINAL_STAGE,
+      replicaEvidence(exactTarget),
+      { at: NOW },
+    );
+    const ledger = await readPublicationLedger(ledgerPath);
+    const terminalBytes = await readFile(ledgerPath);
+    expect(verifyReplicationResume(ledger, attemptId, manifest, null, { now: LATER }).state).toBe(
+      REPLICATION_TERMINAL_STAGE,
+    );
+    expect(ledger.consumedApprovals).toEqual([]);
+    expect(await readFile(ledgerPath)).toEqual(terminalBytes);
+  });
+
+  it("rejects target, transport bytes/digest, destination and consent changes", () => {
+    const target = replicaTarget();
+    const manifest = humanApproval(target);
+    for (const altered of [
+      { ...target, candidateCommit: "9".repeat(40) },
+      { ...target, bucket: "another-bucket" },
+      {
+        ...target,
+        primaryCars: { ...target.primaryCars, root: { ...target.primaryCars.root, bytes: 124 } },
+      },
+      {
+        ...target,
+        primaryCars: {
+          ...target.primaryCars,
+          archive: { ...target.primaryCars.archive, sha256: `sha256:${"9".repeat(64)}` },
+        },
+      },
+      { ...target, ipnsPredecessor: { ...target.ipnsPredecessor, sequence: 8 } },
+    ])
+      expect(() => verifyPublishAuthorization(manifest, null, altered, { now: NOW })).toThrow(
+        /exact target/,
+      );
+    for (const altered of [
+      { ...manifest, approved: false },
+      { ...manifest, approvedBy: "" },
+      { ...manifest, approvalSource: "agent-generated" },
+      { ...manifest, signature: { algorithm: "ed25519", value: "fake" } },
+    ])
+      expect(() => verifyPublishAuthorization(altered, null, target, { now: NOW })).toThrow();
+  });
+
+  it("rejects full or mixed scope, and invalid signed evidence never falls back", () => {
+    const replica = replicaTarget();
+    const full = { ...replica, actions: [...REQUIRED_PUBLISH_ACTIONS] };
+    delete full.executionScope;
+    expect(() => humanApproval(full)).toThrow(/replication-only/);
+    expect(() => humanApproval({ ...replica, actions: [...REQUIRED_PUBLISH_ACTIONS] })).toThrow();
+    const signed = approval(replica, keys());
+    signed.signature.value = Buffer.alloc(64).toString("base64");
+    expect(() =>
+      verifyPublishAuthorization(signed, keys().publicKey, replica, { now: NOW }),
+    ).toThrow();
+    expect(() => verifyPublishAuthorization(signed, null, replica, { now: NOW })).toThrow(
+      /trusted public key/,
+    );
+  });
+
+  it("keeps active windows and shared nonce reservation across signed and plain approvals", async () => {
+    const exactTarget = replicaTarget();
+    const manifest = humanApproval(exactTarget);
+    for (const now of [EXPIRED, LATER])
+      expect(() => verifyPublishAuthorization(manifest, null, exactTarget, { now })).toThrow(
+        /not active|expired/,
+      );
+    const ledgerPath = await scratchLedger();
+    const attemptId = await prepare(ledgerPath, exactTarget);
+    const authorized = await authorizePublicationAttempt(ledgerPath, attemptId, manifest, null, {
+      now: NOW,
+    });
+    expect(() => assertPublicationAuthorizationActive(authorized, LATER)).toThrow(/expired/);
+    const other = { ...exactTarget, candidateCommit: "8".repeat(40) };
+    const otherId = await prepare(ledgerPath, other);
+    const pair = keys();
+    await expect(
+      authorizePublicationAttempt(
+        ledgerPath,
+        otherId,
+        approval(other, pair, { nonce: manifest.nonce }),
+        pair.publicKey,
+        { now: NOW },
+      ),
+    ).rejects.toThrow(/already attached/);
+    await expect(
+      authorizePublicationAttempt(ledgerPath, otherId, humanApproval(other), null, { now: NOW }),
+    ).rejects.toThrow(/already attached/);
+  });
+
+  it("records existing human consent through the CLI without keys and refuses overwrite", async () => {
+    const ledgerPath = await scratchLedger();
+    const requestPath = path.join(path.dirname(ledgerPath), "request.json");
+    const output = path.join(path.dirname(ledgerPath), "approval.json");
+    const target = replicaTarget();
+    await writeFile(
+      requestPath,
+      JSON.stringify({
+        schemaVersion: "elephant.publication-request.v1",
+        attemptId: publicationAttemptId(target),
+        target,
+      }),
+    );
+    const flags = {
+      "record-approval": true,
+      request: requestPath,
+      output,
+      approver: "rarcifa",
+      "approval-source": "owner-conversation",
+      "issued-at": NOW,
+      "expires-at": LATER,
+    };
+    expect(await runApprovalCommand(flags)).toMatchObject({
+      event: "publication_human_approval_recorded",
+      cryptographicallyAuthenticated: false,
+    });
+    const bytes = await readFile(output);
+    expect(JSON.parse(bytes.toString())).not.toHaveProperty("signature");
+    await expect(runApprovalCommand(flags)).rejects.toMatchObject({ code: "EEXIST" });
+    expect(await readFile(output)).toEqual(bytes);
+    await expect(
+      runApprovalCommand({ ...flags, "private-key": "/must-not-read.pem" }),
+    ).rejects.toThrow(/not both/);
+    await writeFile(
+      requestPath,
+      JSON.stringify({
+        schemaVersion: "elephant.publication-request.v1",
+        attemptId: `sha256:${"0".repeat(64)}`,
+        target,
+      }),
+    );
+    await expect(runApprovalCommand(flags)).rejects.toThrow(/attemptId/);
+    expect(await readFile(output)).toEqual(bytes);
+  });
+
+  it("rejects a plain approval nonce already consumed by a legacy full publication", async () => {
+    const ledgerPath = await scratchLedger();
+    const original = target();
+    const pair = keys();
+    const nonce = humanApproval().nonce;
+    const originalId = await prepare(ledgerPath, original);
+    await authorizePublicationAttempt(
+      ledgerPath,
+      originalId,
+      approval(original, pair, { nonce }),
+      pair.publicKey,
+      { now: NOW, at: NOW },
+    );
+    await driveAfterAuthorization(ledgerPath, originalId, original);
+    await consumePublicationAuthorization(ledgerPath, originalId, { at: NOW });
+    const replica = replicaTarget();
+    const id = await prepare(ledgerPath, replica);
+    await expect(
+      authorizePublicationAttempt(ledgerPath, id, humanApproval(replica), null, { now: NOW }),
+    ).rejects.toThrow(/already consumed/);
+  });
+});
 
 function replicaEvidence(exactTarget) {
   return {

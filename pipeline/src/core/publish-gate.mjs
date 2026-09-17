@@ -1,10 +1,10 @@
 /**
  * Exact-target publication authorization and durable attempt ledger.
  *
- * A name and a boolean are not publication authority. A live release requires
- * an Ed25519 signature over the immutable artifact and its exact destination.
- * The private key and signed approval are intentionally kept outside this
- * repository. The ledger records effects after they happen and makes retries
+ * Human consent is recorded against the immutable artifact and exact destination.
+ * Replication-only runs accept an explicit human approval manifest; legacy signed
+ * approvals remain supported. Approval evidence stays outside this repository.
+ * The ledger records effects after they happen and makes retries
  * resume the same attempt rather than starting a second writer.
  *
  * @module core/publish-gate
@@ -26,6 +26,7 @@ import { canonicalJson } from "./coverage-publication.mjs";
 import { assertSecondaryRetention } from "./secondary-pin.mjs";
 
 export const PUBLISH_AUTHORIZATION_SCHEMA_VERSION = "elephant.publish-authorization.v2";
+export const PUBLISH_HUMAN_APPROVAL_SCHEMA_VERSION = "elephant.publish-human-approval.v1";
 export const PUBLICATION_LEDGER_SCHEMA_VERSION = "elephant.publication-attempt-ledger.v1";
 export const PINATA_SECONDARY_PIN_API_BASE = "https://api.pinata.cloud/psa";
 export const PINATA_SECONDARY_PIN_API_ORIGIN = "https://api.pinata.cloud";
@@ -510,6 +511,27 @@ export const publishAuthorizationSchema = z
   })
   .strict();
 
+export const publishHumanApprovalSchema = z
+  .object({
+    schemaVersion: z.literal(PUBLISH_HUMAN_APPROVAL_SCHEMA_VERSION),
+    target: publicationTargetSchema,
+    approved: z.literal(true),
+    approvedBy: z.string().trim().min(1),
+    approvedAt: isoTimestamp,
+    expiresAt: isoTimestamp,
+    nonce: z.string().regex(NONCE_PATTERN),
+    approvalSource: z.literal("owner-conversation"),
+  })
+  .strict()
+  .refine(
+    (approval) => approval.target.executionScope === "replication-only",
+    "plain human approval supports only explicit replication-only targets",
+  )
+  .refine(
+    (approval) => Date.parse(approval.expiresAt) > Date.parse(approval.approvedAt),
+    "expiresAt must be after approvedAt",
+  );
+
 const transitionSchema = z
   .object({
     sequence: z.number().int().positive(),
@@ -537,12 +559,18 @@ const attemptSchema = z
       .object({
         nonce: z.string(),
         approvalDigest: digest,
-        keyId: digest,
+        keyId: digest.nullable(),
+        method: z.literal("human-approval").optional(),
         issuedAt: isoTimestamp,
         expiresAt: isoTimestamp,
         approver: z.string().trim().min(1),
       })
       .strict()
+      .refine(
+        (authorization) =>
+          (authorization.method === "human-approval") === (authorization.keyId === null),
+        "human approval must have no cryptographic key identity",
+      )
       .nullable(),
     transitions: z.array(transitionSchema).min(1),
   })
@@ -749,6 +777,14 @@ export function validatePublicationLedger(value) {
       throw new Error(`Invalid publication ledger: ${attemptId} rolls back an authorized attempt`);
     }
     const reachedAuthorization = activeStages.includes("AUTHORIZED");
+    if (
+      attempt.authorization?.method === "human-approval" &&
+      attempt.target.executionScope !== "replication-only"
+    ) {
+      throw new Error(
+        "Invalid publication ledger: plain approval cannot authorize full publication",
+      );
+    }
     if (reachedAuthorization !== (attempt.authorization !== null)) {
       throw new Error(
         `Invalid publication ledger: ${attemptId} authorization receipt is inconsistent`,
@@ -880,6 +916,16 @@ export function buildPublishAuthorizationPayload(target, approval) {
   });
 }
 
+/** Record actual owner consent; this is not signing or cryptographic authentication. */
+export function buildHumanPublishApproval(target, approval) {
+  return publishHumanApprovalSchema.parse({
+    schemaVersion: PUBLISH_HUMAN_APPROVAL_SCHEMA_VERSION,
+    target: validatePublicationTarget(target),
+    approved: true,
+    ...approval,
+  });
+}
+
 /** @param {import("node:crypto").KeyObject | string | Buffer} key */
 function publicKeyId(key) {
   const publicKey =
@@ -926,7 +972,19 @@ export function verifyPublishAuthorization(
   expectedTarget,
   { now = new Date().toISOString() } = {},
 ) {
-  const validated = publishAuthorizationSchema.parse(authorization);
+  const human = authorization?.schemaVersion === PUBLISH_HUMAN_APPROVAL_SCHEMA_VERSION;
+  const manifest = human ? publishHumanApprovalSchema.parse(authorization) : null;
+  const validated = human
+    ? {
+        payload: buildPublishAuthorizationPayload(manifest.target, {
+          issuedAt: manifest.approvedAt,
+          expiresAt: manifest.expiresAt,
+          nonce: manifest.nonce,
+          approver: manifest.approvedBy,
+        }),
+        humanApproval: manifest,
+      }
+    : publishAuthorizationSchema.parse(authorization);
   const target = validatePublicationTarget(expectedTarget);
   if (canonicalJson(validated.payload.target) !== canonicalJson(target)) {
     throw new Error("publication authorization does not match the exact target");
@@ -939,7 +997,11 @@ export function verifyPublishAuthorization(
   if (nowMs >= Date.parse(validated.payload.expiresAt)) {
     throw new Error("publication authorization has expired");
   }
-  verifyAuthorizationSignature(validated, publicKeyPem);
+  if (!human) {
+    if (!publicKeyPem)
+      throw new Error("A trusted public key is required for a legacy signed approval");
+    verifyAuthorizationSignature(validated, publicKeyPem);
+  }
   return validated;
 }
 
@@ -1186,7 +1248,8 @@ export async function authorizePublicationAttempt(
   const receipt = {
     nonce: verified.payload.nonce,
     approvalDigest,
-    keyId: verified.signature.keyId,
+    keyId: verified.signature?.keyId ?? null,
+    ...(verified.humanApproval ? { method: "human-approval" } : {}),
   };
   const authorizationRecord = {
     ...receipt,
@@ -1276,7 +1339,7 @@ export function verifyConsumedPublicationResume(
     Date.parse(consumed.consumedAt) > Date.parse(now) ||
     attempt.authorization?.nonce !== verified.payload.nonce ||
     attempt.authorization.approvalDigest !== digestJson(verified) ||
-    attempt.authorization.keyId !== verified.signature.keyId
+    attempt.authorization.keyId !== (verified.signature?.keyId ?? null)
   ) {
     throw new Error("Consumed-approval resume does not match the original authorization receipt");
   }
@@ -1314,7 +1377,7 @@ export function verifyReplicationResume(
   if (
     attempt.authorization.nonce !== verified.payload.nonce ||
     attempt.authorization.approvalDigest !== digestJson(verified) ||
-    attempt.authorization.keyId !== verified.signature.keyId
+    attempt.authorization.keyId !== (verified.signature?.keyId ?? null)
   ) {
     throw new Error("Replication resume does not match the original authorization receipt");
   }
@@ -1433,7 +1496,10 @@ export function nextPublicationRecoveryAction(attempt) {
   const actions = {
     PREPARED: "freeze-candidate",
     FROZEN: "build-cars-and-manifest",
-    BUILT: "await-exact-signed-authorization",
+    BUILT:
+      attempt.target.executionScope === "replication-only"
+        ? "await-exact-human-approval"
+        : "await-exact-signed-authorization",
     AUTHORIZED: "upload-root-car",
     ROOT_UPLOAD_RECORDED: "upload-manifest-car",
     MANIFEST_UPLOAD_RECORDED: "pin-independent-secondary-copy",

@@ -126,13 +126,13 @@ const COUNTY = "lake";
 
 /**
  * Credentials are capabilities, not authority. Network publication is
- * reachable only when this invocation supplies both exact signed artifacts
+ * reachable only when this invocation supplies exact human approval evidence
  * and is not explicitly capped as a dry run.
  *
  * @param {{ dryRun: boolean, approvalPath: string | null, approvalPublicKeyPath: string | null }} intent
  */
 export function mayAttemptLivePublication(intent) {
-  return Boolean(!intent.dryRun && intent.approvalPath && intent.approvalPublicKeyPath);
+  return Boolean(!intent.dryRun && intent.approvalPath);
 }
 
 /**
@@ -821,13 +821,13 @@ export async function publishRun({
   if (terminalCandidates.length > 1) throw new Error("Ambiguous terminal publication recovery");
   const terminalCandidate = terminalCandidates[0] ?? null;
   let allowedHistoryAppend = null;
-  if (terminalCandidate && !dryRun && approvalPath && approvalPublicKeyPath) {
+  if (terminalCandidate && !dryRun && approvalPath) {
     if (executionScope === "replication-only") {
       const recorded = verifyReplicationResume(
         startingLedger,
         terminalCandidate.attemptId,
         JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8")),
-        await readFile(approvalPublicKeyPath),
+        approvalPublicKeyPath ? await readFile(approvalPublicKeyPath) : null,
       );
       return replicationResult(recorded);
     }
@@ -835,7 +835,7 @@ export async function publishRun({
       startingLedger,
       terminalCandidate.attemptId,
       JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8")),
-      await readFile(approvalPublicKeyPath),
+      approvalPublicKeyPath ? await readFile(approvalPublicKeyPath) : null,
     );
     allowedHistoryAppend =
       terminalCandidate.transitions.find((transition) => transition.stage === "HISTORY_RECORDED")
@@ -1071,7 +1071,7 @@ export async function publishRun({
       attemptId,
       approvalRequestPath,
       nextAction: nextPublicationRecoveryAction(attempt),
-      reason: dryRun ? "explicit dry-run" : "exact signed authorization not supplied",
+      reason: dryRun ? "explicit dry-run" : "exact human approval not supplied",
     });
     return {
       runId,
@@ -1097,7 +1097,7 @@ export async function publishRun({
     runtimeSecondaryEndpoint(target.secondaryPin.provider, process.env),
   );
   const approval = JSON.parse(await readFile(assertExternalApprovalPath(approvalPath), "utf8"));
-  const publicKey = await readFile(approvalPublicKeyPath);
+  const publicKey = approvalPublicKeyPath ? await readFile(approvalPublicKeyPath) : null;
   const builtLedger = await readPublicationLedger(PUBLICATION_LEDGER_PATH);
   let attempt = ["APPROVAL_CONSUMED", "FINALIZED"].includes(builtLedger.attempts[attemptId].state)
     ? verifyConsumedPublicationResume(builtLedger, attemptId, approval, publicKey)

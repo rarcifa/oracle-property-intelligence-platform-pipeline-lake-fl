@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Human signing utility for one exact Lake publication target.
+ * Record human approval for one exact Lake replication target.
  *
- * Naming an approver on a CLI is not authority. This command only produces an
- * authorization when the caller possesses an external Ed25519 private key,
- * and it refuses to write the key or signed approval inside the repository.
+ * This utility records actual owner consent, not agent-generated consent.
+ * --record-approval requires explicit human approval already supplied by the
+ * owner. No private key or personal signing step is needed for replication.
+ * Optional legacy signing remains available; all evidence stays external.
  *
  * @module scripts/lake/publish-approve
  */
@@ -16,7 +17,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildPublishAuthorizationPayload,
+  buildHumanPublishApproval,
   nextPublicationRecoveryAction,
+  publicationAttemptId,
   readPublicationLedger,
   signPublishAuthorization,
   validatePublicationTarget,
@@ -55,7 +58,10 @@ function assertExternalPath(candidate) {
 
 function usage() {
   return (
-    "usage: publish-approve.mjs --request <publication-request.json> " +
+    "usage: publish-approve.mjs --record-approval --request <publication-request.json> " +
+    "--output <external-approval.json> --approver <identity> " +
+    "--approval-source owner-conversation --expires-at <ISO-8601>\n" +
+    "       legacy signing: publish-approve.mjs --request <publication-request.json> " +
     "--private-key <external-ed25519.pem> --output <external-approval.json> " +
     "--approver <identity> --expires-at <ISO-8601> [--issued-at <ISO-8601>] " +
     "[--nonce <unguessable-value>]\n" +
@@ -72,36 +78,56 @@ export async function runApprovalCommand(flags) {
     if (!attempt) throw new Error(`Unknown publication attempt ${flags["attempt-id"]}`);
     return { ...attempt, nextAction: nextPublicationRecoveryAction(attempt) };
   }
-  const required = ["request", "private-key", "output", "approver", "expires-at"];
+  const recording = flags["record-approval"] === true;
+  const required = ["request", "output", "approver", "expires-at"];
+  if (!recording) required.push("private-key");
+  else required.push("approval-source");
   if (required.some((name) => typeof flags[name] !== "string")) {
     throw new Error(usage().trim());
   }
-  const privateKeyPath = assertExternalPath(flags["private-key"]);
+  if (recording && flags["private-key"] !== undefined)
+    throw new Error("Choose recorded human approval or legacy signing, not both");
   const outputPath = assertExternalPath(flags.output);
   const request = JSON.parse(await readFile(flags.request, "utf8"));
   if (request.schemaVersion !== "elephant.publication-request.v1") {
     throw new Error("publication request has an unsupported schemaVersion");
   }
   const target = validatePublicationTarget(request.target);
-  const payload = buildPublishAuthorizationPayload(target, {
+  if (request.attemptId !== publicationAttemptId(target))
+    throw new Error("publication request attemptId does not match its exact target");
+  const details = {
     issuedAt:
       typeof flags["issued-at"] === "string" ? flags["issued-at"] : new Date().toISOString(),
     expiresAt: flags["expires-at"],
     nonce: typeof flags.nonce === "string" ? flags.nonce : randomBytes(24).toString("base64url"),
     approver: flags.approver,
-  });
-  const authorization = signPublishAuthorization(payload, await readFile(privateKeyPath));
+  };
+  const authorization = recording
+    ? buildHumanPublishApproval(target, {
+        approvedBy: details.approver,
+        approvedAt: details.issuedAt,
+        expiresAt: details.expiresAt,
+        nonce: details.nonce,
+        approvalSource: flags["approval-source"],
+      })
+    : signPublishAuthorization(
+        buildPublishAuthorizationPayload(target, details),
+        await readFile(assertExternalPath(flags["private-key"])),
+      );
   await writeFile(outputPath, `${JSON.stringify(authorization, null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
+    flag: "wx",
   });
   return {
-    event: "publication_authorization_signed",
+    event: recording ? "publication_human_approval_recorded" : "publication_authorization_signed",
     attemptId: request.attemptId,
     target,
-    expiresAt: payload.expiresAt,
-    nonce: payload.nonce,
-    keyId: authorization.signature.keyId,
+    expiresAt: details.expiresAt,
+    nonce: details.nonce,
+    ...(recording
+      ? { approvalSource: authorization.approvalSource, cryptographicallyAuthenticated: false }
+      : { keyId: authorization.signature.keyId }),
     outputPath,
   };
 }
