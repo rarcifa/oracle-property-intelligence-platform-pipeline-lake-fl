@@ -21,12 +21,16 @@ describe("partial preview recorder, not a full acceptance demo", () => {
     expect(script).toContain("Hosted preview became blank");
     expect(script).toContain("Preview runtime failures");
     expect(script).toContain('page.on("pageerror"');
-    expect(script).toContain('message.type() === "error"');
+    expect(script).toContain('message.type() !== "error"');
     expect(script).toContain("Agent returned citations but no actual answer text");
     expect(script).toContain('name: "Roof at least 15 years old"');
     expect(script).toContain("radiusResult.provenance?.rootCid !== rootCid");
     expect(script).toContain('name: "Run query"');
     expect(script).toContain("Public manifest bytes differ from the chosen immutable packet");
+    expect(script).toContain("externalGatewayErrors.push(observed)");
+    expect(script).toContain("observed.location.url === `${gateway}/favicon.ico`");
+    expect(script).toContain("else failures.push(observed)");
+    expect(script).toContain('complete ? "preview-demo.json" : "failed-preview-demo.json"');
   });
   it("does not change the strict full-demo release contract", async () => {
     const script = await readFile("packages/ui/scripts/record-demo.mjs", "utf8");

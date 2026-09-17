@@ -141,8 +141,10 @@ the application suite passed **534 tests across 57 files**, seven typecheck task
 four build tasks, repository/county lint and formatting checks on September 17.
 The final deployment identity, recording
 digest and review head are recorded with the final submission artifacts.
-The final recorder rejects console/page errors, blank roots, missing actual age
+The final recorder rejects app console/page errors, blank roots, missing actual age
 filters, empty model answers, wrong run/root coverage and mismatched public manifest bytes.
+The gateway pages' favicon-only 404/401 warnings are retained separately in the report;
+all other gateway console errors still fail the recording.
 It still reports `fullAssignmentDemoPassed: false`.
 
 Slowking must judge the actual pushed PR head and reachable runtime/video, not

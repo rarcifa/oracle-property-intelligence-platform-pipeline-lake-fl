@@ -59,10 +59,33 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 const failures = [];
+const externalGatewayErrors = [];
 const responses = [];
-page.on("pageerror", () => failures.push("uncaught browser error"));
+page.on("pageerror", (error) =>
+  failures.push({ kind: "uncaught browser error", message: error.message, page: page.url() }),
+);
 page.on("console", (message) => {
-  if (message.type() === "error") failures.push("browser console error");
+  if (message.type() !== "error") return;
+  const observed = {
+    kind: "browser console error",
+    message: message.text(),
+    location: message.location(),
+    page: page.url(),
+  };
+  // These two observed third-party favicon failures are not app failures or
+  // failed CID retrievals. Preserve them explicitly; every other error fails.
+  if (
+    ["https://ipfs.filebase.io", "https://gateway.pinata.cloud"].some(
+      (gateway) =>
+        observed.location.url === `${gateway}/favicon.ico` &&
+        observed.page.startsWith(`${gateway}/ipfs/`) &&
+        /^Failed to load resource: the server responded with a status of (404|401)/.test(
+          observed.message,
+        ),
+    )
+  )
+    externalGatewayErrors.push(observed);
+  else failures.push(observed);
 });
 page.on("response", (response) => {
   if (response.url().startsWith(base + "/api/"))
@@ -180,7 +203,7 @@ try {
   const video = page.video();
   await context.close();
   await browser.close();
-  if (complete && video) {
+  if (video) {
     const videoPath = await video.path();
     const bytes = await readFile(videoPath);
     const finalVideoPath = path.join(out, "walkthrough.webm");
@@ -193,11 +216,13 @@ try {
       runId,
       rootCid,
       scope: "source_only_partial_preview",
+      recordingCompleted: complete,
       fullAssignmentDemoPassed: false,
       independentRetentionVerified: false,
       publicationPromoted: false,
       countyComplete: false,
       browserErrors: failures,
+      externalGatewayErrors,
       apiResponses: responses,
       beats,
       agentAnswers,
@@ -214,7 +239,10 @@ try {
         "Independent retention and later incremental IPFS promotion remain held.",
       ],
     };
-    await writeFile(path.join(out, "preview-demo.json"), JSON.stringify(report, null, 2) + "\n");
+    await writeFile(
+      path.join(out, complete ? "preview-demo.json" : "failed-preview-demo.json"),
+      JSON.stringify(report, null, 2) + "\n",
+    );
     console.log(JSON.stringify(report));
   }
 }
