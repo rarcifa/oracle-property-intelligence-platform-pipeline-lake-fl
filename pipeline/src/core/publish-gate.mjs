@@ -2,7 +2,7 @@
  * Exact-target publication authorization and durable attempt ledger.
  *
  * Human consent is recorded against the immutable artifact and exact destination.
- * Replication-only runs accept an explicit human approval manifest; legacy signed
+ * Normal publication and replication accept an explicit human approval manifest; legacy signed
  * approvals remain supported. Approval evidence stays outside this repository.
  * The ledger records effects after they happen and makes retries
  * resume the same attempt rather than starting a second writer.
@@ -524,10 +524,6 @@ export const publishHumanApprovalSchema = z
   })
   .strict()
   .refine(
-    (approval) => approval.target.executionScope === "replication-only",
-    "plain human approval supports only explicit replication-only targets",
-  )
-  .refine(
     (approval) => Date.parse(approval.expiresAt) > Date.parse(approval.approvedAt),
     "expiresAt must be after approvedAt",
   );
@@ -777,14 +773,6 @@ export function validatePublicationLedger(value) {
       throw new Error(`Invalid publication ledger: ${attemptId} rolls back an authorized attempt`);
     }
     const reachedAuthorization = activeStages.includes("AUTHORIZED");
-    if (
-      attempt.authorization?.method === "human-approval" &&
-      attempt.target.executionScope !== "replication-only"
-    ) {
-      throw new Error(
-        "Invalid publication ledger: plain approval cannot authorize full publication",
-      );
-    }
     if (reachedAuthorization !== (attempt.authorization !== null)) {
       throw new Error(
         `Invalid publication ledger: ${attemptId} authorization receipt is inconsistent`,
@@ -1339,6 +1327,7 @@ export function verifyConsumedPublicationResume(
     Date.parse(consumed.consumedAt) > Date.parse(now) ||
     attempt.authorization?.nonce !== verified.payload.nonce ||
     attempt.authorization.approvalDigest !== digestJson(verified) ||
+    attempt.authorization.method !== (verified.humanApproval ? "human-approval" : undefined) ||
     attempt.authorization.keyId !== (verified.signature?.keyId ?? null)
   ) {
     throw new Error("Consumed-approval resume does not match the original authorization receipt");
@@ -1377,6 +1366,7 @@ export function verifyReplicationResume(
   if (
     attempt.authorization.nonce !== verified.payload.nonce ||
     attempt.authorization.approvalDigest !== digestJson(verified) ||
+    attempt.authorization.method !== (verified.humanApproval ? "human-approval" : undefined) ||
     attempt.authorization.keyId !== (verified.signature?.keyId ?? null)
   ) {
     throw new Error("Replication resume does not match the original authorization receipt");
@@ -1409,7 +1399,7 @@ export function assertPublicationAuthorizationActive(attempt, now = new Date().t
 
 /**
  * Consume authority only after exact IPNS readback. A crash before this point
- * resumes the same attempt; afterward the signed document cannot start another.
+ * resumes the same attempt; afterward the approval document cannot start another.
  *
  * @param {string} ledgerPath @param {string} attemptId @param {{ at?: string }} [options]
  */
@@ -1496,10 +1486,7 @@ export function nextPublicationRecoveryAction(attempt) {
   const actions = {
     PREPARED: "freeze-candidate",
     FROZEN: "build-cars-and-manifest",
-    BUILT:
-      attempt.target.executionScope === "replication-only"
-        ? "await-exact-human-approval"
-        : "await-exact-signed-authorization",
+    BUILT: "await-exact-human-approval",
     AUTHORIZED: "upload-root-car",
     ROOT_UPLOAD_RECORDED: "upload-manifest-car",
     MANIFEST_UPLOAD_RECORDED: "pin-independent-secondary-copy",

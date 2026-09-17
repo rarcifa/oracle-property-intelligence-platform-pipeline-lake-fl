@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Record human approval for one exact Lake replication target.
+ * Record human approval for one exact Lake publication or replication target.
  *
  * This utility records actual owner consent, not agent-generated consent.
  * --record-approval requires explicit human approval already supplied by the
- * owner. No private key or personal signing step is needed for replication.
+ * owner. No private key or personal signing step is needed for normal publication.
  * Optional legacy signing remains available; all evidence stays external.
  *
  * @module scripts/lake/publish-approve
@@ -50,7 +50,7 @@ function assertExternalPath(candidate) {
   const resolved = path.resolve(candidate);
   if (resolved === REPO_ROOT || resolved.startsWith(`${REPO_ROOT}${path.sep}`)) {
     throw new Error(
-      "private signing material and signed approvals must stay outside the repository",
+      "approval evidence and private signing material must stay outside the repository",
     );
   }
   return resolved;

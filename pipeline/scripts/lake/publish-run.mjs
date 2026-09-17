@@ -22,7 +22,7 @@
  *   node scripts/lake/publish-run.mjs --run-id <id> [--mode full|incremental]
  *     --candidate-commit <git-sha> --provenance-digest <sha256> [--dry-run]
  *     --expected-ipns-predecessor-cid <cid> --expected-ipns-predecessor-sequence <integer>
- *     [--approve <signed-authorization.json>]
+ *     [--approve <owner-approval.json>]
  *     [--approval-public-key <ed25519-public-key.pem>] [--env-file <path>]
  *
  * @module scripts/lake/publish-run
@@ -307,7 +307,7 @@ export function assertPublicationPredecessor(
 function assertExternalApprovalPath(candidate) {
   const resolved = path.resolve(candidate);
   if (resolved === REPO_ROOT || resolved.startsWith(`${REPO_ROOT}${path.sep}`)) {
-    throw new Error("signed publication approval must stay outside the repository");
+    throw new Error("publication approval evidence must stay outside the repository");
   }
   return resolved;
 }
@@ -739,8 +739,8 @@ export async function uploadImmutableCar({
  * @param {string} options.candidateWorkflowRunId - GitHub run that built the frozen candidate, or `local`.
  * @param {string} options.candidateCommit - Exact Git commit that built the frozen candidate.
  * @param {boolean} options.dryRun - When true, compute and write locally but upload nothing.
- * @param {string | null} options.approvalPath - External signed exact-target approval.
- * @param {string | null} options.approvalPublicKeyPath - Trusted Ed25519 public key.
+ * @param {string | null} options.approvalPath - External recorded human or legacy signed exact-target approval.
+ * @param {string | null} options.approvalPublicKeyPath - Trusted Ed25519 public key for legacy signed approval only.
  * @param {string | null} options.envFile - Optional external Filebase environment file.
  * @param {string} options.provenanceDigest - Frozen runtime/config/schema provenance.
  * @param {string} options.expectedIpnsPredecessorCid - Reviewed current IPNS CID.
@@ -1064,7 +1064,7 @@ export async function publishRun({
   );
 
   // An explicit dry-run is an unbreakable ceiling. Credentials by themselves
-  // have no authority, and a missing signature only prepares a review target.
+  // have no authority, and a missing human approval only prepares a review target.
   if (!mayAttemptLivePublication({ dryRun, approvalPath, approvalPublicKeyPath })) {
     const attempt = (await readPublicationLedger(PUBLICATION_LEDGER_PATH)).attempts[attemptId];
     log("publication_prepared_local", {

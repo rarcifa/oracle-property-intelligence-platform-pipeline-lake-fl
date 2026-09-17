@@ -1,6 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
@@ -34,10 +36,65 @@ describe("scheduled workflow publication policy", () => {
     expect(publishStep).toContain(
       '--expected-ipns-predecessor-sequence "$IPNS_PREDECESSOR_SEQUENCE"',
     );
-    expect(publishStep).toContain('--approve "$APPROVAL"');
-    expect(publishStep).toContain('--approval-public-key "$PUBLIC_KEY"');
+    expect(publishStep).toContain('AUTHORIZATION_ARGS=(--approve "$APPROVAL")');
+    expect(publishStep).toContain('AUTHORIZATION_ARGS+=(--approval-public-key "$PUBLIC_KEY")');
+    expect(publishStep).toContain('"${AUTHORIZATION_ARGS[@]}"');
     expect(workflow).not.toContain("secrets.SECONDARY_PIN_SERVICE_URL");
   });
+
+  it.each(["plain", "legacy-with-key", "legacy-without-key"])(
+    "executes the workflow approval setup for %s without changing publication guards",
+    async (kind) => {
+      const workflow = await readFile(workflowPath, "utf8");
+      const start = workflow.indexOf('          test -n "$PUBLISH_AUTHORIZATION_JSON_B64"');
+      const end = workflow.indexOf(
+        '          REQUEST="data/artifacts/publish/lake/manifests/',
+        start,
+      );
+      const setup = workflow.slice(start, end);
+      const scratch = await mkdtemp(path.join(tmpdir(), "workflow-human-approval-"));
+      try {
+        const approval =
+          kind === "plain"
+            ? { schemaVersion: "elephant.publish-human-approval.v1" }
+            : { payload: {}, signature: {} };
+        const result = spawnSync(
+          "bash",
+          ["-c", `set -euo pipefail\n${setup}\nprintf '%s\\n' "\${AUTHORIZATION_ARGS[@]}"`],
+          {
+            encoding: "utf8",
+            env: {
+              PATH: process.env.PATH,
+              RUNNER_TEMP: scratch,
+              PUBLISH_AUTHORIZATION_JSON_B64: Buffer.from(JSON.stringify(approval)).toString(
+                "base64",
+              ),
+              PUBLISH_APPROVAL_PUBLIC_KEY_B64:
+                kind === "legacy-with-key"
+                  ? Buffer.from("offline-fixture-key; not a real trust anchor").toString("base64")
+                  : "",
+            },
+          },
+        );
+        if (kind === "legacy-without-key") {
+          expect(result.status).not.toBe(0);
+          expect(result.stdout).toContain(
+            "legacy signed approval requires its trusted Ed25519 public key",
+          );
+        } else {
+          expect(result.status).toBe(0);
+          expect(result.stdout).toContain("--approve\n");
+          expect(await readFile(path.join(scratch, "lake-publication-approval.json"), "utf8")).toBe(
+            JSON.stringify(approval),
+          );
+          if (kind === "plain") expect(result.stdout).not.toContain("--approval-public-key");
+          else expect(result.stdout).toContain("--approval-public-key\n");
+        }
+      } finally {
+        await rm(scratch, { recursive: true });
+      }
+    },
+  );
 
   it("does not expose publication credentials at job scope", async () => {
     const workflow = await readFile(workflowPath, "utf8");

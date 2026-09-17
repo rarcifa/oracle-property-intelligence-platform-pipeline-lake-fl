@@ -172,15 +172,43 @@ does not execute uploads or pins and does not satisfy public publication by
 itself; see [the scoped handoff](docs/runbook.md#replication-only-human-approval).
 
 On 2026-09-17 the owner removed our added per-commit personal-signing requirement
-for this replication-only continuation. The publisher now accepts an external,
+for normal publication and replication. The publisher now accepts an external,
 exact-target human approval manifest recording the owner's actual consent; no
 private key or repeated signing command is required. This follows the official
 kit's human-approval manifest pattern, not cryptographic authentication. Target
 bytes/digests/CIDs, destinations, active window, nonce reservation, current
 runtime provenance and predecessor checks remain enforced. Legacy signed
 approvals and the existing signed recovery evidence remain valid; official
-coverage-only signing and full-publication gates are unchanged. Plain approval
-cannot authorize full publication. This change alone is not completed publication.
+coverage-only signing remains separate. Retention, gateway, history and IPNS
+verification gates are unchanged. Full publication needs approval for its own
+full target/actions; replication consent never transfers to promotion. This
+change alone is not completed publication, and no full-approved manifest or
+full live invocation was created by the removal.
+
+The owner-approved, no-signing continuation from `66bfce0` completed on
+2026-09-17 at 13:41:32 UTC with exit 0. All three existing Filebase CAR objects
+were reconciled with complete DAG readback, and all three Lighthouse inventory/
+metadata registrations matched the derived DAG block sizes, including the archive.
+The ledger reached `REPLICATION_REQUESTS_RECORDED`, revision 22; the prior accepted
+pin requests were preserved rather than repeated, and no new primary uploads
+were needed. The same immutable manifest/CIDs remain unchanged. IPNS stayed at
+sequence 13; successful history, latest/row hashes and RAG selection were not
+promoted. Retention and every-artifact two-independent-gateway proof remain open;
+this is successful limited replication reconciliation, not `FINALIZED` publication.
+See [the recorded reconciliation](artifacts/replication-reconciliation-20260917T134256Z.json).
+
+Standalone public GET verification completed at 13:52:41 UTC: 39 of the 40
+listed artifacts, plus the manifest itself, matched size/SHA-256 through both
+Filebase and Pinata public gateways. This includes directory raw blocks,
+all query/business/permit tables, sample extracts and every data shard.
+Only `snapshot.car` failed the initial checks: both gateways exceeded the
+60-second deadline; IPFS Lens returned a fetch failure. The longer archive-only
+check then matched the manifest's 341,012,658 bytes and SHA-256 on Filebase,
+but Pinata returned HTTP 429. The complete two-gateway proof remains open for
+that one object. These results do not advance the publisher or prove
+Lighthouse-local retention. See
+[the every-CID results](artifacts/public-gateway-readback-20260917T135241Z.json)
+and [the archive-only result](artifacts/public-gateway-archive-readback-20260917T135314Z.json).
 
 The signed `b3d92c6` live attempt on 2026-09-17 stopped twice on a TLS abort
 before complete primary CAR readback. The root object's size/CID metadata was
@@ -220,10 +248,10 @@ root was reconciled, and the archive and manifest were created and verified.
 Lighthouse acknowledged all three same-CID requests with HTTP 200; root and
 manifest registrations reconciled. The archive validation stopped the invocation
 with exit 1: Lighthouse's reported 341,078,214 bytes exactly equal the frozen
-archive DAG's block bytes, not the snapshot file's 341,012,575 bytes. Read-only
+archive DAG's block bytes, not the manifested snapshot file's 341,012,658 bytes. Read-only
 postflight found all three expected CIDs/names in its account inventory, with public metadata.
 This identifies a size-semantics mismatch, not proof of verified retention or
-independent byte retrieval. The ledger remains `MANIFEST_UPLOAD_RECORDED`,
+independent byte retrieval. That failed attempt's ledger remains `MANIFEST_UPLOAD_RECORDED`,
 revision 21; no retry, successful-history append, IPNS/latest/row-hash/RAG
 selection change, push or PR edit occurred. See the
 [sanitized execution evidence](artifacts/filebase-replication-20260917T122123Z.json)
@@ -269,7 +297,7 @@ and explicitly trusted its public key; local acceptance completed at
 `2026-09-16T19:09:34.942Z` without modifying IPNS or history. Its accepted receipt
 digest is `sha256:e8da5893fdf57eb72a82682acfdb5c2ad6bbc74261d39d5b45996ff9d4d97e71`.
 Only that verified receipt can anchor a later separately authorized publication;
-the new publication signature also binds the recovery receipt's digest.
+the new publication approval also binds the recovery receipt's digest.
 Live name/root/sequence drift is rejected before upload, pin creation or
 promotion. Recovery itself has no pin, IPNS write, deploy or harvest action.
 See the [operator recovery procedure](docs/runbook.md#external-predecessor-recovery).

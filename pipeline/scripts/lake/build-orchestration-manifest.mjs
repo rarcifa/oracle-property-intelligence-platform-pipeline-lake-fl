@@ -178,7 +178,7 @@ const manifest = {
     checkpoint: {
       stage: attempt.state,
       sequence: attempt.transitions.length,
-      nextAction: "configure-independent-pin-and-await-exact-signed-authorization",
+      nextAction: "configure-independent-pin-and-await-exact-human-approval",
     },
   },
   blockers,

@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "lake.replication-reconciliation.v1",
+  "observedAt": "2026-09-17T13:42:56.210Z",
+  "runId": "20260916T181000Z",
+  "candidateCommit": "66bfce0dd65d5074867f0c53201e1fb95d24b1c4",
+  "provenanceDigest": "sha256:a3399ffee93a7f020f18f02281375f10cfab17ab1c73c53b192677fb551ba043",
+  "attemptId": "sha256:8475a4beb67ad214941eb968da70de0e7362d93d1571034c33ec4ccf81917412",
+  "executionScope": "replication-only",
+  "liveExitCode": 0,
+  "approval": {
+    "method": "recorded-human-consent",
+    "cryptographicallyAuthenticated": false,
+    "approvedAt": "2026-09-17T13:40:02.318Z",
+    "expiresAt": "2026-09-17T18:00:00.000Z"
+  },
+  "ledger": {
+    "state": "REPLICATION_REQUESTS_RECORDED",
+    "revision": 22,
+    "completedAt": "2026-09-17T13:41:32.731Z",
+    "consumedApprovals": 0
+  },
+  "manifest": {
+    "repositoryPath": "artifacts/manifest-20260916T181000Z.json",
+    "bytes": 11417,
+    "sha256": "sha256:99953cb093f5e6eb5e9e1af4dfaa09c9a01357b6607db516f8a76ce90dbb0e7b",
+    "unchanged": true
+  },
+  "objects": {
+    "root": {
+      "cid": "bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u",
+      "primary": {
+        "key": "runs/20260916T181000Z/root.car",
+        "action": "reconciled-existing",
+        "transportBytes": 341012575,
+        "transportSha256": "sha256:3beb8e63f3515986ed125839d0a668779024fd284b15721243f9f82883d4b303",
+        "transportVerified": false,
+        "importedDag": {
+          "representation": "imported-dag",
+          "roots": ["bafybeigakr7d6nywkbanzmh4r7cpv7kz7qs5vxvwlxcxuovk2lobrj442u"],
+          "verifiedBlocks": 1352,
+          "exportedBytes": 341012575,
+          "exportedSha256": "sha256:5e802de7eaccfcf2b6effb679a9b0478748b59309c82b0977b102434110ea282"
+        }
+      },
+      "secondary": {
+        "provider": "lighthouse",
+        "serviceHost": "api.lighthouse.storage",
+        "name": "oracle-open-data-lake/20260916T181000Z/root",
+        "status": "registration-reconciled",
+        "reportedDagBlockBytes": 340959826,
+        "retentionVerified": false,
+        "priorAcceptedRequestPreserved": true
+      }
+    },
+    "manifest": {
+      "cid": "bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm",
+      "primary": {
+        "key": "runs/20260916T181000Z/manifest.car",
+        "action": "reconciled-existing",
+        "transportBytes": 11514,
+        "transportSha256": "sha256:0173a6fa1b48b3bcc7e4801fd834f341f2a9c0849131f77c2dcff8de73f674eb",
+        "transportVerified": false,
+        "importedDag": {
+          "representation": "imported-dag",
+          "roots": ["bafkreiezsu6lbe7v43vv5hq26tp2ucojuajvpntapw2rn6fhntuq3oyopm"],
+          "verifiedBlocks": 1,
+          "exportedBytes": 11514,
+          "exportedSha256": "sha256:0173a6fa1b48b3bcc7e4801fd834f341f2a9c0849131f77c2dcff8de73f674eb"
+        }
+      },
+      "secondary": {
+        "provider": "lighthouse",
+        "serviceHost": "api.lighthouse.storage",
+        "name": "oracle-open-data-lake/20260916T181000Z/manifest",
+        "status": "registration-reconciled",
+        "reportedDagBlockBytes": 11417,
+        "retentionVerified": false,
+        "priorAcceptedRequestPreserved": true
+      }
+    },
+    "archive": {
+      "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+      "primary": {
+        "key": "runs/20260916T181000Z/archive.car",
+        "action": "reconciled-existing",
+        "transportBytes": 341129354,
+        "transportSha256": "sha256:635efc6fe36012e9c1089c8fd174af61d9c1e95c10ca15122da5c543358ee673",
+        "transportVerified": false,
+        "importedDag": {
+          "representation": "imported-dag",
+          "roots": ["bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq"],
+          "verifiedBlocks": 1310,
+          "exportedBytes": 341129354,
+          "exportedSha256": "sha256:40abb7118c5116ba560bdba1e2a29f24e43b953e44f1f2cecf57ba9c28265386"
+        }
+      },
+      "secondary": {
+        "provider": "lighthouse",
+        "serviceHost": "api.lighthouse.storage",
+        "name": "oracle-open-data-lake/20260916T181000Z/archive",
+        "status": "registration-reconciled",
+        "reportedDagBlockBytes": 341078214,
+        "retentionVerified": false,
+        "priorAcceptedRequestPreserved": true
+      }
+    }
+  },
+  "operationCounts": {
+    "newPrimaryUploads": 0,
+    "newSecondaryPinRequests": 0,
+    "basis": "reconciled-existing primary receipts and unchanged historical accepted-request checkpoints; not a separate network trace"
+  },
+  "ipnsPointer": {
+    "networkKey": "k51qzi5uqu5dgd1ekyyuhwggov571fjxof2p5ef4ke7enlq60k03r47fosb2un",
+    "cid": "bafybeieiswif55i4ofj7saucyzhak23uim4shipijfdkvwhfcjrp2zaq7y",
+    "sequence": 13
+  },
+  "holds": {
+    "retentionVerified": false,
+    "promotionHeld": true,
+    "allArtifactTwoGatewayVerification": false,
+    "countyCompletenessEstablished": false
+  },
+  "protectedState": {
+    "hashes": {
+      "artifacts/run-history.json": "07ac5ead6c71124adc3c901892fca05741c1ece932e7d3746f8d0973c9bc9172",
+      "artifacts/latest.json": "f49ef74fc077e16e931858ad6ba1f425faca4ef43cc4d8ef82fd0ebe2702706f",
+      "artifacts/row-hashes.json": "5c70e3fe01b0f63855d9de986c87c897478400d46fb5b354df2b34a829cff7f5",
+      "packages/rag/corpus-source.json": "e96b54e68cffd9e4eb893dd08cc0a40c6ef94dbd07abac1111f7b0f9bd296591"
+    },
+    "mainAndDetachedTrackedFilesUnchanged": true,
+    "originalFailedAttemptLedgerUnchanged": true
+  },
+  "limitations": [
+    "Provider registration is not provider-local retention proof.",
+    "Primary imported-DAG readback does not prove original CAR framing is independently retrievable.",
+    "Every listed artifact still requires two independent public gateway byte/size/digest checks.",
+    "No successful history, IPNS/latest/row-hash/RAG selector promotion or FINALIZED.",
+    "Later source refresh remains outside this immutable snapshot."
+  ],
+  "noPush": true,
+  "noPrEdit": true,
+  "noCloudOrBillingChange": true
+}

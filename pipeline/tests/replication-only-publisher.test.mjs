@@ -284,11 +284,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function signedFixture(scope = "replication-only", human = false) {
-  const prepared = await publishRun(OPTIONS);
+async function signedFixture(scope = "replication-only", human = false, prepareFull = false) {
+  const options = { ...OPTIONS, executionScope: prepareFull ? undefined : OPTIONS.executionScope };
+  const prepared = await publishRun(options);
   const request = JSON.parse(fixture.files.get(prepared.approvalRequestPath).toString());
   const target = globalThis.structuredClone(request.target);
-  if (scope !== "replication-only") {
+  if (scope !== "replication-only" && !prepareFull) {
     delete target.executionScope;
     target.actions.push("verify-all-artifacts-two-gateways", "append-history", "repoint-ipns");
   }
@@ -319,7 +320,7 @@ async function signedFixture(scope = "replication-only", human = false) {
   return {
     prepared,
     live: {
-      ...OPTIONS,
+      ...options,
       dryRun: false,
       approvalPath: APPROVAL,
       approvalPublicKeyPath: human ? null : PUBLIC_KEY,
@@ -328,6 +329,40 @@ async function signedFixture(scope = "replication-only", human = false) {
 }
 
 describe("real publisher replication-only control flow (offline)", () => {
+  it("accepts exact full human consent without a key but still blocks Lighthouse registration-only promotion", async () => {
+    const { live, prepared } = await signedFixture("full", true, true);
+    fixture.files.delete(PUBLIC_KEY);
+    const before = protectedPaths.map((name) => Buffer.from(fixture.files.get(name)));
+    await expect(publishRun(live)).rejects.toThrow(/retention/);
+    const ledger = await readPublicationLedger(LEDGER);
+    expect(ledger.attempts[prepared.attemptId]).toMatchObject({
+      state: "MANIFEST_UPLOAD_RECORDED",
+      authorization: { method: "human-approval", keyId: null },
+    });
+    expect(ledger.consumedApprovals).toEqual([]);
+    expect(fixture.registrations).toHaveLength(3);
+    expect(fixture.puts).toHaveBeenCalledTimes(3);
+    expect(fixture.gateway).not.toHaveBeenCalled();
+    protectedPaths.forEach((name, index) => expect(fixture.files.get(name)).toEqual(before[index]));
+  });
+
+  it.each(["replication-only", "full"])(
+    "rejects %s plain consent transferred to the opposite scope before loading credentials",
+    async (scope) => {
+      const { live } = await signedFixture(scope, true, scope === "full");
+      await expect(
+        publishRun({
+          ...live,
+          executionScope: scope === "full" ? "replication-only" : undefined,
+          envFile: "/must-not-read.env",
+        }),
+      ).rejects.toThrow(/exact target/);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(fixture.puts).not.toHaveBeenCalled();
+      expect(fixture.env).not.toHaveBeenCalled();
+    },
+  );
+
   it("executes recorded human approval without any publication key, then resumes locally with zero remote effects", async () => {
     const { live } = await signedFixture("replication-only", true);
     fixture.files.delete(PUBLIC_KEY);

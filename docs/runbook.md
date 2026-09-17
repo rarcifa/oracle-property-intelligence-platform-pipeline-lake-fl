@@ -178,33 +178,37 @@ closure. It records a `PREPARED_LOCAL`/`BUILT` attempt and writes
 ## The publish gate
 
 The old committed boolean gate is retired and preserved only as historical evidence in
-`artifacts/publish-gate.json`. It is not authority. The operator signs the exact request
-outside this repository with an Ed25519 key; the signature binds county, run, root CID,
+`artifacts/publish-gate.json`. It is not authority. Record the owner's actual consent
+in an exact-target human approval manifest outside this repository; it binds county, run, root CID,
 manifest and provenance digests, publication mode, candidate workflow identity, bucket,
 existing IPNS name/key, exact predecessor CID/sequence, the strict Pinata destination and pin
 names, the delivered archive CAR's exact upload bytes/CID/key and secondary pin name,
-actions, expiry and nonce. The private key and signed approval must remain outside the
-repository.
+actions, expiry and nonce. No personal key or cryptographic signing step is required
+for normal full/incremental publication or replication. Approval evidence stays
+outside the repository. Optional legacy Ed25519 approvals remain supported and
+must verify against the trusted public key; invalid signed evidence never falls
+back to plain approval. The separate official coverage-only workflow still requires
+its signature. Credentials or an agent-written manifest do not create owner consent.
 
 A live invocation requires `SECONDARY_PIN_SERVICE_URL` to be exactly
 `https://api.pinata.cloud/psa` (no trailing slash or normalized variant) and a scoped Pinata JWT
 in `SECONDARY_PIN_SERVICE_TOKEN`. The exact provider, origin, path and deterministic root and
-manifest/archive pin names are signed. Runtime configuration is compared before the token, capability
+manifest/archive pin names are approval-bound. Runtime configuration is compared before the token, capability
 file or network client is touched. All three Pinata pins must reach `pinned` before gateway verification.
 
 Credential creation does not prove plan capability. On 2026-09-16 the configured
 scoped JWT's read-only PSA list request returned HTTP 403, `PAID_FEATURE_ONLY`,
 with "You must be on a paid plan to pin by CID". The approved Free setup cannot
 execute this route. Do not upgrade, change providers, omit artifacts, or request
-a signature for a non-executable target. Obtain a separately approved independent
+approval for a non-executable target. Obtain a separately approved independent
 provider route first; then prepare its exact publication request. Uploading a CAR
 as ordinary file bytes does not independently pin or serve the CIDs inside it.
 
 ### Explicit Lighthouse preparation
 
 Select `--secondary-provider lighthouse` on both preparation and any separately
-approved live invocation. The default remains Pinata; a Pinata signature cannot
-authorize Lighthouse. The signed Lighthouse destination is strictly
+approved live invocation. The default remains Pinata; a Pinata approval cannot
+authorize Lighthouse. The approval-bound Lighthouse destination is strictly
 `https://api.lighthouse.storage`, origin `https://api.lighthouse.storage`, path
 `/api/lighthouse/pin`; its request uses `{cid, fileName}`, not PSA `{cid, name}`.
 Use only the owner-provided `IPFS_API_KEY` in an ignored/private env file. The
@@ -235,7 +239,7 @@ Registration is **not** verified independent retention. This branch does not
 invent PSA `pinned` status, and both publisher and ledger reject promotion on
 registration-only evidence. Live requests are recorded below. Real
 provider retention acknowledgement remains to be established under a separate
-exact-target signature; the plan-specific budget exception is recorded above.
+exact-target full-publication approval; the plan-specific budget exception is recorded above.
 Two gateways alone can
 still retrieve blocks from Filebase. Do not demand sealed Filecoin deals or add
 a new certification workflow merely to replace the provider's acknowledgement.
@@ -272,9 +276,10 @@ The approved actions are exactly `upload-root-car`, `upload-manifest-car`, and
 `pin-secondary-copy`. The first action includes the bound archive CAR upload;
 the third includes the root, manifest and archive pin requests. Omitting the
 scope preserves existing full-publication targets and signatures without adding
-a parsing default. Plain human approval is supported only for replication-only;
-legacy signed approvals remain valid and invalid signatures never fall back.
-Neither limited approval can authorize the full scope.
+a parsing default. Plain human approval also supports a separately approved normal
+full target; legacy signed approvals remain valid and invalid signatures never fall
+back. Neither limited approval can authorize the full scope. Repairing the approval
+format does not create that separate full consent or change any promotion gate.
 
 After the three byte-verified immutable uploads and actual provider evidence,
 the ledger stops at `REPLICATION_REQUESTS_RECORDED`, a separate terminal branch
@@ -293,9 +298,46 @@ unchanged. The nonce remains reserved to the same attempt. A terminal retry
 verifies the original approval evidence locally, including after expiry, then returns
 the recorded evidence with zero repeated remote effects. This is not the
 assignment's completed public-publication proof. Provider retention evidence
-and a separate exact full-publication go/signature are still required for
+and a separate exact full-publication go are still required for
 promotion; never widen the limited approval to make that happen. Official
 coverage-only cryptographic signing remains untouched.
+
+The no-signing continuation from commit `66bfce0` finished at
+2026-09-17T13:41:32.731Z with exit 0, terminal `REPLICATION_REQUESTS_RECORDED`,
+revision 22, consumed approvals 0. Root/manifest/archive primary objects all
+reconciled existing imports, with 1,352 / 1 / 1,310 verified DAG blocks; all three
+Lighthouse registrations matched their derived sizes, including archive
+341,078,214 DAG bytes. Actual historical accepted-request evidence was retained,
+not replaced by new POSTs. Operation counts derive from those receipts and
+preserved checkpoints, not a separate network trace. Read-only postflight at
+13:42:56 UTC confirmed sequence 13 and unchanged protected state. No signing,
+new uploads/pin requests, billing/cloud changes, push or PR edit occurred.
+See [sanitized reconciliation evidence](../artifacts/replication-reconciliation-20260917T134256Z.json).
+Independent retrieval/retention proof and full-publication promotion remain open.
+
+Read-only gateway verification (not publisher resume) completed at
+2026-09-17T13:52:41.705Z. The existing verifier checked all 40 manifest entries
+with concurrency 2 and a 1.5-second inter-gateway delay, then the manifest CID.
+39 entries plus the manifest matched exact sizes/digests through independently
+operated Filebase and Pinata public gateways; directories used raw addressed
+block bytes, not gateway HTML. Only the 341,012,658-byte `snapshot.car` exceeded
+both 60-second request deadlines; IPFS Lens also failed to fetch it. Those are
+actual observed retrieval failures, not evidence of access denial or successful
+readback. Preserve [the complete first-pass results](../artifacts/public-gateway-readback-20260917T135241Z.json).
+The [archive-only check](../artifacts/public-gateway-archive-readback-20260917T135314Z.json)
+uses the same verifier with a bounded 150-second deadline per gateway. It finished
+at 13:53:14 UTC: Filebase returned the exact 341,012,658 manifested bytes and
+`sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f`;
+Pinata returned HTTP 429. No uploads/pins, capability reads or ledger/pointer
+promotion occurred, and no further blind retry is implied. Gateway success alone
+cannot establish provider-independent retention.
+
+Size-accounting correction: the frozen manifest's multi-root `snapshot.car` is
+341,012,658 bytes, distinct from the root-only CAR transport's 341,012,575 bytes.
+The earlier manually summarized `expectedLogicalFileBytes` field in the
+12:21:23 diagnostic confused these representations; that historical diagnostic
+is preserved, not substituted as current manifest integrity evidence. The new
+readback is bound to the actual immutable manifest's size and digest above.
 
 ### Primary CAR readback repair
 
@@ -330,8 +372,8 @@ claimed as downloaded original-encoding proof. The separately addressed
 archive-file artifact remains the original snapshot CAR bytes and must pass
 its manifest digest/size checks during final publication. Provider export is
 not two-independent-gateway proof or independent retention. Omitted mode
-retains the legacy GET contract below. Never run changed code under the old
-signature; use the existing human approval helper for the new exact request.
+retains the legacy GET contract below. Never transfer an old approval to a changed
+target; use the existing human approval helper to record actual consent for that request.
 Arceus routed this through Oracle, engineering/use-oracle and the existing
 county-open-data-publish neighbour, without a new workflow or vendor.
 
@@ -347,7 +389,7 @@ comparison failed; the process exited 1 and the ledger remains
 Read-only postflight at 12:21:23 UTC found all three exact CIDs and names in the
 account inventory, with public metadata. Lighthouse reports 341,078,214 bytes
 for the archive, exactly the sum of its 1,310 frozen DAG blocks; the separately
-manifested snapshot file is 341,012,575 bytes. The provider's DAG-block size and
+manifested snapshot file is 341,012,658 bytes. The provider's DAG-block size and
 the artifact's logical file size must remain distinct. Do not change the
 manifest, fabricate a passed byte gate, hand-advance the ledger or rerun the
 failed attempt blindly. Any adapter correction must preserve exact artifact
@@ -374,7 +416,7 @@ fail before any network call. Legacy `expectedBytes` behavior remains strict.
 The [recorded-data offline replay](../artifacts/lighthouse-dag-size-replay-20260917T123212Z.json)
 matches root 340,959,826, raw manifest 11,417 and archive DAG 341,078,214 bytes.
 It made zero network calls, uploads, pins or ledger writes. The separately
-manifested archive file remains 341,012,575 bytes with its original digest.
+manifested archive file remains 341,012,658 bytes with its original digest.
 No target/receipt format, provider endpoint, retry bound, creation guard or
 retention/promotion requirement changed. The failed `e91a76d` checkout and
 accepted-request checkpoints remain intact. A later authorized changed-candidate
@@ -418,7 +460,7 @@ and zero PUTs on unknown errors. Publisher fixtures additionally expire approval
 or change the predecessor during asynchronous GET and prove no creation or pins.
 These checks do not prove that the live transport will succeed. Preserve the
 blocked signed checkout, approval, ledger and actual remote object. A tested
-changed candidate needs its own provenance and matching human go/signature;
+changed candidate needs its own provenance and matching human go;
 do not run it under the `b3d92c6` signature. Dataset capture is not restarted.
 
 A bounded read-only review of the official Pin CID, List Files and File Info
@@ -453,11 +495,11 @@ REQUEST="$PWD/data/artifacts/publish/lake/manifests/$RUNID.publication-request.j
 COMMIT="$(jq -er '.target.candidateCommit' "$REQUEST")"
 PROVENANCE_DIGEST="$(jq -er '.target.provenanceDigest' "$REQUEST")"
 export SECONDARY_PIN_SERVICE_URL=https://api.pinata.cloud/psa
-node scripts/lake/publish-approve.mjs \
+node scripts/lake/publish-approve.mjs --record-approval \
   --request "$REQUEST" \
-  --private-key /secure/operator/lake-publication-ed25519.pem \
   --output /secure/operator/"$RUNID".approval.json \
   --approver "<operator identity>" \
+  --approval-source owner-conversation \
   --expires-at "<short-lived ISO-8601 timestamp>"
 
 node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
@@ -469,8 +511,7 @@ node --max-old-space-size=6144 scripts/lake/publish-run.mjs \
   "$(jq -er '.target.ipnsPredecessor.cid' "$REQUEST")" \
   --expected-ipns-predecessor-sequence \
   "$(jq -er '.target.ipnsPredecessor.sequence' "$REQUEST")" \
-  --approve /secure/operator/"$RUNID".approval.json \
-  --approval-public-key /secure/operator/lake-publication-ed25519.pub.pem
+  --approve /secure/operator/"$RUNID".approval.json
 
 node scripts/lake/publish-approve.mjs --status
 ```
@@ -556,7 +597,7 @@ A later publisher invocation may use
 packet and binds the receipt digest into the new exact publication target.
 The recovered immutable query table, not the old mutable row-hash cache, is the
 delta baseline. The recovery approval must still be active before new remote effects, and the later
-publication still requires its own exact-byte signature, secondary-provider
+publication still requires its own exact-byte human approval, secondary-provider
 credentials and all existing verification gates. Nothing in recovery waives
 dataset eligibility, source limitations, cumulative budgets or the final demo.
 Only the identical already-consumed attempt may finish local receipt reconciliation

@@ -315,16 +315,23 @@ jobs:
               echo "::error::manual publication requires Filebase and independent secondary-pin credentials"
               exit 1
             }
-          test -n "$PUBLISH_AUTHORIZATION_JSON_B64" && \
-            test -n "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" || {
-              echo "::error::manual publication requires an external exact-target authorization and trusted Ed25519 public key"
+          test -n "$PUBLISH_AUTHORIZATION_JSON_B64" || {
+              echo "::error::manual publication requires external exact-target human approval"
               exit 1
             }
           umask 077
           APPROVAL="$RUNNER_TEMP/lake-publication-approval.json"
           PUBLIC_KEY="$RUNNER_TEMP/lake-publication-approval.pub.pem"
           printf '%s' "$PUBLISH_AUTHORIZATION_JSON_B64" | base64 --decode > "$APPROVAL"
-          printf '%s' "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" | base64 --decode > "$PUBLIC_KEY"
+          AUTHORIZATION_ARGS=(--approve "$APPROVAL")
+          if ! jq -e '.schemaVersion == "elephant.publish-human-approval.v1"' "$APPROVAL" >/dev/null; then
+            test -n "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" || {
+              echo "::error::legacy signed approval requires its trusted Ed25519 public key"
+              exit 1
+            }
+            printf '%s' "$PUBLISH_APPROVAL_PUBLIC_KEY_B64" | base64 --decode > "$PUBLIC_KEY"
+            AUTHORIZATION_ARGS+=(--approval-public-key "$PUBLIC_KEY")
+          fi
           REQUEST="data/artifacts/publish/lake/manifests/${{ steps.target.outputs.run_id }}.publication-request.json"
           IPNS_PREDECESSOR_CID="$(jq -er '.target.ipnsPredecessor.cid' "$REQUEST")"
           IPNS_PREDECESSOR_SEQUENCE="$(jq -er '.target.ipnsPredecessor.sequence' "$REQUEST")"
@@ -336,8 +343,7 @@ jobs:
             --provenance-digest "${{ steps.candidate.outputs.provenance_digest }}" \
             --expected-ipns-predecessor-cid "$IPNS_PREDECESSOR_CID" \
             --expected-ipns-predecessor-sequence "$IPNS_PREDECESSOR_SEQUENCE" \
-            --approve "$APPROVAL" \
-            --approval-public-key "$PUBLIC_KEY"
+            "${AUTHORIZATION_ARGS[@]}"
 
       # The retrieval corpus has a reviewed, digest-bound source receipt in the
       # repository. A workflow run must not silently rewrite that receipt or

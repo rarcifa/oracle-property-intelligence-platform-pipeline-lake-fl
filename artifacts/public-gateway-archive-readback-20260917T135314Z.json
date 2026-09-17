@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "lake.public-gateway-archive-readback.v1",
+  "startedAt": "2026-09-17T13:53:06.346Z",
+  "finishedAt": "2026-09-17T13:53:14.192Z",
+  "runId": "20260916T181000Z",
+  "scope": "standalone public GET of unchanged snapshot.car; no publisher or promotion",
+  "priorEvidence": "artifacts/public-gateway-readback-20260917T135241Z.json",
+  "reason": "60-second deadlines prevented complete readback of 341 MB file; bounded 150-second per-gateway check",
+  "expected": {
+    "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+    "name": "snapshot.car",
+    "size": 341012658,
+    "codec": "file",
+    "sha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f"
+  },
+  "perRequestTimeoutMs": 150000,
+  "report": {
+    "cid": "bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq",
+    "verified": false,
+    "matchedGateways": ["https://ipfs.filebase.io"],
+    "minimumIndependentGateways": 2,
+    "results": [
+      {
+        "gateway": "https://ipfs.filebase.io",
+        "ok": true,
+        "status": 200,
+        "bytes": 341012658,
+        "sha256": "sha256:b09b1186e3111258300e0fef1ed5b721f99234e7b81df155454009b4bf4c659f",
+        "error": null,
+        "responseUrl": "https://ipfs.filebase.io/ipfs/bafybeicasgbg4y75477jq73lm7rsiw4a6gcbz4yjxdy6dicv5aj2q5oriq"
+      },
+      {
+        "gateway": "https://gateway.pinata.cloud",
+        "ok": false,
+        "status": 429,
+        "bytes": null,
+        "sha256": null,
+        "error": "HTTP 429"
+      }
+    ]
+  },
+  "retentionVerified": false
+}
