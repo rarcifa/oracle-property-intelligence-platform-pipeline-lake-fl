@@ -1,0 +1,3 @@
+Synthetic asset for clean-runner CDK observability configuration tests only.
+This is not a Lambda runtime, selected dataset, deployment bundle or release.
+Production deployment must assemble and validate the actual infra/bundle bytes.

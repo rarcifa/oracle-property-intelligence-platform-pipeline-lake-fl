@@ -7,13 +7,13 @@ addresses every clause while preserving the assignment brief verbatim.
 ## Evaluate the actual release
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
-  Consumer repairs are pushed at `508d308c0175a9b159bcc5d0d8d893ff1c934557`;
+  Consumer repairs are pushed at `96a3749b11ad847615745080004ada6bb0d36007`;
   final evidence and current-head CI remain pending.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
   [Repaired live readback](../artifacts/hosted-runtime-readback-20260917.json) was observed
-  at `2026-09-17T18:23:38.962Z`. App source is
-  `508d308c0175a9b159bcc5d0d8d893ff1c934557`; the CDK code asset is
-  `9379fd0a56bf95e2576430e6f9e90cd82c5e99c58e11f0fcedafc27f2b8ac52b`.
+  at `2026-09-17T18:57:44.083Z`. App source is
+  `2cf3ab8284d694094b22a8b1824d6acc535ef334`; the CDK code asset is
+  `e10a265860900a495d0e2792c9aef7376d9161b268ce22f4e72957d649ba5248`.
   The [16:02 receipt](../artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
   is preserved separately and is not proof of the repaired app.
 - Finalized dataset baseline: `20260916T181000Z`,
@@ -26,8 +26,17 @@ addresses every clause while preserving the assignment brief verbatim.
   [its promotion receipt](../packages/rag/promotion-receipt.json) now bind that finalized run/root.
 - [Earlier partial video](demo-preview-final-20260917/walkthrough.webm) and
   [its immutable report](demo-preview-final-20260917/preview-demo.json), recorded
-  16:04–16:07 UTC, are historical evidence. Replacement video and hosted independent
-  canonical-row replay remain pending.
+  16:04–16:07 UTC, are historical evidence.
+- [Latest hosted take, failed paint check](demo-score-repair-failed-paint-20260917/walkthrough.webm)
+  and [its immutable report](demo-score-repair-failed-paint-20260917/failed-preview-demo.json),
+  recorded 18:57–18:59 UTC against the actual deployed source above. All 25 canonical
+  agent rows and all five fields of 50 historical permit rows independently replayed;
+  the ordinary follow-up returned HTTP 200 with a safe source-only refusal. Both
+  public manifest fetches matched 11,417 bytes and the exact digest. The take failed
+  the paint monitor on an actual 40 ms black frame, with no console/API error.
+  Video bytes: 6,758,060; SHA-256:
+  `8900d95c57894d4654aff1a318400d570c768510ca653477f6c1f50250ebf9da`.
+  A completed replacement take remains pending; the underlying paint cause is unproven.
 
 Publication, selected dataset, deployment and recording are separate identities.
 The baseline is now published normally; that does not retroactively make the
@@ -185,11 +194,13 @@ retention/all-object verification and normal publisher completion.
 3. **Countywide completeness is not established.** Full assessed coverage does
    not prove complete jurisdictional/predecessor permit history. Conditional
    BBB/contact enrichment is unavailable; source limits are visible.
-4. **Updated supported NL/runtime proof is pending.** The canonical aged-roof/radius
-   route is implemented and locally tested: strictly over 15 uses minimum 16,
+4. **Supported NL/runtime proof exists; complete recording remains pending.**
+   The canonical aged-roof/radius route is deployed and independently replayed:
+   strictly over 15 uses minimum 16,
    actual selected-data centre and query rows supply every ID/address/coordinate/proxy
    field. Arbitrary model aliases/prose are not accepted as canonical records.
-   Final hosted exact-prompt replay and replacement video are not yet recorded.
+   The latest exact-prompt take verified all 25 rows but failed the paint check;
+   this is not a passed recording or proof that intermittent blackouts are eliminated.
 5. **Incremental public completion is pending**, although actual changed records,
    primary imports and partial public-byte proof exist. Baseline independent
    retention is now established and must not be described as still unproved.
@@ -233,14 +244,32 @@ as `rarcifa <ricardo.arcifa@cronoslabs.org>`, without co-authorship/session trai
 
 ## Verification boundary and final fields to fill
 
-The CI-equivalent local unit run reports **656/656 passing, no skips**, with
+The CI-equivalent local unit run reports **677/677 passing, no skips**, with
 the actual public selected snapshot and separately identified historical
 regression fixture. All **125 responsive-browser tests** and **14 isolated
-recorder checks** passed, covering paint monitoring and historical-row rendering.
-Local lint, typecheck and build passed.
+recorder checks** passed in the earlier run. The final recorder repair passes
+**20/20**, retaining every black-detection test and adding first-row viewport
+framing and actual failing-PNG preservation; 125 responsive checks also passed
+again. These are diagnostic/framing improvements, not a verified blackout-cause fix.
+Local lint, typecheck and build passed. A full actual DuckDB 1.5.5 CLI pipeline
+run passed **1,135 tests plus four transforms**, without skips. The official CLI
+download digest was verified; the local Homebrew 1.3.2 was not represented as 1.5.5.
+Actual [CI for pushed head 96a3749](https://github.com/rarcifa/oracle-property-intelligence-platform-pipeline-lake-fl/actions/runs/35262312129)
+passed all 670 app, 125 responsive and 14 recorder checks but failed two of 1,135
+pipeline assertions because the clean runner lacked the ignored deployment bundle.
+The bounded test-only correction stages an explicit synthetic asset with real CDK
+while preserving stack-path, subscriber/IAM/alarm and incomplete-pin assertions;
+it does not prove deployment bytes or change production code. New exact-head CI
+is required after that repair, not a substitution of the local pass. The current
+normal CLI index rebuild records **312 chunks / 141 documents / 50 source inputs**,
+snapshot `sha256:22d310a2986086523ce6e05cd82bf13df0d3097826fb2c71a14fa36072730595`.
+It recognizes retained acquisition separately from catalog certification and
+visibly names both coverage and catalog authority. The unchanged benchmark still
+has all 24 positives hit in the top three and all five negative controls abstain;
+no ranking weights, thresholds or expected labels were edited.
 Historical 554-app/1,094-pipeline/four-transform reports remain historical.
-None of these local results establishes current-head CI, the replacement
-deployment/video or a final new Slowking score. Those evidence links remain
+None of these local results establishes a current-head CI pass, completed
+replacement video or final new Slowking score. Those evidence links remain
 pending; assignment speed is not inferred.
 
 Before presenting the repaired delivery as final, add only actual evidence:

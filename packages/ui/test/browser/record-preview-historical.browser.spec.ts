@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { assertHistoricalRowsDisplayed } from "../../scripts/record-preview-historical.mjs";
+import {
+  assertHistoricalRowsDisplayed,
+  frameHistoricalTableStart,
+} from "../../scripts/record-preview-historical.mjs";
 
 // Synthetic rendering regression only. These are not real permits or release evidence.
 const ROW = {
@@ -66,3 +69,44 @@ test("rejects missing rendered rows and hidden table content", async ({ page }) 
     "Displayed historical permit cells differ",
   );
 });
+
+for (const viewport of [
+  { width: 320, height: 900 },
+  { width: 375, height: 900 },
+  { width: 768, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1536, height: 900 },
+]) {
+  test(`frames the table header and first verified sample at ${viewport.width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.addStyleTag({
+      content:
+        "body{margin:0}.app-header{position:sticky;top:0;height:80px;background:white;z-index:2} td{height:100px} table{border-collapse:collapse;width:100%}",
+    });
+    await page.evaluate(() => {
+      document.body.insertAdjacentHTML(
+        "afterbegin",
+        '<header class="app-header">Synthetic recorder framing fixture</header><div style="height:1200px"></div>',
+      );
+      const table = document.querySelector("table")!;
+      table.insertAdjacentHTML(
+        "afterbegin",
+        "<thead><tr><th>Permit / jurisdiction</th><th>Status / source date</th><th>Type</th><th>Work</th><th>Contractor / BBB</th></tr></thead>",
+      );
+      const row = table.querySelector("tbody tr")!;
+      for (let index = 1; index < 50; index++) row.parentElement!.append(row.cloneNode(true));
+    });
+    // The previous giant-table locator centers mid-table, hiding the first sample.
+    await page.locator("main table").scrollIntoViewIfNeeded();
+    await expect(page.locator("main table tbody tr").first()).not.toBeInViewport();
+    await expect(frameHistoricalTableStart(page, ROW, 1000)).resolves.toEqual({
+      firstPermitNumber: ROW.permit_number,
+      tableHeaderInViewport: true,
+      firstRowInViewport: true,
+    });
+    await expect(page.locator("main table thead")).toBeInViewport();
+    await expect(page.locator("main table tbody tr").first()).toBeInViewport();
+  });
+}

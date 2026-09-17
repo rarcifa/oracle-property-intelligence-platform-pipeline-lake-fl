@@ -7,6 +7,34 @@ export interface PaintFailure {
   observedAt: string;
 }
 
+export interface PaintDiagnostic {
+  png: Uint8Array;
+  pngSha256: string;
+  sample: { pixels: number; brightPixels: number; darkPixels: number };
+  captureStartedAt: string;
+  captureFinishedAt: string;
+  contextRecordedAt: string;
+  context: {
+    url: string;
+    scrollX: number;
+    scrollY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    root: PaintElementContext | null;
+    header: PaintElementContext | null;
+  } | null;
+  contextError: string | null;
+}
+
+interface PaintElementContext {
+  rect: { x: number; y: number; width: number; height: number };
+  opacity: string;
+  display: string;
+  visibility: string;
+  filter: string;
+  textCharacters: number;
+}
+
 export function assertPaintSample(sample: {
   pixels: number;
   brightPixels: number;
@@ -16,7 +44,7 @@ export function assertPaintSample(sample: {
 export function startPaintMonitor(
   page: Page,
   base: string,
-  onFailure: (failure: PaintFailure) => void,
+  onFailure: (failure: PaintFailure, diagnostic?: PaintDiagnostic) => void | Promise<void>,
   intervalMs?: number,
 ): Promise<{
   snapshot(): {

@@ -22,6 +22,11 @@ import {
   TENURE_CAVEAT,
 } from "@oracle-lake/shared";
 import { entityChunk } from "./entity.js";
+import {
+  selectedDescriptionMetadata,
+  selectedPermitBoundary,
+  type SelectedDescription,
+} from "./selected-description.js";
 import type { CorpusChunk, Provenance } from "../types.js";
 
 interface ColumnNote {
@@ -151,9 +156,9 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   contractor_name: {
     means:
-      "Contractor of record for the parcel's permits, as published by the permitting jurisdiction. Where a parcel has several permits it is the contractor on the most recently dated one, not the only contractor who has ever worked there.",
+      "Literal source-listed name associated with captured permits. A parcel aggregation preserves one selected source name, not a complete contractor history or proof of current contractor, legal-company identity, verified license or effective qualification.",
     nullWhen:
-      "Populated for parcels in Clermont and null on the rest of the county. Clermont is one of Lake County's fifteen permitting jurisdictions and the only one whose permit portal publishes a contractor of record: its eTRAKiT detail pages render the contact grid to plain HTTP and are harvested. Never read a contractor count as countywide coverage. Where the column is null, enrichment_status says which null it is. contractor_gated_403 means no source covering that parcel publishes a contractor at all - the CD Plus layer carries no contractor field, every lakecountyfl.gov permit detail page sits behind a Cloudflare managed challenge answering HTTP 403 to every egress tested, and thirteen of the other fourteen municipalities are blocked, unavailable or manual-only - so the null means the source refuses the request and never that no contractor worked on the property. contractor_absent_on_permit means Clermont did publish this parcel's permits and none of them named anybody, an owner-builder permit for example, which is an established absence. Neither null may be inferred from an owner name. For unincorporated Lake County the route to the rest is a Chapter 119 records request to the Lake County Office of Building Services.",
+      "Source-listed names are available only within the retained Clermont capture, one of Lake County's fifteen permitting jurisdictions. The CD Plus layer exposes no contractor field; its detail route is gated with HTTP 403. A missing captured name means unknown/not established, never that no contractor worked on the property. Legacy enrichment_status tokens contractor_absent_on_permit and contractor_gated_403 describe capture/enrichment history, not confirmed absence, owner-builder status or verified identity. Neither a null nor an owner name establishes contractor absence. For unincorporated Lake County the route to additional source names is a Chapter 119 records request to the Lake County Office of Building Services.",
   },
   bbb_rating: {
     means: "Better Business Bureau rating for the contractor.",
@@ -178,7 +183,7 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
   },
   enrichment_status: {
     means:
-      "Semicolon-separated tokens recording what happened during enrichment for this row: permits_loaded, no_permits_in_source, contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403, bbb_gated_403. This is the column that carries the reason a null column is null, so the UI renders an explanation instead of a blank cell. The three contractor tokens are mutually exclusive and are the only way to tell a contractor that was never obtainable from one the source established was absent.",
+      "Semicolon-separated legacy diagnostic tokens describing capture/enrichment history, including permits_loaded, no_permits_in_source, contractor_from_clermont_etrakit, contractor_absent_on_permit, contractor_gated_403 and bbb_gated_403. Tokens are not proof of contractor absence, current permit status or verified licensing. A missing captured name remains unknown; only explicit, accepted source evidence could establish absence.",
   },
   source_systems: {
     means:
@@ -187,15 +192,53 @@ const NOTES: Readonly<Record<string, ColumnNote>> = Object.freeze({
 });
 
 /** Build one document per selected-run column. */
-export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
+export function buildColumnDocs(
+  provenance: Provenance,
+  selected: SelectedDescription,
+): CorpusChunk[] {
   return QUERY_TABLE_COLUMNS.map((column) => {
-    const note = NOTES[column.name] ?? {};
+    let note = NOTES[column.name] ?? {};
+    if (column.name === "contractor_name" && selected.contractorNameRows === null)
+      note = {
+        means: NOTES.contractor_name!.means,
+        nullWhen:
+          "The selected coverage receipt does not establish captured-name availability. Missing names remain unknown/not established, never proof that no contractor worked on the property; catalog access/certification and legacy tokens do not prove absence.",
+      };
+    const heldPermitColumns = new Set([
+      "roofing_permit_count",
+      "open_permit_count",
+      "open_roofing_permit_count",
+      "longest_open_permit_days",
+      "longest_open_roofing_permit_days",
+      "roof_last_permit_date",
+    ]);
+    if (selected.sourceObservationsOnly && heldPermitColumns.has(column.name))
+      note = {
+        means:
+          "This permit-backed conclusion is not accepted in the selected source-only snapshot.",
+        nullWhen:
+          "Null means unknown/not established, never zero, false, or proof of absence. Historical status/date text must not be promoted into this conclusion.",
+      };
+    if (
+      selected.sourceObservationsOnly &&
+      ["roof_age_years", "roof_age_basis"].includes(column.name)
+    )
+      note = {
+        means:
+          "Valid actual building year is the only accepted LOW-confidence roof-age proxy in this selected snapshot. Building age is not measured roof age; historical issue/status text does not prove primary-roof completion. Read roof_age_years together with roof_age_basis.",
+        nullWhen:
+          "Null when no valid building-year proxy is available; incomplete permit history does not prove a roof was never replaced.",
+      };
     const alwaysNull = ALWAYS_NULL_COLUMNS[column.name];
     // A column published for part of the county belongs in neither of the two
     // sentences below that speak about the whole table. It gets its own, which
     // states the boundary, so a retrieved document can never answer "why is
     // this empty" with "it is empty everywhere" about a column that is not.
-    const partial = PARTIALLY_POPULATED_COLUMNS[column.name];
+    const partial =
+      column.name === "contractor_name" &&
+      !(selected.contractorNameRows !== null && selected.contractorNameRows > 0)
+        ? undefined
+        : PARTIALLY_POPULATED_COLUMNS[column.name];
     const nullable = column.optional
       ? (note.nullWhen ??
         alwaysNull ??
@@ -215,6 +258,11 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
         `When it is null or empty: ${nullable}`,
         alwaysNull ? `This column is empty on every row of the table. Reason: ${alwaysNull}` : null,
         partial ? `This column is populated for part of the county only: ${partial}` : null,
+        ["contractor_name", "enrichment_status", "roof_age_years", "roof_age_basis"].includes(
+          column.name,
+        ) || heldPermitColumns.has(column.name)
+          ? selectedPermitBoundary(selected)
+          : null,
       ],
       aliases: [column.name, column.name.replace(/_/g, " "), column.label],
       metadata: {
@@ -224,6 +272,7 @@ export function buildColumnDocs(provenance: Provenance): CorpusChunk[] {
         sourceSystem: column.source,
         alwaysNull: String(alwaysNull !== undefined),
         partiallyPopulated: String(partial !== undefined),
+        ...selectedDescriptionMetadata(selected),
       },
       provenance,
     });

@@ -1,9 +1,11 @@
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
+import type * as LambdaAssets from "aws-cdk-lib/aws-lambda";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   LAKE_RUNTIME_ACCOUNT,
@@ -14,6 +16,15 @@ import {
 const SECRET_ARN =
   "arn:aws:secretsmanager:us-east-2:122610508924:secret:oracle-lake/pagerduty-ABC123";
 const saved = { ...process.env };
+// The self-contained pipeline and hosted infra may resolve separate CDK copies.
+// Instrument the exact copy used by the production stack, not the pipeline's.
+const { Code } = createRequire(new URL("../../infra/lake-runtime-stack.ts", import.meta.url))(
+  "aws-cdk-lib/aws-lambda",
+) as typeof LambdaAssets;
+const deploymentBundlePath = fileURLToPath(new URL("../../infra/bundle", import.meta.url));
+const syntheticAssetPath = fileURLToPath(
+  new URL("./fixtures/runtime-code-asset", import.meta.url),
+);
 
 function configuredTemplate(): Template {
   process.env.ORACLE_ALERT_ENVIRONMENT = "production";
@@ -38,9 +49,20 @@ beforeEach(() => {
   delete process.env.ORACLE_DATA_RUN_ID;
   delete process.env.ORACLE_DATA_ROOT_CID;
   delete process.env.ORACLE_PARQUET_URL;
+  // These are real CDK configuration tests, not deployment-artifact tests.
+  // The ignored Linux deployment bundle must not be an accidental prerequisite.
+  // Redirect only its exact asset path, retaining CDK asset staging and all
+  // real NodejsFunction subscriber bundling/template assertions.
+  const fromAsset = Code.fromAsset.bind(Code);
+  vi.spyOn(Code, "fromAsset").mockImplementation((assetPath, options) => {
+    if (assetPath !== deploymentBundlePath) return fromAsset(assetPath, options);
+    expect(assetPath).toBe(deploymentBundlePath);
+    return fromAsset(syntheticAssetPath, options);
+  });
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const key of Object.keys(process.env)) {
     if (!(key in saved)) delete process.env[key];
   }
@@ -105,6 +127,7 @@ describe("hosted runtime observability", () => {
 
   it("uses a secret-backed Lambda subscriber to trigger and resolve alarm incidents", () => {
     const template = configuredTemplate();
+    expect(Code.fromAsset).toHaveBeenCalledWith(deploymentBundlePath);
     const rendered = JSON.stringify(template.toJSON());
     expect(rendered).not.toContain("ORACLE_PAGERDUTY_CLOUDWATCH_URL");
     expect(rendered).not.toContain("ORACLE_PAGERDUTY_SECRET_NAME");
@@ -155,6 +178,7 @@ describe("hosted runtime observability", () => {
 
   it("uses the CloudWatch alarm identity for the direct dataset-unavailable page", () => {
     const rendered = JSON.stringify(configuredTemplate().toJSON());
+    expect(Code.fromAsset).toHaveBeenCalledWith(deploymentBundlePath);
     const runtimeSource = readFileSync(
       fileURLToPath(new URL("../../packages/server/src/lambda.ts", import.meta.url)),
       "utf8",

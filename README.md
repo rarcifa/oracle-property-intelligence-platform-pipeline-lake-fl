@@ -22,20 +22,23 @@ Lighthouse archive retention and complete gateway verification remain pending.
 It is **not** a second finalized publication or a promoted latest/history/IPNS run.
 
 The baseline documentation RAG selector is now **published** and bound to that
-finalized root. The repaired consumer is deployed from commit
-`508d308c0175a9b159bcc5d0d8d893ff1c934557`; the 18:23 UTC live readback
-confirms its selected run, counts, finalized publication and ten MCP tools.
-Supported agent-query replay, replacement video, current-head CI and a new
-Slowking score are still pending. Earlier recordings remain dated evidence,
-not proof of later changes. County completeness and a passed full-assignment
-demo are not claimed.
+finalized root. The [actual hosted readback](artifacts/hosted-runtime-readback-20260917.json)
+records the deployed app-source identity, selected run, counts, finalized
+publication and ten MCP tools; [delivery handoff](docs/submission-handoff-20260917.md)
+separates that identity from the PR head. The latest hosted take independently
+replayed all 25 displayed canonical agent rows, a normal safe-refusal follow-up
+and 50 historical permit rows. It failed the strict paint check on one actual
+40 ms black frame. Replacement-take outcome, exact-head CI and fresh Slowking
+review are separately recorded in the delivery handoff. Earlier recordings remain dated evidence, not
+proof of later changes. County completeness and a passed full-assignment demo
+are not claimed.
 
 ### Where to evaluate
 
 - [Existing designated PR #2](https://github.com/prismteam-ai/oracle-property-intelligence-platform-pipeline-lake-fl/pull/2).
   Local edits are not proof that its remote head already contains them.
 - [Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/).
-  The [18:23 UTC readback](artifacts/hosted-runtime-readback-20260917.json)
+  The [current readback](artifacts/hosted-runtime-readback-20260917.json)
   establishes the repaired deployment. The [16:02 UTC receipt](artifacts/hosted-runtime-readback-20260917-before-score-repair.json)
   is preserved separately as historical evidence.
 - [Baseline manifest](artifacts/manifest-20260916T181000Z.json),
@@ -47,6 +50,9 @@ demo are not claimed.
 - [Earlier partial walkthrough](docs/demo-preview-final-20260917/walkthrough.webm)
   and [its immutable report](docs/demo-preview-final-20260917/preview-demo.json).
   Despite the historical directory name, this is not the pending replacement take.
+- [Latest hosted take, failed paint check](docs/demo-score-repair-failed-paint-20260917/walkthrough.webm)
+  and [its immutable report](docs/demo-score-repair-failed-paint-20260917/failed-preview-demo.json).
+  Its canonical-row and historical-table replay succeeded; the recording did not.
 
 ### Evidence boundaries
 
@@ -157,11 +163,11 @@ new account or upgrade was performed.
 
 The [baseline RAG promotion receipt](packages/rag/promotion-receipt.json) and
 [validated selector](packages/rag/corpus-source.json) now bind published baseline
-artifacts, with 320 indexed chunks at promotion. Documentation retrieval remains
-distinct from canonical property-row evidence. The later index rebuild contains
-311 chunks over 141 documents and 49 source inputs. The deployed consumer and
-18:23 live readback bind this finalized baseline; final live NL replay/recording
-must independently verify the same run/root.
+artifacts. Documentation retrieval remains distinct from canonical property-row
+evidence. [Index build metadata](packages/rag/index-data/lake-rag-index.json) records the actual
+source snapshot and counts; it must be rebuilt when indexed inputs change.
+The deployed consumer and live readback bind this finalized baseline; recording
+and row replay must independently verify the same run/root.
 
 ## Every acceptance criterion: evidence and remaining boundary
 
@@ -197,17 +203,17 @@ or describing unknown data as a successful zero-result query.
 
 ### Infrastructure and access
 
-| ID  | Brief requirement                             | Evidence / achieved result                                                                                                   | Remaining boundary                                                                                               |
-| --- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| A1  | Optimize where feasible                       | Bulk roll/API ingestion, bounded recovery, direct Parquet joins, [performance model](docs/cost.md)                           | Historical benchmarks are not present harvest ETA promises.                                                      |
-| A2  | Identify slow/constrained sources             | Slow Clermont HTML, managed challenges/manual routes, policy gates, paging/IN-list caps, queued retention and gateway limits | Constraints are source-specific, not excuses to discard retained data or evade controls.                         |
-| A3  | Document limitations                          | [Catalog](pipeline/docs/lake-sources.yaml), coverage, cost/runbook and this evidence map                                     | Final runtime/demo must show matching source/period limits.                                                      |
-| A4  | No default ongoing Oracle infrastructure cost | Portable files and consumer-side DuckDB; optional owner-funded hosting                                                       | Retention, model calls and optional hosting have costs; no required always-on Oracle database.                   |
-| A5  | IPFS eligible artifacts                       | Finalized public baseline, independently retained full CAR                                                                   | Later eligible snapshot still awaits retention/all-object verification. Private raw/contact payloads excluded.   |
-| A6  | Local/portable DuckDB                         | Real-data DuckDB querying and portable Parquet access                                                                        | Lambda is an optional convenience, not a required persistent database.                                           |
-| A7  | MCP-ready model                               | Ten hosted MCP tools over property/permit/business data, earlier matching dataset readback                                   | Updated deployment/readback pending; unsupported conclusions remain guarded.                                     |
-| A8  | Agent database access                         | AI SDK/Zod tools; deterministic canonical supported aged-roof/radius path locally tested                                     | Updated hosted independent query replay and video pending; no model prose accepted as property evidence.         |
-| A9  | Data-exploration UI                           | Earlier real-data views; search error UX and partial metadata repaired; sampled recorder paint checks added                  | Updated deploy/browser stability and recording pending; no claim that all intermittent blackouts are eliminated. |
+| ID  | Brief requirement                             | Evidence / achieved result                                                                                                   | Remaining boundary                                                                                                    |
+| --- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| A1  | Optimize where feasible                       | Bulk roll/API ingestion, bounded recovery, direct Parquet joins, [performance model](docs/cost.md)                           | Historical benchmarks are not present harvest ETA promises.                                                           |
+| A2  | Identify slow/constrained sources             | Slow Clermont HTML, managed challenges/manual routes, policy gates, paging/IN-list caps, queued retention and gateway limits | Constraints are source-specific, not excuses to discard retained data or evade controls.                              |
+| A3  | Document limitations                          | [Catalog](pipeline/docs/lake-sources.yaml), coverage, cost/runbook and this evidence map                                     | Final runtime/demo must show matching source/period limits.                                                           |
+| A4  | No default ongoing Oracle infrastructure cost | Portable files and consumer-side DuckDB; optional owner-funded hosting                                                       | Retention, model calls and optional hosting have costs; no required always-on Oracle database.                        |
+| A5  | IPFS eligible artifacts                       | Finalized public baseline, independently retained full CAR                                                                   | Later eligible snapshot still awaits retention/all-object verification. Private raw/contact payloads excluded.        |
+| A6  | Local/portable DuckDB                         | Real-data DuckDB querying and portable Parquet access                                                                        | Lambda is an optional convenience, not a required persistent database.                                                |
+| A7  | MCP-ready model                               | Ten hosted MCP tools over property/permit/business data with actual selected-run readback                                    | Unsupported conclusions remain guarded.                                                                               |
+| A8  | Agent database access                         | AI SDK/Zod tools; hosted canonical aged-roof/radius answer with all 25 displayed rows independently replayed                 | Recording outcome separately identified in the handoff; no model prose accepted as property evidence.                 |
+| A9  | Data-exploration UI                           | Real hosted views; search error UX and partial metadata repaired; strict sampled paint checks retained                       | Actual 40 ms failed paint sample preserved; underlying cause unproven and no claim that all blackouts are eliminated. |
 
 ### IPFS publication
 
@@ -231,26 +237,26 @@ constraints remain documented rather than bypassed.
 
 ### Roofing CRM–supporting queries
 
-| ID  | Brief requirement                                  | Evidence / achieved result                                                                                                                         | Remaining boundary                                                                                                                                     |
-| --- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Q1  | Radius around GPS/map point                        | Actual coordinate-backed five-mile queries with SQL/run provenance                                                                                 | UI map/GPS interaction design is out of pipeline scope.                                                                                                |
-| Q2  | Roofs over 15/configurable threshold               | At fixed pin 28.5494,-81.7729, integer threshold 16 returns 23,696 building-age proxies                                                            | Natural-language Clermont uses a labelled selected-data parcel-centroid centre; results depend on centre. LOW-confidence proxy, not measured roof age. |
-| Q3  | Open roofing, especially long-open                 | Raw historical ROOF/REROOF, ISSUED/date observations retained                                                                                      | Current-open and duration unknown; initial and follow-up requests safely refused, not fulfilled by an empty list.                                      |
-| Q4  | Permit details, contractor and BBB where available | Historical permit details and source-listed Clermont names                                                                                         | BBB/license/legal identity unknown; no inferred verified contractor.                                                                                   |
-| Q5  | Ownership unchanged for over ten years             | Available owner/sales evidence preserved                                                                                                           | Unmet: 2025–2026 sales cannot establish ten-year tenure.                                                                                               |
-| Q6  | Regional/out-of-area owners                        | NAL owner-mailing geography query and Tenant view                                                                                                  | Labelled locality proxy, not verified residency.                                                                                                       |
-| Q7  | Source-backed answers                              | Canonical property answers rendered only from actual this-turn query rows, with bounded SQL/run/root evidence; document retrieval separately bound | Local regression proof exists; final hosted row-by-row replay pending. Historical wrong-prose/citation and abstention failures are preserved.          |
+| ID  | Brief requirement                                  | Evidence / achieved result                                                                                                              | Remaining boundary                                                                                                                                     |
+| --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q1  | Radius around GPS/map point                        | Actual coordinate-backed five-mile queries with SQL/run provenance                                                                      | UI map/GPS interaction design is out of pipeline scope.                                                                                                |
+| Q2  | Roofs over 15/configurable threshold               | At fixed pin 28.5494,-81.7729, integer threshold 16 returns 23,696 building-age proxies                                                 | Natural-language Clermont uses a labelled selected-data parcel-centroid centre; results depend on centre. LOW-confidence proxy, not measured roof age. |
+| Q3  | Open roofing, especially long-open                 | Raw historical ROOF/REROOF, ISSUED/date observations retained                                                                           | Current-open and duration unknown; initial and follow-up requests safely refused, not fulfilled by an empty list.                                      |
+| Q4  | Permit details, contractor and BBB where available | Historical permit details and source-listed Clermont names                                                                              | BBB/license/legal identity unknown; no inferred verified contractor.                                                                                   |
+| Q5  | Ownership unchanged for over ten years             | Available owner/sales evidence preserved                                                                                                | Unmet: 2025–2026 sales cannot establish ten-year tenure.                                                                                               |
+| Q6  | Regional/out-of-area owners                        | NAL owner-mailing geography query and Tenant view                                                                                       | Labelled locality proxy, not verified residency.                                                                                                       |
+| Q7  | Source-backed answers                              | Canonical property answers from actual this-turn query rows; latest hosted take independently replayed all 25 displayed rows and fields | Recording failed paint, not row grounding. Historical wrong-prose/citation and abstention failures remain preserved.                                   |
 
 ### Demonstration
 
-| ID  | Brief requirement                         | Evidence / achieved result                                                                | Remaining boundary                                                                           |
-| --- | ----------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| D1  | Uploaded dataset in UI                    | Earlier real-data hosted walkthrough exists                                               | Updated release-bound walkthrough pending; not full-county completion.                       |
-| D2  | Roofing-aligned agent query               | Supported aged-roof/radius canonical repair locally tested                                | Final hosted NL answer and independent replay pending; unsupported open request must refuse. |
-| D3  | No Oracle infrastructure cost             | Portable DuckDB/MCP/CID design and [cost account](docs/cost.md)                           | Demonstrate portable read path; identify ongoing owner/vendor-funded costs.                  |
-| D4  | Public CID manifest/two-gateway retrieval | Baseline complete proof plus independent Lighthouse retention                             | Final recording links pending; later complete incremental publication still pending.         |
-| D5  | Both Oracle and builder responsibilities  | Real collection/loading/reconciliation, publication and query/UI implementation evidenced | These achieved parts do not certify full milestone fulfillment.                              |
-| D6  | Pass demo with real Lake records          | Earlier take uses real selected records, `fullAssignmentDemoPassed:false`                 | Replacement take pending; current-open, tenure and county coverage remain genuine limits.    |
+| ID  | Brief requirement                         | Evidence / achieved result                                                                  | Remaining boundary                                                                            |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| D1  | Uploaded dataset in UI                    | Hosted take exercised real selected records and independently checked 50 historical rows    | Recording outcome in handoff; not full-county completion.                                     |
+| D2  | Roofing-aligned agent query               | Hosted original aged-roof/radius question returned 25 independently replayed canonical rows | Recording outcome in handoff; unsupported open request safely refused with HTTP 200.          |
+| D3  | No Oracle infrastructure cost             | Portable DuckDB/MCP/CID design and [cost account](docs/cost.md)                             | Demonstrate portable read path; identify ongoing owner/vendor-funded costs.                   |
+| D4  | Public CID manifest/two-gateway retrieval | Baseline complete proof plus independent Lighthouse retention                               | Recording links in handoff; later complete incremental publication still pending.             |
+| D5  | Both Oracle and builder responsibilities  | Real collection/loading/reconciliation, publication and query/UI implementation evidenced   | These achieved parts do not certify full milestone fulfillment.                               |
+| D6  | Pass demo with real Lake records          | Real selected records demonstrated; `fullAssignmentDemoPassed:false`                        | Recording outcome in handoff; current-open, tenure and county coverage remain genuine limits. |
 
 ## Demo transcript: every expected-result beat
 
@@ -259,20 +265,20 @@ This checklist tracks the original transcript, not a declaration that all beats 
 bind actual run/root, manifest bytes, browser stability and independent canonical-row
 replay. Source-only refusal keeps the full-assignment pass false.
 
-| Step | Brief expected result                                                     | Evidence / exact missing outcome                                                                          |
-| ---- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| M0   | Loaded Lake dataset, DuckDB, immutable IPFS and roofing UI/agent          | State partial county coverage and exact finalized baseline run/CID; no full-county claim.                 |
-| M1   | Completed run summary, sources/counts/timestamps/limits                   | Baseline successful history/publication now recorded; updated consumer summary pending.                   |
-| M2   | Totals by property/permit/owner/contractor/BBB/business/coordinate source | Counts/grains above; unavailable BBB and unknown capture times explicit.                                  |
-| M3   | DuckDB without Oracle-hosted database                                     | Portable files/query path; optional owner-funded Lambda is not a hosted database requirement.             |
-| M4   | Manifest fields and IPNS name/resolved CID                                | Baseline manifest and verified sequence 14; updated recording pending.                                    |
-| M5   | Two public fetches with size/digest matches                               | Baseline normal 41/41 proof and public complete CAR; record actual selected artifact checks.              |
-| M6   | Later incremental CID, prior immutable CID, both histories and CAR        | Actual new bytes/primary CIDs/CAR exist; retention/all-object proof/finalized history/IPNS still pending. |
-| M7   | UI radius/roof over 15 with basis/coordinates/provenance                  | Supported building-age proxy; strictly>15 means minimum16; updated take pending.                          |
-| M8   | UI long-open roofing, duration, contractor and BBB                        | Historical observations available; current-open/duration unmet, BBB unavailable.                          |
-| M9   | Agent original aged-roof five-mile question                               | Reliable canonical supported route locally tested; hosted exact prompt/all displayed row replay pending.  |
-| M10  | Agent long-open question and listed contractor                            | Pre-generation source-only refusal; not a current-open lead list.                                         |
-| M11  | MCP-ready interface without changing model                                | Existing typed ten-tool interface, earlier run/root readback; updated deployment check pending.           |
+| Step | Brief expected result                                                     | Evidence / exact missing outcome                                                                             |
+| ---- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| M0   | Loaded Lake dataset, DuckDB, immutable IPFS and roofing UI/agent          | State partial county coverage and exact finalized baseline run/CID; no full-county claim.                    |
+| M1   | Completed run summary, sources/counts/timestamps/limits                   | Baseline successful history/publication and actual hosted summary recorded; county limits explicit.          |
+| M2   | Totals by property/permit/owner/contractor/BBB/business/coordinate source | Counts/grains above; unavailable BBB and unknown capture times explicit.                                     |
+| M3   | DuckDB without Oracle-hosted database                                     | Portable files/query path; optional owner-funded Lambda is not a hosted database requirement.                |
+| M4   | Manifest fields and IPNS name/resolved CID                                | Baseline manifest and verified sequence 14; exact recording evidence in handoff.                             |
+| M5   | Two public fetches with size/digest matches                               | Baseline normal 41/41 proof and public complete CAR; record actual selected artifact checks.                 |
+| M6   | Later incremental CID, prior immutable CID, both histories and CAR        | Actual new bytes/primary CIDs/CAR exist; retention/all-object proof/finalized history/IPNS still pending.    |
+| M7   | UI radius/roof over 15 with basis/coordinates/provenance                  | Supported building-age proxy; strictly>15 means minimum16; exact recording evidence in handoff.              |
+| M8   | UI long-open roofing, duration, contractor and BBB                        | Historical observations available; current-open/duration unmet, BBB unavailable.                             |
+| M9   | Agent original aged-roof five-mile question                               | Hosted exact prompt returned 25 rows; every displayed canonical field independently replayed in latest take. |
+| M10  | Agent long-open question and listed contractor                            | Pre-generation source-only refusal; not a current-open lead list.                                            |
+| M11  | MCP-ready interface without changing model                                | Typed ten-tool hosted interface and actual selected run/root readback.                                       |
 
 ## Run and verify locally
 
@@ -307,13 +313,12 @@ and [local materializer](packages/server/tests/materialize-historical-fixture.ts
 It has root=null, is not a release, and never borrows current published data/CIDs.
 Actual selected-source and documentation compatibility tests remain separate.
 
-The CI-equivalent local unit run reports **656/656 passing, no skips**, with
-the actual public selected snapshot and separately identified historical
-regression fixture. All **125 responsive-browser tests** and **14 isolated
-recorder checks** passed, including compound historical-row rendering and paint
-checks. Local lint, typecheck and build passed. These
-are local checks, not current-head CI, deployment or assignment-demo proof.
-Actual CI results will be linked only after they finish.
+[Delivery verification](docs/submission-handoff-20260917.md#verification-boundary-and-final-fields-to-fill)
+records exact local test totals, CI head/run/conclusion and the separate selected
+public snapshot and historical regression-fixture boundaries. Local checks are
+not current-head CI, deployment or assignment-demo proof. Actual CI results are
+linked only after they finish; synthetic clean-runner fixtures never establish
+production capture or deployment-byte validity.
 
 ## Official kit conformance and submission boundary
 

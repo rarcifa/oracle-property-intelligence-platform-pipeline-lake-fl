@@ -44,7 +44,9 @@ import {
   buildJurisdictionDocs,
   buildSourceDocs,
   sourcesYamlSchema,
+  type SourcesYaml,
 } from "./sources-yaml.js";
+import { selectedDescription } from "./selected-description.js";
 import type { CorpusChunk, CorpusLink, DocType, Provenance } from "../types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -187,15 +189,10 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
 
   // (b) The source catalog: jurisdictions, sources, access states.
   const catalogPath = resolve(RUNTIME_DOCS, "lake-sources.yaml");
+  let catalog: SourcesYaml | null = null;
   if (existsSync(catalogPath)) {
     const catalogText = await readFile(catalogPath, "utf8");
-    const catalog = sourcesYamlSchema.parse(parseYaml(catalogText));
-    const catalogProvenance = repoProvenance(relative(catalogPath));
-    const jurisdictions = buildJurisdictionDocs(catalog, catalogProvenance);
-    chunks.push(...jurisdictions.chunks);
-    links.push(...jurisdictions.links);
-    chunks.push(...buildSourceDocs(catalog, catalogProvenance));
-    chunks.push(...buildAccessDocs(catalog, catalogProvenance));
+    catalog = sourcesYamlSchema.parse(parseYaml(catalogText));
 
     // (c) The published run identity.
     const publishedIndex = indexSchema.parse(
@@ -237,7 +234,8 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
   }
 
   const coverageBytes = await readFile(artifactPath("coverage.json"));
-  const coverage = coverageSchema.parse(JSON.parse(coverageBytes.toString("utf8")));
+  const rawCoverage: unknown = JSON.parse(coverageBytes.toString("utf8"));
+  const coverage = coverageSchema.parse(rawCoverage);
   if (coverage.runId !== runId) {
     throw new Error(`coverage.json belongs to ${coverage.runId}, expected ${runId}`);
   }
@@ -297,8 +295,21 @@ export async function buildCorpus(expectedRunId?: string): Promise<BuiltCorpus> 
     coverageProvenance.cid = entries[0]!.cid;
   }
 
+  const description = selectedDescription(rawCoverage, {
+    provenance: coverageProvenance,
+    sha256: coverageInput.sha256,
+  });
+  if (catalog) {
+    const catalogProvenance = repoProvenance(relative(catalogPath));
+    const jurisdictions = buildJurisdictionDocs(catalog, catalogProvenance, description);
+    chunks.push(...jurisdictions.chunks);
+    links.push(...jurisdictions.links);
+    chunks.push(...buildSourceDocs(catalog, catalogProvenance, description));
+    chunks.push(...buildAccessDocs(catalog, catalogProvenance, description));
+  }
+
   // (d) One document per property column and per permit column.
-  chunks.push(...buildColumnDocs(artifactProvenance("schema.json")));
+  chunks.push(...buildColumnDocs(artifactProvenance("schema.json"), description));
   chunks.push(
     ...buildPermitDocs(coverage, artifactProvenance("permit-schema.json"), {
       provenance: coverageProvenance,

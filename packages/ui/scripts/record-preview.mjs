@@ -8,7 +8,11 @@ import path from "node:path";
 import { URL } from "node:url";
 import { EXPECTED_MCP_TOOLS } from "./demo-contract.mjs";
 import { assertPaintSample, startPaintMonitor } from "./record-preview-paint.mjs";
-import { assertHistoricalRowsDisplayed, historicalRowCells } from "./record-preview-historical.mjs";
+import {
+  assertHistoricalRowsDisplayed,
+  frameHistoricalTableStart,
+  historicalRowCells,
+} from "./record-preview-historical.mjs";
 import { validateArtifactManifest } from "../../../pipeline/src/core/artifact-manifest.mjs";
 import {
   buildUnixfsDirectory,
@@ -591,7 +595,16 @@ page.on("response", (response) => {
   if (response.url().startsWith(base + "/api/"))
     responses.push({ url: response.url(), status: response.status() });
 });
-const paintMonitor = await startPaintMonitor(page, base, (failure) => failures.push(failure));
+const paintMonitor = await startPaintMonitor(page, base, async (failure, diagnostic) => {
+  const entry = { ...failure };
+  failures.push(entry);
+  if (diagnostic) {
+    const { png, ...context } = diagnostic;
+    const filename = `failed-paint-sample-${failures.length}.png`;
+    await writeFile(path.join(out, filename), png);
+    entry.paintDiagnostic = { filename, bytes: png.length, ...context };
+  }
+});
 let paintChecks = null;
 const beats = [];
 const agentAnswers = [];
@@ -708,7 +721,10 @@ try {
     currentOpenConclusion: false,
     durationOpenConclusion: false,
   };
-  await page.locator("main table").scrollIntoViewIfNeeded();
+  historicalPermitObservation.viewportFraming = await frameHistoricalTableStart(
+    page,
+    historicalResult.rows[0],
+  );
   await page.screenshot({ path: path.join(out, "historical-issued-roofing-permits.png") });
   await page.waitForTimeout(3500);
   beats.push({

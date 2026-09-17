@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { startPaintMonitor, type PaintFailure } from "../../scripts/record-preview-paint.mjs";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import {
+  startPaintMonitor,
+  type PaintFailure,
+  type PaintDiagnostic,
+} from "../../scripts/record-preview-paint.mjs";
 
 const BASE = "http://127.0.0.1:54973";
 const HTML = `<!doctype html><style>
@@ -19,7 +25,14 @@ test.beforeEach(async ({ page }) => {
 for (const fault of ["root-opacity", "root-brightness", "black-overlay", "paint-only-black"]) {
   test(`rejects a transient ${fault} while DOM text survives`, async ({ page }) => {
     const failures: PaintFailure[] = [];
-    const monitor = await startPaintMonitor(page, BASE, (failure) => failures.push(failure), 50);
+    const monitor = await startPaintMonitor(
+      page,
+      BASE,
+      (failure) => {
+        failures.push(failure);
+      },
+      50,
+    );
     try {
       await page.goto(BASE);
       await expect(
@@ -71,7 +84,14 @@ test("accepts the healthy dark design and stops checking other public origins", 
   page,
 }) => {
   const failures: PaintFailure[] = [];
-  const monitor = await startPaintMonitor(page, BASE, (failure) => failures.push(failure), 50);
+  const monitor = await startPaintMonitor(
+    page,
+    BASE,
+    (failure) => {
+      failures.push(failure);
+    },
+    50,
+  );
   await page.goto(BASE);
   await expect(page.getByRole("heading", { name: "Oracle Property Intelligence" })).toBeVisible();
   await expect.poll(() => monitor.snapshot().screenshotSamples).toBeGreaterThan(0);
@@ -83,7 +103,14 @@ test("accepts the healthy dark design and stops checking other public origins", 
 
 test("does not mistake an invisible overlay descendant for black paint", async ({ page }) => {
   const failures: PaintFailure[] = [];
-  const monitor = await startPaintMonitor(page, BASE, (failure) => failures.push(failure), 50);
+  const monitor = await startPaintMonitor(
+    page,
+    BASE,
+    (failure) => {
+      failures.push(failure);
+    },
+    50,
+  );
   try {
     await page.goto(BASE);
     await expect.poll(() => monitor.snapshot().screenshotSamples).toBeGreaterThan(0);
@@ -100,4 +127,51 @@ test("does not mistake an invisible overlay descendant for black paint", async (
   } finally {
     await monitor.stop();
   }
+});
+
+test("preserves the exact failed sampled PNG and capture context before stopping", async ({
+  page,
+}, testInfo) => {
+  const failures: PaintFailure[] = [];
+  const diagnostics: PaintDiagnostic[] = [];
+  const savedPath = testInfo.outputPath("synthetic-failed-paint.png");
+  const monitor = await startPaintMonitor(
+    page,
+    BASE,
+    async (failure, diagnostic) => {
+      failures.push(failure);
+      if (diagnostic) {
+        diagnostics.push(diagnostic);
+        await writeFile(savedPath, diagnostic.png);
+      }
+    },
+    50,
+  );
+  try {
+    await page.goto(BASE);
+    await expect.poll(() => monitor.snapshot().screenshotSamples).toBeGreaterThan(0);
+    await page.evaluate(() => {
+      const image = document.createElement("img");
+      image.src =
+        'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="black"/></svg>';
+      image.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;z-index:9999";
+      document.body.append(image);
+    });
+    await expect.poll(() => diagnostics.length).toBe(1);
+  } finally {
+    await monitor.stop();
+  }
+  const diagnostic = diagnostics[0]!;
+  const saved = await readFile(savedPath);
+  expect(saved.equals(Buffer.from(diagnostic.png))).toBe(true);
+  expect(createHash("sha256").update(saved).digest("hex")).toBe(diagnostic.pngSha256);
+  expect([...saved.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  expect(diagnostic.sample.darkPixels / diagnostic.sample.pixels).toBeGreaterThanOrEqual(0.98);
+  expect(Date.parse(diagnostic.captureFinishedAt)).toBeGreaterThanOrEqual(
+    Date.parse(diagnostic.captureStartedAt),
+  );
+  expect(diagnostic.contextRecordedAt).toBeTruthy();
+  expect(diagnostic.context?.root?.textCharacters).toBeGreaterThan(0);
+  expect(diagnostic.context?.url).toBe(BASE + "/");
+  expect(failures.some((failure) => failure.message.includes("blacked-out frame"))).toBe(true);
 });

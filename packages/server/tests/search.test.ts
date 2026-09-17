@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { selectCorpusSource } from "../../rag/src/corpus/source.js";
+import { promotionReceiptSchema, selectCorpusSource, sha256 } from "../../rag/src/corpus/source.js";
 import { createContext } from "../src/context.js";
 import { OracleDataStore } from "../src/data/duckdb.js";
 import { Router, type HttpResponse } from "../src/http/router.js";
@@ -187,7 +187,41 @@ describe("POST /api/search", () => {
 });
 
 describe("document citations", () => {
-  it("flatten a retrieval result into citable records", () => {
+  it("flatten a retrieval result into citable records with visible catalog and exact selected coverage authority", async () => {
+    const selected = await selectCorpusSource();
+    expect(selected.receipt.releaseState).toBe("published");
+    if (!selected.releaseReceiptPath)
+      throw new Error("Public citation regression requires the selected promotion receipt");
+    const promotion = promotionReceiptSchema.parse(
+      JSON.parse(readFileSync(selected.releaseReceiptPath, "utf8")),
+    );
+    const manifests = promotion.evidence.filter((entry) => entry.role === "manifest");
+    expect(manifests).toHaveLength(1);
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    const manifestBytes = readFileSync(resolve(repoRoot, manifests[0]!.path));
+    expect(sha256(manifestBytes)).toBe(manifests[0]!.sha256);
+    expect(promotion.manifestDigest).toBe(`sha256:${sha256(manifestBytes)}`);
+    const manifest = z
+      .object({
+        runId: z.string(),
+        root: z.object({ cid: z.string() }),
+        artifacts: z.array(
+          z.object({
+            name: z.string(),
+            cid: z.string(),
+            sha256: z.string(),
+            size: z.number().int(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(manifestBytes.toString("utf8")));
+    expect(manifest.runId).toBe(selected.receipt.runId);
+    expect(manifest.root.cid).toBe(selected.receipt.rootCid);
+    const coverageEntries = manifest.artifacts.filter((entry) => entry.name === "coverage.json");
+    expect(coverageEntries).toHaveLength(1);
+    const coverageBytes = readFileSync(selected.artifactPaths.get("coverage.json")!);
+    expect(coverageEntries[0]!.sha256).toBe(`sha256:${sha256(coverageBytes)}`);
+    expect(coverageEntries[0]!.size).toBe(coverageBytes.length);
     const result = retrieve(
       { query: "how do I request permit records from Leesburg", topK: 3 },
       loadIndex(),
@@ -195,7 +229,24 @@ describe("document citations", () => {
     const citations = toDocumentCitations(result);
     expect(citations.length).toBeGreaterThan(0);
     expect(citations[0]?.docId).toBe("jurisdiction:leesburg");
-    expect(citations[0]?.sourceFile).toContain("lake-sources.yaml");
+    expect(result.chunks[0]?.provenance).toEqual({
+      sourceFile: `${selected.receipt.runDirectory}/coverage.json`,
+      artifact: "coverage.json",
+      runId: selected.receipt.runId,
+      cid: coverageEntries[0]!.cid,
+      rootCid: selected.receipt.rootCid,
+      ipfsPath: `ipfs://${selected.receipt.rootCid}/coverage.json`,
+      releaseState: "published",
+    });
+    expect(citations[0]?.sourceFile).toBe(`${selected.receipt.runDirectory}/coverage.json`);
+    expect(citations[0]?.artifact).toBe("coverage.json");
+    expect(citations[0]?.cid).toBe(coverageEntries[0]!.cid);
+    expect(citations[0]?.ipfsPath).toBe(`ipfs://${selected.receipt.rootCid}/coverage.json`);
+    expect(result.chunks[0]?.text).toContain("Catalog source: pipeline/docs/lake-sources.yaml");
+    expect(result.chunks[0]?.text).toContain("Permits@leesburgflorida.gov");
+    expect(readFileSync(resolve(repoRoot, "pipeline/docs/lake-sources.yaml"), "utf8")).toContain(
+      "Permits@leesburgflorida.gov",
+    );
     expect(citations[0]?.score).toBeGreaterThan(0);
   });
 });

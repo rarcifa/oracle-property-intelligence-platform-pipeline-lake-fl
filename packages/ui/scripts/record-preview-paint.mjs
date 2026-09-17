@@ -1,5 +1,6 @@
-/* global location, getComputedStyle, Node, innerWidth, innerHeight, createImageBitmap, Blob, OffscreenCanvas */
+/* global location, getComputedStyle, Node, innerWidth, innerHeight, scrollX, scrollY, createImageBitmap, Blob, OffscreenCanvas */
 import { URL } from "node:url";
+import { createHash } from "node:crypto";
 
 /** Recorder-only paint checks. DOM text is not evidence that the app was painted. */
 export function assertPaintSample(sample) {
@@ -105,13 +106,13 @@ export async function startPaintMonitor(page, base, onFailure, intervalMs = 250)
       "App-origin animation-frame CSS/overlay checks and sampled screenshot pixels; not exhaustive video-frame certification.",
   };
   const reported = new Set();
-  const fail = (failure) => {
+  const fail = async (failure, diagnostic) => {
     if (reported.has(failure.message)) return;
     reported.add(failure.message);
-    onFailure({ kind: "app paint failure", page: page.url(), ...failure });
+    await onFailure({ kind: "app paint failure", page: page.url(), ...failure }, diagnostic);
   };
-  await page.exposeBinding("__oraclePreviewPaintFailure", ({ frame }, failure) => {
-    if (new URL(frame.url()).origin === origin) fail(failure);
+  await page.exposeBinding("__oraclePreviewPaintFailure", async ({ frame }, failure) => {
+    if (new URL(frame.url()).origin === origin) await fail(failure);
   });
   await page.addInitScript(installDomPaintChecks, { origin });
   // Also support an already-open isolated test tab; production installs before navigation.
@@ -127,7 +128,9 @@ export async function startPaintMonitor(page, base, onFailure, intervalMs = 250)
           summary.domChecks += Math.max(0, status.checks - previousDomChecks);
           previousDomChecks = status.checks;
           if (status.armed) {
+            const captureStartedAt = new Date().toISOString();
             const png = await page.screenshot();
+            const captureFinishedAt = new Date().toISOString();
             const sample = await page.evaluate(
               async ({ bytes, origin }) => {
                 if (location.origin !== origin || !window.__oraclePreviewPaint?.armed) return null;
@@ -150,7 +153,57 @@ export async function startPaintMonitor(page, base, onFailure, intervalMs = 250)
             );
             if (sample) {
               summary.screenshotSamples += 1;
-              assertPaintSample(sample);
+              try {
+                assertPaintSample(sample);
+              } catch (error) {
+                // Preserve the actual failed sample, not a later replacement screenshot.
+                // Context is explicitly post-capture: it need not share the failed paint.
+                const contextRecordedAt = new Date().toISOString();
+                let context = null;
+                let contextError = null;
+                try {
+                  context = await page.evaluate(() => {
+                    const describe = (selector) => {
+                      const element = document.querySelector(selector);
+                      if (!element) return null;
+                      const box = element.getBoundingClientRect();
+                      const style = getComputedStyle(element);
+                      return {
+                        rect: { x: box.x, y: box.y, width: box.width, height: box.height },
+                        opacity: style.opacity,
+                        display: style.display,
+                        visibility: style.visibility,
+                        filter: style.filter,
+                        textCharacters: element.textContent?.length ?? 0,
+                      };
+                    };
+                    return {
+                      url: location.href,
+                      scrollX,
+                      scrollY,
+                      viewportWidth: innerWidth,
+                      viewportHeight: innerHeight,
+                      root: describe("#root"),
+                      header: describe(".app-header"),
+                    };
+                  });
+                } catch (contextFailure) {
+                  contextError = contextFailure.message;
+                }
+                await fail(
+                  { message: error.message, observedAt: new Date().toISOString() },
+                  {
+                    png,
+                    pngSha256: createHash("sha256").update(png).digest("hex"),
+                    sample,
+                    captureStartedAt,
+                    captureFinishedAt,
+                    contextRecordedAt,
+                    context,
+                    contextError,
+                  },
+                );
+              }
             }
           }
         }
@@ -160,7 +213,7 @@ export async function startPaintMonitor(page, base, onFailure, intervalMs = 250)
         if (
           !/Execution context was destroyed|Cannot find context|Target.*closed/.test(error.message)
         )
-          fail({ message: error.message, observedAt: new Date().toISOString() });
+          await fail({ message: error.message, observedAt: new Date().toISOString() });
       }
       if (!stopped) await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
