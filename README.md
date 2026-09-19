@@ -9,9 +9,14 @@ find aged roofs and roofing permits inside a map radius. The
 [original assignment brief](#original-assignment-brief) is preserved verbatim at
 the end of this document.
 
+> **Status (2026-09-19): hosted runtime decommissioned.** The AWS deployment behind the
+> hosted link below has been shut down. The published dataset is still retrievable by CID
+> (see [IPFS publication](#ipfs-publication)), and the full app runs locally with
+> `pnpm run start` pointed at it via `ORACLE_PARQUET_URL`.
+
 | Where to look                                                                                                                                  | What it is                                                                                      |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **[Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/)**                                    | Live deployment; no credentials needed                                                          |
+| **[Hosted UI, REST, MCP and agent](https://tf2ynypdvfkv4dqxszpkj5emjq0imyxh.lambda-url.us-east-2.on.aws/)**                                    | Decommissioned 2026-09-19 (was live, no credentials)                                            |
 | **[Walkthrough video](docs/demo-walkthrough-20260917/walkthrough.webm)** · [recorder report](docs/demo-walkthrough-20260917/preview-demo.json) | Recorded against the hosted deployment, every beat of the demo transcript                       |
 | [Artifact manifest](artifacts/manifest-20260916T181000Z.json) · [gateway verification](artifacts/verification-20260916T181000Z.json)           | Every published object with CID, size, codec and SHA-256; 41/41 verified on two public gateways |
 | [Run history](artifacts/run-history.json) · [latest](artifacts/latest.json)                                                                    | Eight successful publications since 2026-09-09, all prior CIDs retained                         |
